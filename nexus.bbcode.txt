@@ -1,0 +1,109 @@
+[size=4][color=#00ffff]OVERVIEW[/color][/size]
+
+Unlike other left-hand ring mods, this plugin does not rely on a hand-made set of duplicate left-hand ring records. Instead, it builds the left-hand item from the actual ring in your inventory.
+
+That means vanilla rings, DLC rings, Creation Club rings, mod-added rings, retextured rings, mesh-replaced rings, and custom enchanted rings can all work without needing dedicated patches, as long as they behave like normal Skyrim rings.
+
+
+[size=4][color=#00ffff]BALANCE[/color][/size]
+
+By default, left-hand ring enchantments use full strength.
+
+An optional setting can reduce the left-hand ring’s enchantment strength while you are also wearing an enchanted right-hand ring. This is useful if you want the extra ring slot without doubling your enchanted-ring power.
+
+
+[size=4][color=#00ffff]BOND OF MATRIMONY[/color][/size]
+
+The Bond of Matrimony can use its own left-hand slot. Fully configurable. If enabled, the ring will use the left-hand ring finger.
+
+
+[size=4][color=#00ffff]CONTROLS[/color][/size]
+
+[list]
+[*]Left-click a ring to toggle right hand equipment state.[/*]
+[*]Right-click a ring to toggle left hand equipment state.[/*]
+[/list]
+
+If you only have one copy of a ring, selecting it for the left hand will move it off the right hand. If you have two matching copies, you can wear one on each hand.
+
+
+[size=4][color=#00ffff]CONFIGURATION [/color][/size]
+
+The main file includes an editable INI:
+
+[quote]Data\MCM\Settings\LeftHandRingsSKSE.ini[/quote]
+
+Or use the MCM addon for in-game customization of the same settings:
+
+[list]
+[*]Left ring slot. Default: slot 58.[/*]
+[*]Separate Bond of Matrimony slot. Default: enabled.[/*]
+[*]Bond of Matrimony slot. Default: slot 59.[/*]
+[*]Left ring enchantment strength while an enchanted right-hand ring is worn. Default: 100%.[/*]
+[/list]
+
+The slot menus include the standard commonly used mod body slots 44-61. If another mod uses the same slot, choose a different one.
+
+
+[size=4][color=#00ffff]REQUIREMENTS[/color][/size]
+
+[list]
+[*][url=https://skse.silverlock.org/]SKSE64[/url][/*]
+[*][url=https://www.nexusmods.com/skyrimspecialedition/mods/32444]Address Library for SKSE Plugins[/url][/*]
+[/list]
+
+Optional MCM addon:
+
+[list]
+[*][url=https://www.nexusmods.com/skyrimspecialedition/mods/12604]SkyUI[/url][/*]
+[*][url=https://www.nexusmods.com/skyrimspecialedition/mods/53000]MCM Helper[/url][/*]
+[/list]
+
+
+[size=4][color=#00ffff]COMPATIBILITY[/color][/size]
+
+The mod was designed to avoid conflicts, if however you find any compatibility issues, please report them and I'll see what I can do.
+
+It is compatible with [url=https://www.nexusmods.com/skyrimspecialedition/mods/3240]Left Hand Rings Modified SE[/url] and most of the ring related mods I could find, but I do not see why one would use both.
+
+
+[size=4][color=#00ffff]TODO[/color][/size]
+
+[list]
+[*]NPC and follower left-hand ring support.[/*]
+[*]Controller support.[/*]
+[*]VR support.[/*]
+[/list]
+
+
+[size=4][color=#00ffff]UNINSTALLATION[/color][/size]
+
+[list]
+[*]Unequip any left-hand rings you might have equipped.[/*]
+[*]Save the game.[/*]
+[*]Exit and remove the mod.[/*]
+[/list]
+
+Avoid removing it mid-playthrough without first unequipping the left-hand ring(s) especially for rings with scripts attached.
+
+
+[size=4][color=#00ffff]SOURCE[/color][/size]
+[url=https://github.com/gabriel-andreescu/LeftHandRingsSKSE]github.com/gabriel-andreescu/LeftHandRingsSKSE[/url]
+
+
+[size=4][color=#00ffff]CREDITS[/color][/size]
+
+[list]
+[*][url=https://github.com/alandtse/CommonLibVR/tree/ng]CommonLibSSE NG[/url][/*]
+[*][url=https://github.com/powerof3/CLibUtil]CLibUtil[/url][/*]
+[*][url=https://github.com/doodlum/skyrim-community-shaders]Skyrim Community Shaders[/url][/*]
+[*][url=https://github.com/ThirdEyeSqueegee/CLibNGPluginTemplate]CLibNGPluginTemplate[/url][/*]
+[*][url=https://github.com/powerof3]powerof3's repos[/url][/*]
+[*][url=https://github.com/Monitor221hz]Monitor221hz's repos[/url][/*]
+[*]ThirdEyeSqueegee's repos[/*]
+[*]The [url=https://www.nexusmods.com/skyrimspecialedition/mods/12604]SkyUI[/url] team.[/*]
+[*][url=https://www.nexusmods.com/skyrimspecialedition/mods/53000]MCM Helper[/url][/*]
+[*][url=https://github.com/SlavicPotato/ied-dev]Immersive Equipment Displays[/url][/*]
+[*][url=https://www.nexusmods.com/skyrimspecialedition/mods/3139]Left Hand Rings[/url][/*]
+[*][url=https://www.nexusmods.com/skyrimspecialedition/mods/3240]Left Hand Rings Modified SE[/url][/*]
+[/list]

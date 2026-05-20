@@ -1,0 +1,14 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "left-hand-rings-skse",
+  "version-string": "0.1.1",
+  "description": "Native left-hand ring support for Skyrim Special Edition.",
+  "homepage": "https://github.com/gabriel-andreescu/LeftHandRingsSKSE",
+  "license": "GPL-3.0-only",
+  "dependencies": [
+    "spdlog",
+    "directxtk",
+    "rapidcsv"
+  ],
+  "builtin-baseline": "edffab1bcd2cb5b8c17d6ba34d5651ea0bf82979"
+}

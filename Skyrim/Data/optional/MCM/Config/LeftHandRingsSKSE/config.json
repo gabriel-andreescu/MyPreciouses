@@ -1,0 +1,137 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Exit-9B/MCM-Helper/main/docs/config.schema.json",
+  "modName": "LeftHandRingsSKSE",
+  "displayName": "Left Hand Rings",
+  "minMcmVersion": 13,
+  "customContent": {
+    "source": "LeftHandRingsSKSE/logo.dds",
+    "x": 0,
+    "y": 11
+  },
+  "pages": [
+    {
+      "pageDisplayName": "General",
+      "content": [
+        {
+          "id": "sBipedSlot:General",
+          "text": "Left ring slot",
+          "type": "menu",
+          "help": "Choose the equipment slot used to display regular left-hand rings. Change this only if another mod uses the same slot.",
+          "valueOptions": {
+            "sourceType": "ModSettingString",
+            "defaultValue": "Arm Left / Secondary Arm (58)",
+            "options": [
+              "Face / Mouth (44)",
+              "Neck (45)",
+              "Chest Outer / Cloak (46)",
+              "Back (47)",
+              "Misc / FX (48)",
+              "Pelvis Primary / Skirt (49)",
+              "Pelvis Secondary / Undergarment (52)",
+              "Leg Right / Outer Leg (53)",
+              "Leg Left / Secondary Leg (54)",
+              "Face Alternate / Jewelry (55)",
+              "Chest Secondary / Torso (56)",
+              "Shoulder / Pauldron (57)",
+              "Arm Left / Secondary Arm (58)",
+              "Arm Right / Primary Arm (59)",
+              "Misc / Belt / FX (60)",
+              "FX01 (61)"
+            ],
+            "shortNames": [
+              "44",
+              "45",
+              "46",
+              "47",
+              "48",
+              "49",
+              "52",
+              "53",
+              "54",
+              "55",
+              "56",
+              "57",
+              "58",
+              "59",
+              "60",
+              "61"
+            ]
+          }
+        },
+        {
+          "id": "bEnableBondOfMatrimony:General",
+          "text": "Separate Bond of Matrimony",
+          "type": "toggle",
+          "help": "Give The Bond of Matrimony its own left-hand ring slot.",
+          "groupControl": 1,
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        },
+        {
+          "id": "sBondBipedSlot:General",
+          "text": "Bond of Matrimony slot",
+          "type": "menu",
+          "help": "Choose the equipment slot used to display The Bond of Matrimony on the left hand. This must differ from the regular left ring slot.",
+          "groupCondition": 1,
+          "groupBehavior": "disable",
+          "valueOptions": {
+            "sourceType": "ModSettingString",
+            "defaultValue": "Arm Right / Primary Arm (59)",
+            "options": [
+              "Face / Mouth (44)",
+              "Neck (45)",
+              "Chest Outer / Cloak (46)",
+              "Back (47)",
+              "Misc / FX (48)",
+              "Pelvis Primary / Skirt (49)",
+              "Pelvis Secondary / Undergarment (52)",
+              "Leg Right / Outer Leg (53)",
+              "Leg Left / Secondary Leg (54)",
+              "Face Alternate / Jewelry (55)",
+              "Chest Secondary / Torso (56)",
+              "Shoulder / Pauldron (57)",
+              "Arm Left / Secondary Arm (58)",
+              "Arm Right / Primary Arm (59)",
+              "Misc / Belt / FX (60)",
+              "FX01 (61)"
+            ],
+            "shortNames": [
+              "44",
+              "45",
+              "46",
+              "47",
+              "48",
+              "49",
+              "52",
+              "53",
+              "54",
+              "55",
+              "56",
+              "57",
+              "58",
+              "59",
+              "60",
+              "61"
+            ]
+          }
+        },
+        {
+          "id": "iLeftRingEnchantmentPowerPercent:General",
+          "text": "Left ring enchantment power",
+          "type": "slider",
+          "help": "Set left-hand ring enchantment strength while an enchanted right-hand ring is equipped.",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 100,
+            "min": 5,
+            "max": 100,
+            "step": 5,
+            "formatString": "{0}%"
+          }
+        }
+      ]
+    }
+  ]
+}
