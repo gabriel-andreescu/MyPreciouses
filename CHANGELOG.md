@@ -3,6 +3,7 @@
 ## 0.2.0 - Unreleased
 
 - feat: add controller support
+- fix: recognize left-hand ring clones in GetEquipped conditions (eg: Ring of Namira's Feed prompt)
 - fix: VR compatibility
 - fix: prevent duplicate body visuals from hybrid-slot rings (eg: CC's Ring of Disrobing)
 

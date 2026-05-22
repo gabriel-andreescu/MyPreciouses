@@ -41,6 +41,7 @@ void RequireRestore(DisplaySlot a_channel, RE::FormID a_sourceArmorFormID);
 void ClearRestore(DisplaySlot a_channel, RE::FormID a_sourceArmorFormID = 0);
 [[nodiscard]] bool RequiresRestore(DisplaySlot a_channel, RE::FormID a_sourceArmorFormID);
 [[nodiscard]] std::optional<CloneRecord> GetRecord(DisplaySlot a_channel, RE::FormID a_sourceArmorFormID);
+[[nodiscard]] std::optional<RE::FormID> FindSourceArmorFormID(const RE::TESObjectARMO& a_clone);
 void MarkRestored(DisplaySlot a_channel, RE::FormID a_sourceArmorFormID);
 void Discard(DisplaySlot a_channel, RE::FormID a_sourceArmorFormID);
 void Save(SKSE::SerializationInterface& a_intfc, const std::vector<CloneKey>& a_selectedSources);

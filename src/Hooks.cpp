@@ -1,6 +1,7 @@
 #include "Hooks.h"
 
 #include "EventBindings.h"
+#include "Forms.h"
 #include "Inventory.h"
 #include "MeshRetargeting.h"
 #include "RuntimeEquipment.h"
@@ -17,9 +18,6 @@
 
 namespace Hooks {
 namespace {
-    constexpr RE::FormID kRightHandEquipSlotFormID = 0x00013F42;
-    constexpr RE::FormID kLeftHandEquipSlotFormID = 0x00013F43;
-
     enum class HandEquipSlot {
         kOther,
         kRight,
@@ -32,9 +30,9 @@ namespace {
         }
 
         switch (a_slot->GetFormID()) {
-            case kRightHandEquipSlotFormID: return HandEquipSlot::kRight;
-            case kLeftHandEquipSlotFormID:  return HandEquipSlot::kLeft;
-            default:                        return HandEquipSlot::kOther;
+            case Forms::kRightHandEquipSlotFormID: return HandEquipSlot::kRight;
+            case Forms::kLeftHandEquipSlotFormID:  return HandEquipSlot::kLeft;
+            default:                               return HandEquipSlot::kOther;
         }
     }
 
@@ -65,6 +63,37 @@ namespace {
             REL::Relocation {RELOCATION_ID(33763, 34547), REL::Relocate(0x4A3, 0x656, 0x427)}
         );
         logger::info("Hooks: enchantment power hook installed");
+    }
+
+    struct GetEquippedConditionHook {
+        static bool thunk(RE::TESObjectREFR* a_thisObj, void* a_param1, void* a_param2, double& a_result) {
+            const auto result = func(a_thisObj, a_param1, a_param2, a_result);
+            if (!result || a_result != 0.0 || !a_thisObj || !a_param1) {
+                return result;
+            }
+
+            auto* actor = a_thisObj->As<RE::Actor>();
+            auto* getEquippedArgument = static_cast<RE::TESForm*>(a_param1);
+            if (actor && RuntimeEquipment::IsMatchingCloneWorn(*actor, *getEquippedArgument)) {
+                a_result = 1.0;
+            }
+
+            return result;
+        }
+
+        static inline RE::SCRIPT_FUNCTION::Condition_t* func {nullptr};
+    };
+
+    void InstallGetEquippedConditionHook() {
+        auto* command = RE::SCRIPT_FUNCTION::LocateScriptCommand("GetEquipped"sv);
+        if (!command || !command->conditionFunction) {
+            logger::warn("Hooks: GetEquipped condition hook skipped | reason=commandUnavailable");
+            return;
+        }
+
+        GetEquippedConditionHook::func = command->conditionFunction;
+        command->conditionFunction = GetEquippedConditionHook::thunk;
+        logger::info("Hooks: GetEquipped condition hook installed");
     }
 
     struct SlotReplacement {
@@ -398,6 +427,7 @@ namespace {
 void Install() {
     InstallUI();
     InstallEquipObserverHook();
+    InstallGetEquippedConditionHook();
     InstallEnchantmentPowerHook();
     InstallPapyrusEventMirrorHook();
     InstallMeshRetargetingHooks();

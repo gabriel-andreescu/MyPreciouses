@@ -210,6 +210,18 @@ std::optional<CloneRecord> GetRecord(const DisplaySlot a_channel, const RE::Form
     return it->second;
 }
 
+std::optional<RE::FormID> FindSourceArmorFormID(const RE::TESObjectARMO& a_clone) {
+    std::scoped_lock lock(RegistryLock());
+    const auto cloneFormID = a_clone.GetFormID();
+    for (const auto& [_, record] : RecordsBySource()) {
+        if (record.cloneArmorFormID == cloneFormID) {
+            return record.sourceArmorFormID;
+        }
+    }
+
+    return std::nullopt;
+}
+
 void MarkRestored(const DisplaySlot a_channel, const RE::FormID a_sourceArmorFormID) {
     std::scoped_lock lock(RegistryLock());
     RestoreRequiredSources().erase(MakeKey(a_channel, a_sourceArmorFormID));

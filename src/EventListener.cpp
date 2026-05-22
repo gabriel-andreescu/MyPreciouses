@@ -5,11 +5,6 @@
 #include "UI.h"
 
 void EventListener::Register() {
-    static std::atomic_bool installed {false};
-    if (installed.load()) {
-        return;
-    }
-
     auto* listener = GetSingleton();
     auto* eventSource = RE::ScriptEventSourceHolder::GetSingleton();
     if (!eventSource) {
@@ -19,7 +14,6 @@ void EventListener::Register() {
 
     eventSource->AddEventSink<Events::ContainerChanged>(listener);
     eventSource->AddEventSink<Events::Equip>(listener);
-    installed.store(true);
     logger::info("Selection: event sinks installed");
 }
 

@@ -60,6 +60,7 @@ set(SOURCES
         src/Events.h
         src/FirstPerson.cpp
         src/FirstPerson.h
+        src/Forms.h
         src/Hooks.cpp
         src/Hooks.h
         src/Inventory.cpp

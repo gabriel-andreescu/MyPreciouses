@@ -75,6 +75,21 @@ std::mutex g_lock;
 bool g_refreshPending {false};
 bool g_refreshRunning {false};
 
+[[nodiscard]] bool SourceMatchesGetEquippedArgument(
+    const RE::FormID a_sourceFormID,
+    RE::TESForm& a_getEquippedArgument
+) {
+    if (a_sourceFormID == 0) {
+        return false;
+    }
+
+    if (auto* list = a_getEquippedArgument.As<RE::BGSListForm>()) {
+        return list->HasForm(a_sourceFormID);
+    }
+
+    return a_getEquippedArgument.GetFormID() == a_sourceFormID;
+}
+
 [[nodiscard]] bool IsFingerRingVisualAddon(const RE::TESObjectARMA& a_addon) {
     return a_addon.GetSlotMask() == RE::BGSBipedObjectForm::BipedObjectSlot::kRing;
 }
@@ -686,6 +701,22 @@ void RuntimeEquipment::DiscardState() {
     for (auto& state : ChannelStates()) {
         state = {};
     }
+}
+
+bool RuntimeEquipment::IsMatchingCloneWorn(RE::Actor& a_actor, RE::TESForm& a_getEquippedArgument) {
+    for (const auto channel : kDisplaySlots) {
+        auto* wornArmor = a_actor.GetWornArmor(Slots::GetArmorSlot(channel));
+        if (!wornArmor) {
+            continue;
+        }
+
+        const auto sourceFormID = RuntimeClones::FindSourceArmorFormID(*wornArmor);
+        if (sourceFormID && SourceMatchesGetEquippedArgument(*sourceFormID, a_getEquippedArgument)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 bool RuntimeEquipment::IsArmor(const RE::TESObjectARMO* a_armor) {

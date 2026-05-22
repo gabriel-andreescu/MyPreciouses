@@ -1,10 +1,9 @@
 #include "BondOfMatrimony.h"
 
+#include "Forms.h"
+
 namespace BondOfMatrimony {
 namespace {
-    constexpr RE::FormID kBondOfMatrimonyLocalFormID {0x0C5809};
-    constexpr auto kSkyrimPlugin = "Skyrim.esm";
-
     RE::TESObjectARMO* g_bondOfMatrimony {nullptr};
 }
 
@@ -16,9 +15,9 @@ void Load() {
         return;
     }
 
-    g_bondOfMatrimony = dataHandler->LookupForm<RE::TESObjectARMO>(kBondOfMatrimonyLocalFormID, kSkyrimPlugin);
+    g_bondOfMatrimony = dataHandler->LookupForm<RE::TESObjectARMO>(Forms::kBondOfMatrimonyFormID, Forms::kSkyrimESM);
     if (!g_bondOfMatrimony) {
-        logger::warn("Bond: lookup failed | plugin={} | localForm={:06X}", kSkyrimPlugin, kBondOfMatrimonyLocalFormID);
+        logger::warn("Bond: lookup failed | plugin={} | form={:06X}", Forms::kSkyrimESM, Forms::kBondOfMatrimonyFormID);
         return;
     }
 
