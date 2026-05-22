@@ -45,6 +45,15 @@ namespace {
         return RE::TESForm::LookupByID<RE::TESObjectARMO>(a_sourceFormID);
     }
 
+    void RequestEquipmentRefresh(const bool a_playSounds, const DisplaySlot a_channel) {
+        if (a_playSounds) {
+            ClonedEquipment::RequestRefreshWithSounds(a_channel);
+            return;
+        }
+
+        ClonedEquipment::RequestRefresh();
+    }
+
     void ClearVirtualLeftSelection(RE::Actor& a_actor, const RE::TESObjectARMO& a_ring, const DisplaySlot a_channel) {
         Clear(a_channel);
         ClonedEquipment::Clear(a_channel);
@@ -88,7 +97,7 @@ namespace {
         }
     }
 
-    void MoveRightToLeft(const RE::FormID a_sourceFormID, const DisplaySlot a_channel) {
+    void MoveRightToLeft(const RE::FormID a_sourceFormID, const DisplaySlot a_channel, const bool a_playSounds) {
         auto* player = GetPlayer();
         if (!player) {
             return;
@@ -123,7 +132,7 @@ namespace {
         }
 
         Set(ring, a_channel);
-        ClonedEquipment::RequestRefresh();
+        RequestEquipmentRefresh(a_playSounds, a_channel);
 
         if (realInventoryChanged) {
             NotifyInventoryChanged(*player, ring);
@@ -135,7 +144,8 @@ namespace {
     void MoveRightToLeftCustom(
         const RE::FormID a_sourceFormID,
         const Inventory::CustomEnchantmentKey& a_customKey,
-        const DisplaySlot a_channel
+        const DisplaySlot a_channel,
+        const bool a_playSounds
     ) {
         auto* player = GetPlayer();
         if (!player) {
@@ -184,7 +194,7 @@ namespace {
         }
 
         SetCustom(*ring, a_customKey, a_channel);
-        ClonedEquipment::RequestRefresh();
+        RequestEquipmentRefresh(a_playSounds, a_channel);
 
         if (realInventoryChanged) {
             NotifyInventoryChanged(*player, ring);
@@ -522,19 +532,20 @@ void NormalizeAfterSettingsReload() {
     }
 }
 
-void RequestMove(const RE::FormID a_sourceFormID, const DisplaySlot a_channel) {
-    stl::add_task([a_sourceFormID, a_channel] {
-        MoveRightToLeft(a_sourceFormID, a_channel);
+void RequestMove(const RE::FormID a_sourceFormID, const DisplaySlot a_channel, const bool a_playSounds) {
+    stl::add_task([a_sourceFormID, a_channel, a_playSounds] {
+        MoveRightToLeft(a_sourceFormID, a_channel, a_playSounds);
     });
 }
 
 void RequestCustomMove(
     const RE::FormID a_sourceFormID,
     Inventory::CustomEnchantmentKey a_key,
-    const DisplaySlot a_channel
+    const DisplaySlot a_channel,
+    const bool a_playSounds
 ) {
-    stl::add_task([a_sourceFormID, key = std::move(a_key), a_channel] {
-        MoveRightToLeftCustom(a_sourceFormID, key, a_channel);
+    stl::add_task([a_sourceFormID, key = std::move(a_key), a_channel, a_playSounds] {
+        MoveRightToLeftCustom(a_sourceFormID, key, a_channel, a_playSounds);
     });
 }
 

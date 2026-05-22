@@ -612,7 +612,7 @@ namespace {
         }
 
         if (sourceMatches.rightWornExtraList && !sourceMatches.CanWearSameKeyInBothHands()) {
-            Selection::RequestCustomMove(a_ring.GetFormID(), a_customKey, a_channel);
+            Selection::RequestCustomMove(a_ring.GetFormID(), a_customKey, a_channel, true);
             return ToggleResult::kQueued;
         }
 
@@ -627,7 +627,7 @@ namespace {
     ) {
         const auto sourceState = Inventory::GetSourceState(a_player, a_ring);
         if (sourceState.rightWorn && !sourceState.CanWearSameFormInBothHands()) {
-            Selection::RequestMove(a_ring.GetFormID(), a_channel);
+            Selection::RequestMove(a_ring.GetFormID(), a_channel, true);
             return ToggleResult::kQueued;
         }
 
@@ -666,7 +666,7 @@ namespace {
             }
         }
 
-        ClonedEquipment::RequestRefresh();
+        ClonedEquipment::RequestRefreshWithSounds(channel);
         QueueEquipStateRefresh();
         return true;
     }

@@ -64,11 +64,12 @@ void Load(const Snapshot& a_state, SKSE::SerializationInterface& a_intfc);
 void Revert();
 void NormalizeAfterSettingsReload();
 
-void RequestMove(RE::FormID a_sourceFormID, DisplaySlot a_channel = DisplaySlot::kRegular);
+void RequestMove(RE::FormID a_sourceFormID, DisplaySlot a_channel = DisplaySlot::kRegular, bool a_playSounds = false);
 void RequestCustomMove(
     RE::FormID a_sourceFormID,
     Inventory::CustomEnchantmentKey a_key,
-    DisplaySlot a_channel = DisplaySlot::kRegular
+    DisplaySlot a_channel = DisplaySlot::kRegular,
+    bool a_playSounds = false
 );
 [[nodiscard]] bool InterceptRightEquip(
     RE::Actor& a_actor,

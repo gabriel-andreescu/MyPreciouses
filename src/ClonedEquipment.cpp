@@ -67,6 +67,8 @@ struct ChannelState {
     bool equippedArmorRestoredFromSave {false};
 };
 
+using RefreshSoundState = std::array<bool, kDisplaySlots.size()>;
+
 [[nodiscard]] std::array<ChannelState, kDisplaySlots.size()>& ChannelStates() {
     static auto* states = new std::array<ChannelState, kDisplaySlots.size()>();
     return *states;
@@ -75,6 +77,7 @@ struct ChannelState {
 std::mutex g_lock;
 bool g_refreshPending {false};
 bool g_refreshRunning {false};
+RefreshSoundState g_refreshPlaySounds {};
 
 [[nodiscard]] bool SourceMatchesGetEquippedArgument(
     const RE::FormID a_sourceFormID,
@@ -95,8 +98,10 @@ bool g_refreshRunning {false};
     return a_addon.GetSlotMask() == RE::BGSBipedObjectForm::BipedObjectSlot::kRing;
 }
 
-void RefreshOnce();
-void RefreshChannel(DisplaySlot a_channel, ChannelState& a_state);
+void RefreshOnce(const RefreshSoundState& a_playSoundsByChannel);
+void RefreshChannel(DisplaySlot a_channel, ChannelState& a_state, bool a_playSounds);
+void RequestRefreshImpl(bool a_playSounds, DisplaySlot a_channel);
+[[nodiscard]] RefreshSoundState ConsumeRefreshSoundState();
 [[nodiscard]] CloneState* EnsureClone(DisplaySlot a_channel, ChannelState& a_state, RE::TESObjectARMO& a_ring);
 [[nodiscard]] CloneState* EnsureLoadedCloneRestored(
     DisplaySlot a_channel,
@@ -114,7 +119,8 @@ void RefreshChannel(DisplaySlot a_channel, ChannelState& a_state);
     ChannelState& a_state,
     CloneState& a_clone,
     const Selection::State& a_selection,
-    bool a_deferWornCheck = false
+    bool a_deferWornCheck = false,
+    bool a_playSounds = false
 );
 [[nodiscard]] bool EnsureCloneInventory(RE::Actor& a_actor, CloneState& a_clone);
 [[nodiscard]] bool ApplyCustomSelectionToClone(
@@ -150,7 +156,7 @@ void RefreshChannel(DisplaySlot a_channel, ChannelState& a_state);
     bool a_clearSelectionOnCustomDataFailure
 );
 [[nodiscard]] std::uint32_t GetEffectiveEnchantmentPowerPercent(RE::Actor& a_actor);
-[[nodiscard]] bool ReapplyEquippedEnchantmentPower(RE::Actor& a_actor, DisplaySlot a_channel, ChannelState& a_state);
+[[nodiscard]] bool RefreshEnchantmentScale(RE::Actor& a_actor, DisplaySlot a_channel, ChannelState& a_state);
 [[nodiscard]] std::optional<bool> TryAdoptEquippedRestoredClone(
     RE::Actor& a_actor,
     DisplaySlot a_channel,
@@ -170,7 +176,8 @@ void EquipCloneObject(
     RE::Actor& a_actor,
     RE::ActorEquipManager& a_equipManager,
     CloneState& a_clone,
-    RE::ExtraDataList* a_extraList
+    RE::ExtraDataList* a_extraList,
+    bool a_playSounds
 );
 [[nodiscard]] std::optional<std::string_view> ConsumeLoadedFailureReason(const CloneState& a_clone);
 [[nodiscard]] bool FailLoadedRestoreDuringEquip(
@@ -192,7 +199,7 @@ void EquipCloneObject(
 CloneState* FailLoadedRestore(DisplaySlot a_channel, RE::FormID a_originalFormID, std::string_view a_reason);
 [[nodiscard]] bool IsArmorWorn(RE::Actor& a_actor, const RE::TESObjectARMO& a_armor);
 [[nodiscard]] bool IsArmorWorn(RE::Actor& a_actor, const CloneState& a_clone);
-void UnequipActive(RE::Actor& a_actor, ChannelState& a_state);
+void UnequipActive(RE::Actor& a_actor, ChannelState& a_state, bool a_playSounds = false);
 [[nodiscard]] bool EquippedSelectionMatches(const ChannelState& a_state, const Selection::State& a_selection);
 void RecordEquippedSelection(ChannelState& a_state, const Selection::State& a_selection);
 void RecordEquippedEnchantmentPower(ChannelState& a_state, const EnchantmentPowerState& a_powerState);
@@ -376,6 +383,42 @@ void QueueRefresh() {
     return std::fabs(a_lhs - a_rhs) <= tolerance;
 }
 
+[[nodiscard]] bool IsLiveCloneEffect(const RE::ActiveEffect* a_effect, const RE::TESObjectARMO* a_clone) {
+    return a_effect
+           && (a_effect->source == a_clone)
+           && a_effect->flags.none(RE::ActiveEffect::Flag::kInactive, RE::ActiveEffect::Flag::kDispelled);
+}
+
+[[nodiscard]] std::vector<RE::ActiveEffect*> CollectLiveCloneEffects(
+    RE::Actor& a_actor,
+    const RE::TESObjectARMO* a_clone
+) {
+    auto* magicTarget = a_actor.AsMagicTarget();
+    if (!magicTarget) {
+        return {};
+    }
+
+    auto* activeEffects = magicTarget->GetActiveEffectList();
+    if (!activeEffects) {
+        return {};
+    }
+
+    std::vector<RE::ActiveEffect*> effects;
+    for (auto* activeEffect : *activeEffects) {
+        if (IsLiveCloneEffect(activeEffect, a_clone)) {
+            effects.push_back(activeEffect);
+        }
+    }
+
+    return effects;
+}
+
+void DispelEffects(const std::vector<RE::ActiveEffect*>& a_effects) {
+    for (auto* effect : a_effects) {
+        effect->Dispel(true);
+    }
+}
+
 [[nodiscard]] bool ActiveEffectMagnitudesMatchScale(
     RE::Actor& a_actor,
     const RE::TESObjectARMO* a_clone,
@@ -395,7 +438,7 @@ void QueueRefresh() {
     const auto scale = GetEnchantmentScaleForPercent(a_percent);
     std::uint32_t sourceEffects = 0;
     for (const auto* activeEffect : *activeEffects) {
-        if (!activeEffect || activeEffect->source != a_clone) {
+        if (!IsLiveCloneEffect(activeEffect, a_clone)) {
             continue;
         }
 
@@ -529,12 +572,15 @@ void QueueActor3DResetForWornClone(RE::Actor& a_actor, const DisplaySlot a_chann
         ResetActor3DForWornArmor(*actor);
     });
 }
-}
 
-void ClonedEquipment::RequestRefresh() {
+void RequestRefreshImpl(const bool a_playSounds, const DisplaySlot a_channel) {
     bool shouldQueue = false;
     {
         std::scoped_lock lock(g_lock);
+        if (a_playSounds) {
+            g_refreshPlaySounds[ToIndex(a_channel)] = true;
+        }
+
         if (g_refreshPending) {
             return;
         }
@@ -550,6 +596,21 @@ void ClonedEquipment::RequestRefresh() {
     }
 }
 
+RefreshSoundState ConsumeRefreshSoundState() {
+    std::scoped_lock lock(g_lock);
+    g_refreshPending = false;
+    return std::exchange(g_refreshPlaySounds, RefreshSoundState {});
+}
+}
+
+void ClonedEquipment::RequestRefresh() {
+    RequestRefreshImpl(false, DisplaySlot::kRegular);
+}
+
+void ClonedEquipment::RequestRefreshWithSounds(const DisplaySlot a_channel) {
+    RequestRefreshImpl(true, a_channel);
+}
+
 void ClonedEquipment::Refresh() {
     {
         std::scoped_lock lock(g_lock);
@@ -559,24 +620,22 @@ void ClonedEquipment::Refresh() {
         }
 
         g_refreshRunning = true;
-        g_refreshPending = false;
     }
 
     for (;;) {
-        RefreshOnce();
+        const auto playSoundsByChannel = ConsumeRefreshSoundState();
+        RefreshOnce(playSoundsByChannel);
 
         std::scoped_lock lock(g_lock);
         if (!g_refreshPending) {
             g_refreshRunning = false;
             return;
         }
-
-        g_refreshPending = false;
     }
 }
 
 namespace {
-void RefreshOnce() {
+void RefreshOnce(const RefreshSoundState& a_playSoundsByChannel) {
     for (const auto channel : kDisplaySlots) {
         if (channel == DisplaySlot::kBond && !Settings::GetSingleton()->IsBondOfMatrimonyEnabled()) {
             if (auto* player = RE::PlayerCharacter::GetSingleton()) {
@@ -587,18 +646,18 @@ void RefreshOnce() {
             continue;
         }
 
-        RefreshChannel(channel, ChannelStates()[ToIndex(channel)]);
+        RefreshChannel(channel, ChannelStates()[ToIndex(channel)], a_playSoundsByChannel[ToIndex(channel)]);
     }
 }
 
-void RefreshChannel(const DisplaySlot a_channel, ChannelState& a_state) {
+void RefreshChannel(const DisplaySlot a_channel, ChannelState& a_state, const bool a_playSounds) {
     auto* player = RE::PlayerCharacter::GetSingleton();
     const auto selection = Selection::Get(a_channel);
     auto* ring = Selection::GetSource(a_channel);
 
     if (!player || !ring || selection.kind == Selection::Kind::kNone) {
         if (player) {
-            UnequipActive(*player, a_state);
+            UnequipActive(*player, a_state, a_playSounds);
         } else {
             a_state.equippedOriginalFormID = 0;
             a_state.equippedArmor = nullptr;
@@ -622,14 +681,14 @@ void RefreshChannel(const DisplaySlot a_channel, ChannelState& a_state) {
         != clone->armor
         || !EquippedSelectionMatches(a_state, selection)) {
         UnequipActive(*player, a_state);
-        if (!EquipClone(*player, a_channel, a_state, *clone, selection)) {
+        if (!EquipClone(*player, a_channel, a_state, *clone, selection, false, a_playSounds)) {
             logger::warn("ClonedEquipment: cloned armor equip failed | source={:08X}", clone->originalFormID);
         }
         return;
     }
 
     if (!IsArmorWorn(*player, *clone)) {
-        if (!EquipClone(*player, a_channel, a_state, *clone, selection)) {
+        if (!EquipClone(*player, a_channel, a_state, *clone, selection, false, a_playSounds)) {
             logger::warn("ClonedEquipment: cloned armor re-equip failed | source={:08X}", clone->originalFormID);
         }
         return;
@@ -646,7 +705,7 @@ void RefreshChannel(const DisplaySlot a_channel, ChannelState& a_state) {
         a_state.equippedExtraList = extraList;
     }
 
-    if (!ReapplyEquippedEnchantmentPower(*player, a_channel, a_state)) {
+    if (!RefreshEnchantmentScale(*player, a_channel, a_state)) {
         UnequipActive(*player, a_state);
         return;
     }
@@ -1289,7 +1348,7 @@ bool ResolveEnchantmentPowerSource(
     return true;
 }
 
-bool ReapplyEquippedEnchantmentPower(RE::Actor& a_actor, const DisplaySlot a_channel, ChannelState& a_state) {
+bool RefreshEnchantmentScale(RE::Actor& a_actor, const DisplaySlot a_channel, ChannelState& a_state) {
     if (!a_state.equippedArmor || a_state.equippedOriginalFormID == 0) {
         return true;
     }
@@ -1321,8 +1380,30 @@ bool ReapplyEquippedEnchantmentPower(RE::Actor& a_actor, const DisplaySlot a_cha
         return true;
     }
 
-    UnequipActive(a_actor, a_state);
-    return EquipClone(a_actor, a_channel, a_state, clone, selection, true);
+    if (!clone.armor || !HasCloneSlotShape(*clone.armor, a_channel)) {
+        return false;
+    }
+
+    auto* entry = Inventory::FindEntry(a_actor, *clone.armor);
+    auto* extraList = FindExtraList(entry, a_state.equippedExtraList);
+
+    DispelEffects(CollectLiveCloneEffects(a_actor, clone.armor));
+    a_actor.UpdateArmorAbility(clone.armor, extraList);
+
+    if (nextState.enchantment
+        && !ActiveEffectMagnitudesMatchScale(a_actor, clone.armor, nextState.enchantment, nextState.percent)) {
+        ClearEquippedEnchantmentPower(a_state);
+        return HasWornBipedPart(a_actor, a_channel, *clone.armor);
+    }
+
+    a_state.equippedExtraList = extraList;
+    a_state.equippedOriginalFormID = clone.originalFormID;
+    a_state.equippedArmor = clone.armor;
+    RecordEquippedSelection(a_state, selection);
+    RecordEquippedEnchantmentPower(a_state, nextState);
+    a_state.equippedArmorRestoredFromSave = clone.restoredFromSave;
+
+    return HasWornBipedPart(a_actor, a_channel, *clone.armor);
 }
 
 std::optional<bool> TryAdoptEquippedRestoredClone(
@@ -1356,14 +1437,15 @@ std::optional<bool> TryAdoptEquippedRestoredClone(
     }
 
     ClearEquippedEnchantmentPower(a_state);
-    return ReapplyEquippedEnchantmentPower(a_actor, a_channel, a_state);
+    return RefreshEnchantmentScale(a_actor, a_channel, a_state);
 }
 
 void EquipCloneObject(
     RE::Actor& a_actor,
     RE::ActorEquipManager& a_equipManager,
     CloneState& a_clone,
-    RE::ExtraDataList* a_extraList
+    RE::ExtraDataList* a_extraList,
+    const bool a_playSounds
 ) {
     std::optional<EventBindings::ScopedMirror> mirrorContext;
     const auto restoredFreshMirror = a_clone.restoredFromSave
@@ -1374,7 +1456,7 @@ void EquipCloneObject(
     ArmEquipEventMirror(a_actor, a_clone, mirrorContext);
 
     a_equipManager
-        .EquipObject(std::addressof(a_actor), a_clone.armor, a_extraList, 1, nullptr, true, false, false, true);
+        .EquipObject(std::addressof(a_actor), a_clone.armor, a_extraList, 1, nullptr, true, false, a_playSounds, true);
 
     if (const auto handle = EventBindings::GetHandle(a_clone.originalFormID, a_clone.armor->GetFormID())) {
         a_clone.eventTargetHandle = *handle;
@@ -1418,7 +1500,8 @@ bool EquipClone(
     ChannelState& a_state,
     CloneState& a_clone,
     const Selection::State& a_selection,
-    const bool a_deferWornCheck
+    const bool a_deferWornCheck,
+    const bool a_playSounds
 ) {
     if (!a_clone.armor || !HasCloneSlotShape(*a_clone.armor, a_channel)) {
         return false;
@@ -1479,7 +1562,7 @@ bool EquipClone(
         return false;
     }
 
-    EquipCloneObject(a_actor, *equipManager, a_clone, extraList);
+    EquipCloneObject(a_actor, *equipManager, a_clone, extraList, a_playSounds);
 
     if (const auto failureReason = ConsumeLoadedFailureReason(a_clone)) {
         return FailLoadedRestoreDuringEquip(a_actor, a_channel, a_state, a_clone, extraList, *failureReason);
@@ -1552,7 +1635,7 @@ void ClearEquippedEnchantmentPower(ChannelState& a_state) {
     a_state.hasEquippedEnchantmentPower = false;
 }
 
-void UnequipActive(RE::Actor& a_actor, ChannelState& a_state) {
+void UnequipActive(RE::Actor& a_actor, ChannelState& a_state, const bool a_playSounds) {
     if (!a_state.equippedArmor) {
         a_state.equippedOriginalFormID = 0;
         a_state.equippedExtraList = nullptr;
@@ -1591,7 +1674,7 @@ void UnequipActive(RE::Actor& a_actor, ChannelState& a_state) {
                 nullptr,
                 true,
                 false,
-                false,
+                a_playSounds,
                 true,
                 nullptr
             );

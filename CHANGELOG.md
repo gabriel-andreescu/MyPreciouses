@@ -4,6 +4,7 @@
 
 - feat: add controller support
 - fix: flag MCM addon as ESPFE
+- fix: play left-hand ring equip sounds
 - fix: recognize left-hand ring clones in GetEquipped conditions (eg: Ring of Namira's Feed prompt)
 - fix: VR compatibility
 - fix: prevent duplicate body visuals from hybrid-slot rings (eg: CC's Ring of Disrobing)

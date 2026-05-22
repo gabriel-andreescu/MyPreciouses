@@ -23,6 +23,7 @@ struct AddonModel {
 };
 
 void RequestRefresh();
+void RequestRefreshWithSounds(DisplaySlot a_channel);
 void Refresh();
 void Clear(DisplaySlot a_channel = DisplaySlot::kRegular);
 [[nodiscard]] std::optional<RE::FormID> SyncAfterEquip(RE::Actor& a_actor, DisplaySlot a_channel);
