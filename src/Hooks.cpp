@@ -1,10 +1,10 @@
 #include "Hooks.h"
 
+#include "ClonedEquipment.h"
 #include "EventBindings.h"
 #include "Forms.h"
 #include "Inventory.h"
 #include "MeshRetargeting.h"
-#include "RuntimeEquipment.h"
 #include "Selection.h"
 #include "Settings.h"
 #include "Slots.h"
@@ -47,7 +47,7 @@ namespace {
             }
 
             auto* sourceArmor = a_effect && a_effect->source ? a_effect->source->As<RE::TESObjectARMO>() : nullptr;
-            const auto scale = RuntimeEquipment::GetEnchantmentScale(*actor, sourceArmor);
+            const auto scale = ClonedEquipment::GetEnchantmentScale(*actor, sourceArmor);
             if (scale >= 1.0F) {
                 return;
             }
@@ -74,7 +74,7 @@ namespace {
 
             auto* actor = a_thisObj->As<RE::Actor>();
             auto* getEquippedArgument = static_cast<RE::TESForm*>(a_param1);
-            if (actor && RuntimeEquipment::IsMatchingCloneWorn(*actor, *getEquippedArgument)) {
+            if (actor && ClonedEquipment::HasWornSourceMatching(*actor, *getEquippedArgument)) {
                 a_result = 1.0;
             }
 
@@ -103,7 +103,7 @@ namespace {
 
     [[nodiscard]] std::optional<SlotReplacement> AsLeftSlotArmor(RE::TESBoundObject* a_object) {
         auto* armor = a_object ? a_object->As<RE::TESObjectARMO>() : nullptr;
-        if (!armor || RuntimeEquipment::IsArmor(armor)) {
+        if (!armor || ClonedEquipment::IsArmor(armor)) {
             return std::nullopt;
         }
 
@@ -135,7 +135,7 @@ namespace {
         }
 
         Selection::Clear(a_channel);
-        RuntimeEquipment::Clear(a_channel);
+        ClonedEquipment::Clear(a_channel);
         RE::SendUIMessage::SendInventoryUpdateMessage(std::addressof(a_actor), std::addressof(a_replacement));
         UI::RefreshRows();
     }
@@ -143,7 +143,7 @@ namespace {
     void SyncAfterEquip(RE::Actor& a_actor) {
         auto refreshed = false;
         for (const auto channel : kDisplaySlots) {
-            const auto sourceFormID = RuntimeEquipment::SyncAfterEquip(a_actor, channel);
+            const auto sourceFormID = ClonedEquipment::SyncAfterEquip(a_actor, channel);
             if (!sourceFormID) {
                 continue;
             }
@@ -172,7 +172,7 @@ namespace {
 
             auto leftSlotReplacement = AsLeftSlotArmor(a_object);
             auto* armor = a_object ? a_object->As<RE::TESObjectARMO>() : nullptr;
-            const auto isRuntimeArmor = RuntimeEquipment::IsArmor(armor);
+            const auto isClonedArmor = ClonedEquipment::IsArmor(armor);
             auto* ring = Inventory::AsRing(a_object);
             if (!ring) {
                 func(a_equipManager, a_actor, a_object, a_params);
@@ -183,7 +183,7 @@ namespace {
                         leftSlotReplacement->channel
                     );
                 }
-                if (!isRuntimeArmor) {
+                if (!isClonedArmor) {
                     SyncAfterEquip(*a_actor);
                 }
                 return;
@@ -209,7 +209,7 @@ namespace {
         stl::write_thunk_call<EquipObjectHook>(
             REL::Relocation {RELOCATION_ID(37938, 38894), REL::Relocate(0xE5, 0x170)}
         );
-        logger::info("RuntimeEquipment: equip observer installed");
+        logger::info("ClonedEquipment: equip observer installed");
     }
 
     template <class T>

@@ -1,8 +1,8 @@
 #include "Selection.h"
 
 #include "BondOfMatrimony.h"
+#include "ClonedEquipment.h"
 #include "Inventory.h"
-#include "RuntimeEquipment.h"
 #include "Settings.h"
 #include "UI.h"
 
@@ -47,7 +47,7 @@ namespace {
 
     void ClearVirtualLeftSelection(RE::Actor& a_actor, const RE::TESObjectARMO& a_ring, const DisplaySlot a_channel) {
         Clear(a_channel);
-        RuntimeEquipment::Clear(a_channel);
+        ClonedEquipment::Clear(a_channel);
         NotifyInventoryChanged(a_actor, std::addressof(a_ring));
     }
 
@@ -123,7 +123,7 @@ namespace {
         }
 
         Set(ring, a_channel);
-        RuntimeEquipment::RequestRefresh();
+        ClonedEquipment::RequestRefresh();
 
         if (realInventoryChanged) {
             NotifyInventoryChanged(*player, ring);
@@ -184,7 +184,7 @@ namespace {
         }
 
         SetCustom(*ring, a_customKey, a_channel);
-        RuntimeEquipment::RequestRefresh();
+        ClonedEquipment::RequestRefresh();
 
         if (realInventoryChanged) {
             NotifyInventoryChanged(*player, ring);
@@ -333,7 +333,7 @@ namespace {
         return true;
     }
     void ClearRestoreForChannel(const DisplaySlot a_channel) {
-        RuntimeClones::ClearRestore(a_channel);
+        ArmorClones::ClearRestore(a_channel);
     }
 
     void SetSelection(RE::TESObjectARMO* a_ring, const DisplaySlot a_channel) {
@@ -395,7 +395,7 @@ void Load(const Snapshot& a_state, SKSE::SerializationInterface& a_intfc) {
     std::scoped_lock lock(g_lock);
     const auto loadSelection = [&](const DisplaySlot a_channel, const State& a_storedState) {
         g_selections[ToIndex(a_channel)] = {};
-        RuntimeClones::ClearRestore(a_channel);
+        ArmorClones::ClearRestore(a_channel);
 
         if (a_storedState.kind == Kind::kNone || a_storedState.sourceFormID == 0) {
             return;
@@ -461,7 +461,7 @@ void Load(const Snapshot& a_state, SKSE::SerializationInterface& a_intfc) {
             return;
         }
 
-        RuntimeClones::RequireRestore(a_channel, g_selections[ToIndex(a_channel)].sourceFormID);
+        ArmorClones::RequireRestore(a_channel, g_selections[ToIndex(a_channel)].sourceFormID);
     };
 
     loadSelection(DisplaySlot::kRegular, a_state.regular);
@@ -469,7 +469,7 @@ void Load(const Snapshot& a_state, SKSE::SerializationInterface& a_intfc) {
     if (Settings::GetSingleton()->IsBondOfMatrimonyEnabled()
         && BondOfMatrimony::IsBond(g_selections[ToIndex(DisplaySlot::kRegular)].sourceFormID)) {
         g_selections[ToIndex(DisplaySlot::kRegular)] = {};
-        RuntimeClones::ClearRestore(DisplaySlot::kRegular);
+        ArmorClones::ClearRestore(DisplaySlot::kRegular);
     }
 }
 
@@ -481,15 +481,15 @@ Snapshot GetSnapshot() {
     };
 }
 
-std::vector<RuntimeClones::CloneKey> GetCloneKeys() {
+std::vector<ArmorClones::CloneKey> GetCloneKeys() {
     std::scoped_lock lock(g_lock);
-    std::vector<RuntimeClones::CloneKey> keys;
+    std::vector<ArmorClones::CloneKey> keys;
     keys.reserve(kDisplaySlots.size());
     for (const auto channel : kDisplaySlots) {
         const auto& selection = g_selections[ToIndex(channel)];
         if (selection.sourceFormID != 0) {
             keys.push_back(
-                RuntimeClones::CloneKey {
+                ArmorClones::CloneKey {
                     .channel = channel,
                     .sourceArmorFormID = selection.sourceFormID,
                 }
@@ -503,7 +503,7 @@ void Revert() {
     std::scoped_lock lock(g_lock);
     g_selections = {};
     for (const auto channel : kDisplaySlots) {
-        RuntimeClones::ClearRestore(channel);
+        ArmorClones::ClearRestore(channel);
     }
 }
 
@@ -511,14 +511,14 @@ void NormalizeAfterSettingsReload() {
     std::scoped_lock lock(g_lock);
     if (!Settings::GetSingleton()->IsBondOfMatrimonyEnabled()) {
         g_selections[ToIndex(DisplaySlot::kBond)] = {};
-        RuntimeClones::ClearRestore(DisplaySlot::kBond);
+        ArmorClones::ClearRestore(DisplaySlot::kBond);
         return;
     }
 
     const auto normalSource = g_selections[ToIndex(DisplaySlot::kRegular)].sourceFormID;
     if (BondOfMatrimony::IsBond(normalSource)) {
         g_selections[ToIndex(DisplaySlot::kRegular)] = {};
-        RuntimeClones::ClearRestore(DisplaySlot::kRegular);
+        ArmorClones::ClearRestore(DisplaySlot::kRegular);
     }
 }
 

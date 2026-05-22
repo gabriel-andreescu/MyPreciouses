@@ -1,9 +1,9 @@
 #include "Papyrus.h"
 
+#include "ArmorClones.h"
 #include "BondOfMatrimony.h"
+#include "ClonedEquipment.h"
 #include "FirstPerson.h"
-#include "RuntimeClones.h"
-#include "RuntimeEquipment.h"
 #include "Selection.h"
 #include "Settings.h"
 #include "UI.h"
@@ -11,9 +11,9 @@
 namespace Papyrus {
 namespace {
     void RefreshDisplaySlotAfterSettingsReload(const DisplaySlot a_channel) {
-        RuntimeEquipment::Clear(a_channel);
-        RuntimeClones::Revert(a_channel);
-        RuntimeEquipment::DiscardState(a_channel);
+        ClonedEquipment::Clear(a_channel);
+        ArmorClones::Revert(a_channel);
+        ClonedEquipment::DiscardState(a_channel);
     }
 
     void RefreshAfterDisplaySlotSettingsReload(Settings::ReloadResult a_reload) {
@@ -29,12 +29,12 @@ namespace {
         }
 
         FirstPerson::ApplyRaceFlags();
-        RuntimeEquipment::RequestRefresh();
+        ClonedEquipment::RequestRefresh();
         UI::RefreshRows();
     }
 
     void RefreshAfterEnchantmentPowerSettingsReload() {
-        RuntimeEquipment::RequestRefresh();
+        ClonedEquipment::RequestRefresh();
         UI::RefreshRows();
     }
 
@@ -45,7 +45,7 @@ namespace {
         }
 
         if (reload.DisplaySlotsChanged()) {
-            logger::info("Settings: display slots changed | action=refreshRuntimeEquipment");
+            logger::info("Settings: display slots changed | action=refreshClonedEquipment");
             stl::add_task([reload] {
                 RefreshAfterDisplaySlotSettingsReload(reload);
             });
@@ -53,7 +53,7 @@ namespace {
         }
 
         if (reload.enchantmentPowerChanged) {
-            logger::info("Settings: enchantment power changed | action=refreshRuntimeEquipment");
+            logger::info("Settings: enchantment power changed | action=refreshClonedEquipment");
             stl::add_task(RefreshAfterEnchantmentPowerSettingsReload);
         }
     }

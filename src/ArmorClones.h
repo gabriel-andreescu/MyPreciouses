@@ -7,7 +7,7 @@
 #include "Serialization.h"
 #include "Slots.h"
 
-namespace RuntimeClones {
+namespace ArmorClones {
 struct CloneKey {
     DisplaySlot channel {DisplaySlot::kRegular};
     RE::FormID sourceArmorFormID {0};

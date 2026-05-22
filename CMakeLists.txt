@@ -71,10 +71,10 @@ set(SOURCES
         src/Papyrus.cpp
         src/Papyrus.h
         src/PCH.h
-        src/RuntimeClones.cpp
-        src/RuntimeClones.h
-        src/RuntimeEquipment.cpp
-        src/RuntimeEquipment.h
+        src/ArmorClones.cpp
+        src/ArmorClones.h
+        src/ClonedEquipment.cpp
+        src/ClonedEquipment.h
         src/Selection.cpp
         src/Selection.h
         src/Serialization.cpp

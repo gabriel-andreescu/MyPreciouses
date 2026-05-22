@@ -7,6 +7,7 @@
 #include <cstring>
 #include <mutex>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -276,12 +277,12 @@ namespace {
         bool adoptLoadedBinding {false};
     };
 
-    struct RuntimeOwnedScriptObject {
+    struct OwnedScriptObject {
         std::string scriptName;
         RE::BSTSmartPointer<RE::BSScript::Object> object;
     };
 
-    struct OwnedEventBinding {
+    struct BindingRecord {
         RE::FormID sourceFormID {0};
         RE::FormID cloneFormID {0};
         RE::VMHandle handle {0};
@@ -289,7 +290,7 @@ namespace {
         bool adoptedFromSave {false};
         std::vector<std::string> expectedScriptNames;
         std::vector<std::string> ownedScriptNames;
-        std::vector<RuntimeOwnedScriptObject> ownedScriptObjects;
+        std::vector<OwnedScriptObject> ownedScriptObjects;
     };
 
     struct StoredBindingHeader {
@@ -300,15 +301,15 @@ namespace {
         std::uint32_t ownedScriptCount {0};
     };
 
-    struct EventBindingHandle {
+    struct BindingHandle {
         RE::FormID sourceFormID {0};
         RE::FormID cloneFormID {0};
         RE::VMHandle handle {0};
     };
 
-    struct BindingState {
+    struct Registry {
         std::mutex lock;
-        std::unordered_map<RE::FormID, std::vector<OwnedEventBinding>> byClone;
+        std::unordered_map<RE::FormID, std::vector<BindingRecord>> byClone;
         std::unordered_set<std::uint64_t> failedAdoptions;
     };
 
@@ -317,9 +318,9 @@ namespace {
     std::mutex pendingEventMirrorsLock;
     std::vector<std::pair<std::uint64_t, EventMirrorContext>> pendingEventMirrors;
 
-    [[nodiscard]] BindingState& GetBindingState() {
-        static BindingState state;
-        return state;
+    [[nodiscard]] Registry& GetRegistry() {
+        static Registry registry;
+        return registry;
     }
 
     [[nodiscard]] bool ContainsScriptName(
@@ -379,23 +380,23 @@ namespace {
         return handlePolicy && a_handle != 0 ? handlePolicy->GetParentHandle(a_handle) : 0;
     }
 
-    [[nodiscard]] bool HasRecordedEventBinding(const RE::FormID a_cloneFormID, const RE::VMHandle a_handle) {
-        auto& state = GetBindingState();
-        std::scoped_lock lock(state.lock);
-        const auto it = state.byClone.find(a_cloneFormID);
-        return it != state.byClone.end() && std::ranges::any_of(it->second, [a_handle](const auto& a_binding) {
+    [[nodiscard]] bool HasBindingForHandle(const RE::FormID a_cloneFormID, const RE::VMHandle a_handle) {
+        auto& registry = GetRegistry();
+        std::scoped_lock lock(registry.lock);
+        const auto it = registry.byClone.find(a_cloneFormID);
+        return it != registry.byClone.end() && std::ranges::any_of(it->second, [a_handle](const auto& a_binding) {
             return a_binding.handle == a_handle;
         });
     }
 
-    [[nodiscard]] auto FindBinding(std::vector<OwnedEventBinding>& a_bindings, const RE::FormID a_sourceFormID) {
+    [[nodiscard]] auto FindBindingBySource(std::vector<BindingRecord>& a_bindings, const RE::FormID a_sourceFormID) {
         return std::ranges::find_if(a_bindings, [a_sourceFormID](const auto& a_binding) {
             return a_binding.sourceFormID == a_sourceFormID;
         });
     }
 
     void UpsertOwnedScriptObject(
-        OwnedEventBinding& a_binding,
+        BindingRecord& a_binding,
         std::string a_scriptName,
         RE::BSTSmartPointer<RE::BSScript::Object> a_object
     ) {
@@ -408,7 +409,7 @@ namespace {
         });
         if (it == a_binding.ownedScriptObjects.end()) {
             a_binding.ownedScriptObjects.push_back(
-                RuntimeOwnedScriptObject {
+                OwnedScriptObject {
                     .scriptName = std::move(a_scriptName),
                     .object = std::move(a_object),
                 }
@@ -419,35 +420,32 @@ namespace {
         it->object = std::move(a_object);
     }
 
-    void MergeOwnedScriptObjects(
-        OwnedEventBinding& a_binding,
-        const std::vector<RuntimeOwnedScriptObject>& a_ownedScriptObjects
-    ) {
+    void MergeOwnedScriptObjects(BindingRecord& a_binding, const std::vector<OwnedScriptObject>& a_ownedScriptObjects) {
         for (const auto& ownedScriptObject : a_ownedScriptObjects) {
             UpsertOwnedScriptObject(a_binding, ownedScriptObject.scriptName, ownedScriptObject.object);
         }
     }
 
-    void RecordEventBinding(
+    void RecordBinding(
         const RE::FormID a_sourceFormID,
         const RE::FormID a_cloneFormID,
         const RE::VMHandle a_handle,
         const std::vector<RE::BSFixedString>& a_expectedScriptNames,
         const std::vector<RE::BSFixedString>& a_ownedScriptNames,
-        const std::vector<RuntimeOwnedScriptObject>& a_ownedScriptObjects,
+        const std::vector<OwnedScriptObject>& a_ownedScriptObjects,
         const bool a_loadedFromSave,
         const bool a_adoptedFromSave
     ) {
-        auto& state = GetBindingState();
-        std::scoped_lock lock(state.lock);
-        auto& bindings = state.byClone[a_cloneFormID];
-        auto it = FindBinding(bindings, a_sourceFormID);
+        auto& registry = GetRegistry();
+        std::scoped_lock lock(registry.lock);
+        auto& bindings = registry.byClone[a_cloneFormID];
+        auto it = FindBindingBySource(bindings, a_sourceFormID);
         const auto expectedScriptNames = ToStoredScriptNames(a_expectedScriptNames);
         const auto ownedScriptNames = ToStoredScriptNames(a_ownedScriptNames);
 
         if (it == bindings.end()) {
             bindings.push_back(
-                OwnedEventBinding {
+                BindingRecord {
                     .sourceFormID = a_sourceFormID,
                     .cloneFormID = a_cloneFormID,
                     .handle = a_handle,
@@ -477,15 +475,15 @@ namespace {
         MergeOwnedScriptObjects(*it, a_ownedScriptObjects);
     }
 
-    [[nodiscard]] std::optional<OwnedEventBinding> GetEventBinding(
+    [[nodiscard]] std::optional<BindingRecord> FindBindingRecord(
         const RE::FormID a_sourceFormID,
         const RE::FormID a_cloneFormID,
         const bool a_requireLoadedFromSave
     ) {
-        auto& state = GetBindingState();
-        std::scoped_lock lock(state.lock);
-        const auto cloneIt = state.byClone.find(a_cloneFormID);
-        if (cloneIt == state.byClone.end()) {
+        auto& registry = GetRegistry();
+        std::scoped_lock lock(registry.lock);
+        const auto cloneIt = registry.byClone.find(a_cloneFormID);
+        if (cloneIt == registry.byClone.end()) {
             return std::nullopt;
         }
 
@@ -499,18 +497,18 @@ namespace {
         return *bindingIt;
     }
 
-    void UpdateEventBindingAfterAdoption(
-        const EventBindingHandle& a_bindingHandle,
-        const std::vector<RuntimeOwnedScriptObject>& a_ownedScriptObjects
+    void MarkBindingAdopted(
+        const BindingHandle& a_bindingHandle,
+        const std::vector<OwnedScriptObject>& a_ownedScriptObjects
     ) {
-        auto& state = GetBindingState();
-        std::scoped_lock lock(state.lock);
-        const auto cloneIt = state.byClone.find(a_bindingHandle.cloneFormID);
-        if (cloneIt == state.byClone.end()) {
+        auto& registry = GetRegistry();
+        std::scoped_lock lock(registry.lock);
+        const auto cloneIt = registry.byClone.find(a_bindingHandle.cloneFormID);
+        if (cloneIt == registry.byClone.end()) {
             return;
         }
 
-        auto bindingIt = FindBinding(cloneIt->second, a_bindingHandle.sourceFormID);
+        auto bindingIt = FindBindingBySource(cloneIt->second, a_bindingHandle.sourceFormID);
         if (bindingIt == cloneIt->second.end()) {
             return;
         }
@@ -522,15 +520,15 @@ namespace {
     }
 
     void MarkLoadedAdoptionFailure(const RE::FormID a_sourceFormID, const RE::FormID a_cloneFormID) {
-        auto& state = GetBindingState();
-        std::scoped_lock lock(state.lock);
-        state.failedAdoptions.insert(MakeFailureKey(a_sourceFormID, a_cloneFormID));
+        auto& registry = GetRegistry();
+        std::scoped_lock lock(registry.lock);
+        registry.failedAdoptions.insert(MakeFailureKey(a_sourceFormID, a_cloneFormID));
     }
 
     [[nodiscard]] bool ConsumeLoadedAdoptionFailure(const RE::FormID a_sourceFormID, const RE::FormID a_cloneFormID) {
-        auto& state = GetBindingState();
-        std::scoped_lock lock(state.lock);
-        return state.failedAdoptions.erase(MakeFailureKey(a_sourceFormID, a_cloneFormID)) > 0;
+        auto& registry = GetRegistry();
+        std::scoped_lock lock(registry.lock);
+        return registry.failedAdoptions.erase(MakeFailureKey(a_sourceFormID, a_cloneFormID)) > 0;
     }
 
     void RemovePendingEventMirror(
@@ -592,7 +590,7 @@ namespace {
         pendingEventMirrors.erase(it);
     }
 
-    [[nodiscard]] std::vector<RE::BSFixedString> GetRuntimeBoundScriptNames(
+    [[nodiscard]] std::vector<RE::BSFixedString> GetAttachedScriptNames(
         RE::BSScript::Internal::VirtualMachine& a_vm,
         const RE::VMHandle a_handle
     ) {
@@ -656,8 +654,8 @@ namespace {
         return result;
     }
 
-    [[nodiscard]] RE::BSTSmartPointer<RE::BSScript::Object> FindOwnedRuntimeScriptObject(
-        const OwnedEventBinding& a_binding,
+    [[nodiscard]] RE::BSTSmartPointer<RE::BSScript::Object> FindOwnedScriptObject(
+        const BindingRecord& a_binding,
         const std::string& a_scriptName
     ) {
         const auto it = std::ranges::find_if(a_binding.ownedScriptObjects, [&](const auto& a_entry) {
@@ -669,7 +667,7 @@ namespace {
 
     [[nodiscard]] bool ValidateExpectedScripts(
         RE::BSScript::Internal::VirtualMachine& a_vm,
-        OwnedEventBinding& a_binding,
+        BindingRecord& a_binding,
         const RE::VMHandle a_handle
     ) {
         for (const auto& scriptName : a_binding.expectedScriptNames) {
@@ -689,14 +687,14 @@ namespace {
 
         auto cachedOwnedObjects = std::uint32_t {0};
         for (const auto& scriptName : a_binding.ownedScriptNames) {
-            if (FindOwnedRuntimeScriptObject(a_binding, scriptName)) {
+            if (FindOwnedScriptObject(a_binding, scriptName)) {
                 ++cachedOwnedObjects;
             }
         }
         return true;
     }
 
-    std::uint32_t UnbindOwnedScripts(RE::BSScript::Internal::VirtualMachine& a_vm, const OwnedEventBinding& a_binding) {
+    std::uint32_t UnbindOwnedScripts(RE::BSScript::Internal::VirtualMachine& a_vm, const BindingRecord& a_binding) {
         auto* bindPolicy = a_vm.GetObjectBindPolicy();
         auto* bindInterface = bindPolicy ? bindPolicy->bindInterface : nullptr;
         if (!bindInterface) {
@@ -709,7 +707,7 @@ namespace {
                 continue;
             }
 
-            auto object = FindOwnedRuntimeScriptObject(a_binding, scriptName);
+            auto object = FindOwnedScriptObject(a_binding, scriptName);
             if (!object) {
                 continue;
             }
@@ -729,7 +727,7 @@ namespace {
 
     std::uint32_t DispatchOwnedEventScripts(
         RE::BSScript::Internal::VirtualMachine& a_vm,
-        const OwnedEventBinding& a_binding,
+        const BindingRecord& a_binding,
         RE::Actor& a_actor,
         const RE::BSFixedString& a_eventName
     ) {
@@ -739,7 +737,7 @@ namespace {
                 continue;
             }
 
-            auto object = FindOwnedRuntimeScriptObject(a_binding, scriptName);
+            auto object = FindOwnedScriptObject(a_binding, scriptName);
             if (!object) {
                 continue;
             }
@@ -804,9 +802,9 @@ namespace {
             return false;
         }
 
-        const auto existingScripts = GetRuntimeBoundScriptNames(*vm, a_targetHandle);
+        const auto existingScripts = GetAttachedScriptNames(*vm, a_targetHandle);
         std::vector<RE::BSFixedString> ownedScriptNames;
-        std::vector<RuntimeOwnedScriptObject> ownedScriptObjects;
+        std::vector<OwnedScriptObject> ownedScriptObjects;
         auto mirroredCount = std::uint32_t {0};
         for (const auto& scriptName : vmadScriptNames) {
             if (ContainsScriptName(existingScripts, scriptName)) {
@@ -829,7 +827,7 @@ namespace {
             bindPolicy->BindObject(scriptObject, a_targetHandle);
             ownedScriptNames.push_back(scriptName);
             ownedScriptObjects.push_back(
-                RuntimeOwnedScriptObject {
+                OwnedScriptObject {
                     .scriptName = scriptName.c_str(),
                     .object = scriptObject,
                 }
@@ -837,8 +835,8 @@ namespace {
             ++mirroredCount;
         }
 
-        if (mirroredCount > 0 || HasRecordedEventBinding(a_cloneFormID, a_targetHandle)) {
-            RecordEventBinding(
+        if (mirroredCount > 0 || HasBindingForHandle(a_cloneFormID, a_targetHandle)) {
+            RecordBinding(
                 a_source.GetFormID(),
                 a_cloneFormID,
                 a_targetHandle,
@@ -850,7 +848,7 @@ namespace {
             );
         }
 
-        return mirroredCount > 0 || HasRecordedEventBinding(a_cloneFormID, a_targetHandle);
+        return mirroredCount > 0 || HasBindingForHandle(a_cloneFormID, a_targetHandle);
     }
 
     [[nodiscard]] bool DispatchMirroredScriptsForEvent(
@@ -864,7 +862,7 @@ namespace {
             return false;
         }
 
-        auto binding = GetEventBinding(a_source.GetFormID(), a_cloneFormID, false);
+        auto binding = FindBindingRecord(a_source.GetFormID(), a_cloneFormID, false);
         if (!binding) {
             return false;
         }
@@ -878,7 +876,7 @@ namespace {
         const RE::FormID a_cloneFormID,
         const RE::VMHandle a_targetHandle
     ) {
-        auto binding = GetEventBinding(a_source.GetFormID(), a_cloneFormID, true);
+        auto binding = FindBindingRecord(a_source.GetFormID(), a_cloneFormID, true);
         if (!binding) {
             MarkLoadedAdoptionFailure(a_source.GetFormID(), a_cloneFormID);
             return false;
@@ -908,8 +906,8 @@ namespace {
             return false;
         }
 
-        UpdateEventBindingAfterAdoption(
-            EventBindingHandle {
+        MarkBindingAdopted(
+            BindingHandle {
                 .sourceFormID = a_source.GetFormID(),
                 .cloneFormID = a_cloneFormID,
                 .handle = a_targetHandle,
@@ -920,12 +918,12 @@ namespace {
     }
 
     void RemoveForCloneImpl(const RE::FormID a_cloneFormID, RE::Actor* a_unequippedActor) {
-        std::vector<OwnedEventBinding> bindings;
+        std::vector<BindingRecord> bindings;
         {
-            auto& state = GetBindingState();
-            std::scoped_lock lock(state.lock);
-            const auto it = state.byClone.find(a_cloneFormID);
-            if (it == state.byClone.end()) {
+            auto& registry = GetRegistry();
+            std::scoped_lock lock(registry.lock);
+            const auto it = registry.byClone.find(a_cloneFormID);
+            if (it == registry.byClone.end()) {
                 return;
             }
 
@@ -945,18 +943,18 @@ namespace {
         }
 
         {
-            auto& state = GetBindingState();
-            std::scoped_lock lock(state.lock);
-            state.byClone.erase(a_cloneFormID);
+            auto& registry = GetRegistry();
+            std::scoped_lock lock(registry.lock);
+            registry.byClone.erase(a_cloneFormID);
         }
     }
 
     void RemoveForSourceImpl(const RE::FormID a_sourceFormID, RE::Actor* a_unequippedActor) {
         std::vector<RE::FormID> clonesToRemove;
         {
-            auto& state = GetBindingState();
-            std::scoped_lock lock(state.lock);
-            for (const auto& [cloneFormID, bindings] : state.byClone) {
+            auto& registry = GetRegistry();
+            std::scoped_lock lock(registry.lock);
+            for (const auto& [cloneFormID, bindings] : registry.byClone) {
                 const auto hasSourceBinding = std::ranges::any_of(bindings, [a_sourceFormID](const auto& a_binding) {
                     return a_binding.sourceFormID == a_sourceFormID;
                 });
@@ -1093,15 +1091,15 @@ namespace {
         return DispatchMirroredScriptsForEvent(a_source, a_cloneFormID, a_actor, a_eventName);
     }
 
-    void RemoveCloneEventBindings(const RE::FormID a_cloneFormID) {
+    void RemoveCloneBindings(const RE::FormID a_cloneFormID) {
         RemoveForCloneImpl(a_cloneFormID, nullptr);
     }
 
-    void RemoveSourceEventBindings(const RE::FormID a_sourceFormID) {
+    void RemoveSourceBindings(const RE::FormID a_sourceFormID) {
         RemoveForSourceImpl(a_sourceFormID, nullptr);
     }
 
-    void RemoveSourceEventBindingsForUnequip(const RE::FormID a_sourceFormID, RE::Actor& a_unequippedActor) {
+    void RemoveSourceBindingsForUnequip(const RE::FormID a_sourceFormID, RE::Actor& a_unequippedActor) {
         RemoveForSourceImpl(a_sourceFormID, std::addressof(a_unequippedActor));
     }
 
@@ -1111,7 +1109,7 @@ namespace {
             return true;
         }
 
-        const auto binding = GetEventBinding(a_source.GetFormID(), a_cloneFormID, true);
+        const auto binding = FindBindingRecord(a_source.GetFormID(), a_cloneFormID, true);
         if (!binding) {
             return false;
         }
@@ -1122,7 +1120,7 @@ namespace {
     }
 
     bool AdoptLoadedBindingImpl(const RE::TESForm& a_source, const RE::FormID a_cloneFormID) {
-        auto binding = GetEventBinding(a_source.GetFormID(), a_cloneFormID, true);
+        auto binding = FindBindingRecord(a_source.GetFormID(), a_cloneFormID, true);
         if (!binding) {
             return false;
         }
@@ -1137,8 +1135,8 @@ namespace {
             return false;
         }
 
-        UpdateEventBindingAfterAdoption(
-            EventBindingHandle {
+        MarkBindingAdopted(
+            BindingHandle {
                 .sourceFormID = a_source.GetFormID(),
                 .cloneFormID = a_cloneFormID,
                 .handle = binding->handle,
@@ -1149,11 +1147,11 @@ namespace {
     }
 
     bool HasLoadedBindingImpl(const RE::FormID a_sourceFormID, const RE::FormID a_cloneFormID) {
-        return GetEventBinding(a_sourceFormID, a_cloneFormID, true).has_value();
+        return FindBindingRecord(a_sourceFormID, a_cloneFormID, true).has_value();
     }
 
     std::optional<RE::VMHandle> GetHandleImpl(const RE::FormID a_sourceFormID, const RE::FormID a_cloneFormID) {
-        const auto binding = GetEventBinding(a_sourceFormID, a_cloneFormID, false);
+        const auto binding = FindBindingRecord(a_sourceFormID, a_cloneFormID, false);
         if (!binding) {
             return std::nullopt;
         }
@@ -1196,19 +1194,19 @@ namespace {
         return value;
     }
 
-    void SaveEventBindings(
+    void SaveBindings(
         SKSE::SerializationInterface& a_intfc,
-        const std::vector<RuntimeClones::CloneKey>& a_selectedSources
+        const std::vector<ArmorClones::CloneKey>& a_selectedSources
     ) {
         if (a_selectedSources.empty()) {
             return;
         }
 
-        std::vector<OwnedEventBinding> bindings;
+        std::vector<BindingRecord> bindings;
         {
-            auto& state = GetBindingState();
-            std::scoped_lock lock(state.lock);
-            for (const auto& [_, cloneBindings] : state.byClone) {
+            auto& registry = GetRegistry();
+            std::scoped_lock lock(registry.lock);
+            for (const auto& cloneBindings : registry.byClone | std::views::values) {
                 for (const auto& binding : cloneBindings) {
                     const auto selected = std::ranges::any_of(a_selectedSources, [&](const auto& a_selectedSource) {
                         return a_selectedSource.sourceArmorFormID == binding.sourceFormID;
@@ -1282,7 +1280,7 @@ namespace {
         }
     }
 
-    bool LoadEventBindingRecord(const Serialization::RecordInfo a_recordInfo, SKSE::SerializationInterface& a_intfc) {
+    bool LoadBindingRecord(const Serialization::RecordInfo a_recordInfo, SKSE::SerializationInterface& a_intfc) {
         if (a_recordInfo.type != kRecordPapyrusBindings) {
             return false;
         }
@@ -1363,7 +1361,7 @@ namespace {
                 continue;
             }
 
-            RecordEventBinding(
+            RecordBinding(
                 resolvedSourceFormID,
                 resolvedCloneFormID,
                 resolvedHandle,
@@ -1379,18 +1377,18 @@ namespace {
         return true;
     }
 
-    void RevertEventBindings() {
+    void RevertBindings() {
         std::vector<RE::FormID> cloneFormIDs;
         {
-            auto& state = GetBindingState();
-            std::scoped_lock lock(state.lock);
-            for (const auto& [cloneFormID, _] : state.byClone) {
+            auto& registry = GetRegistry();
+            std::scoped_lock lock(registry.lock);
+            for (const auto cloneFormID : registry.byClone | std::views::keys) {
                 cloneFormIDs.push_back(cloneFormID);
             }
         }
 
         for (const auto cloneFormID : cloneFormIDs) {
-            RemoveCloneEventBindings(cloneFormID);
+            RemoveCloneBindings(cloneFormID);
         }
 
         {
@@ -1399,9 +1397,9 @@ namespace {
         }
 
         {
-            auto& state = GetBindingState();
-            std::scoped_lock lock(state.lock);
-            state.failedAdoptions.clear();
+            auto& registry = GetRegistry();
+            std::scoped_lock lock(registry.lock);
+            registry.failedAdoptions.clear();
         }
     }
 }
@@ -1448,15 +1446,15 @@ bool MirrorScriptsAndDispatch(
 }
 
 void RemoveForClone(const RE::FormID a_cloneFormID) {
-    RemoveCloneEventBindings(a_cloneFormID);
+    RemoveCloneBindings(a_cloneFormID);
 }
 
 void RemoveForSource(const RE::FormID a_sourceFormID) {
-    RemoveSourceEventBindings(a_sourceFormID);
+    RemoveSourceBindings(a_sourceFormID);
 }
 
 void RemoveForSource(const RE::FormID a_sourceFormID, RE::Actor& a_unequippedActor) {
-    RemoveSourceEventBindingsForUnequip(a_sourceFormID, a_unequippedActor);
+    RemoveSourceBindingsForUnequip(a_sourceFormID, a_unequippedActor);
 }
 
 bool ValidateLoadedRestore(const RE::TESForm& a_source, const RE::FormID a_cloneFormID) {
@@ -1479,15 +1477,15 @@ bool ConsumeLoadedFailure(const RE::FormID a_sourceFormID, const RE::FormID a_cl
     return ConsumeLoadedFailureImpl(a_sourceFormID, a_cloneFormID);
 }
 
-void Save(SKSE::SerializationInterface& a_intfc, const std::vector<RuntimeClones::CloneKey>& a_selectedSources) {
-    SaveEventBindings(a_intfc, a_selectedSources);
+void Save(SKSE::SerializationInterface& a_intfc, const std::vector<ArmorClones::CloneKey>& a_selectedSources) {
+    SaveBindings(a_intfc, a_selectedSources);
 }
 
 bool LoadRecord(const Serialization::RecordInfo a_recordInfo, SKSE::SerializationInterface& a_intfc) {
-    return LoadEventBindingRecord(a_recordInfo, a_intfc);
+    return LoadBindingRecord(a_recordInfo, a_intfc);
 }
 
 void Revert() {
-    RevertEventBindings();
+    RevertBindings();
 }
 }

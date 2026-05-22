@@ -1,8 +1,8 @@
 #include "Serialization.h"
 
+#include "ArmorClones.h"
+#include "ClonedEquipment.h"
 #include "EventBindings.h"
-#include "RuntimeClones.h"
-#include "RuntimeEquipment.h"
 #include "Selection.h"
 
 #include <array>
@@ -169,7 +169,7 @@ namespace {
         }
 
         const auto cloneKeys = Selection::GetCloneKeys();
-        RuntimeClones::Save(*a_intfc, cloneKeys);
+        ArmorClones::Save(*a_intfc, cloneKeys);
         EventBindings::Save(*a_intfc, cloneKeys);
     }
 
@@ -189,7 +189,7 @@ namespace {
                 .length = length,
             };
 
-            if (RuntimeClones::LoadRecord(recordInfo, *a_intfc)) {
+            if (ArmorClones::LoadRecord(recordInfo, *a_intfc)) {
                 continue;
             }
 
@@ -221,17 +221,17 @@ namespace {
         }
 
         stl::add_task([] {
-            RuntimeEquipment::RequestRefresh();
+            ClonedEquipment::RequestRefresh();
         });
     }
 
     void RevertCallback([[maybe_unused]] SKSE::SerializationInterface* a_intfc) {
         Selection::Revert();
-        RuntimeClones::Revert();
+        ArmorClones::Revert();
         EventBindings::Revert();
-        RuntimeEquipment::DiscardState();
+        ClonedEquipment::DiscardState();
         stl::add_task([] {
-            RuntimeEquipment::RequestRefresh();
+            ClonedEquipment::RequestRefresh();
         });
     }
 }

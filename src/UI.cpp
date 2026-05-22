@@ -1,8 +1,8 @@
 #include "UI.h"
 
 #include "BondOfMatrimony.h"
+#include "ClonedEquipment.h"
 #include "Inventory.h"
-#include "RuntimeEquipment.h"
 #include "Selection.h"
 #include "Settings.h"
 
@@ -114,23 +114,6 @@ namespace {
         }
 
         return kSkyUIEquipStateNone;
-    }
-
-    [[nodiscard]] int GetRingEquipState(RE::InventoryEntryData& a_entry, const RE::TESObjectARMO& a_ring) {
-        const auto customSelection = Inventory::ResolveCustomSelection(a_entry);
-        const auto rightEquipped = customSelection.HasCustomEnchantment()
-                                       ? Inventory::IsRightWorn(customSelection.extraList)
-                                       : a_entry.IsWorn(false);
-        auto rowSelection = RowSelection {
-            .kind = Selection::Kind::kFormOnly,
-        };
-        if (customSelection.failure != Inventory::EntryCustomFailure::kNone) {
-            rowSelection.kind = Selection::Kind::kNone;
-        } else if (customSelection.HasCustomEnchantment()) {
-            rowSelection.kind = Selection::Kind::kCustomEnchantment;
-            rowSelection.customKey = customSelection.key;
-        }
-        return GetRingEquipState(a_ring, rowSelection, rightEquipped);
     }
 
     [[nodiscard]] std::optional<bool> GetLiveRightEquipped(
@@ -683,7 +666,7 @@ namespace {
             }
         }
 
-        RuntimeEquipment::RequestRefresh();
+        ClonedEquipment::RequestRefresh();
         QueueEquipStateRefresh();
         return true;
     }
@@ -773,7 +756,7 @@ void RefreshRows() {
 
 void RefreshEquipmentSoon(const RE::FormID a_ringFormID) {
     stl::add_task([a_ringFormID] {
-        RuntimeEquipment::RequestRefresh();
+        ClonedEquipment::RequestRefresh();
         if (auto* player = RE::PlayerCharacter::GetSingleton()) {
             auto* ring = RE::TESForm::LookupByID<RE::TESObjectARMO>(a_ringFormID);
             RE::SendUIMessage::SendInventoryUpdateMessage(player, ring);

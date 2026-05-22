@@ -7,7 +7,7 @@
 
 #include "Slots.h"
 
-namespace RuntimeEquipment {
+namespace ClonedEquipment {
 struct AddonModel {
     struct Model {
         std::string path;
@@ -28,7 +28,7 @@ void Clear(DisplaySlot a_channel = DisplaySlot::kRegular);
 [[nodiscard]] std::optional<RE::FormID> SyncAfterEquip(RE::Actor& a_actor, DisplaySlot a_channel);
 void DiscardState(DisplaySlot a_channel);
 void DiscardState();
-[[nodiscard]] bool IsMatchingCloneWorn(RE::Actor& a_actor, RE::TESForm& a_getEquippedArgument);
+[[nodiscard]] bool HasWornSourceMatching(RE::Actor& a_actor, RE::TESForm& a_getEquippedArgument);
 [[nodiscard]] bool IsArmor(const RE::TESObjectARMO* a_armor);
 [[nodiscard]] bool IsAddon(const RE::TESObjectARMO* a_armor, const RE::TESObjectARMA* a_addon);
 [[nodiscard]] float GetEnchantmentScale(RE::Actor& a_actor, const RE::TESObjectARMO* a_source);

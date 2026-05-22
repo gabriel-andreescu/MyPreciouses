@@ -3,7 +3,7 @@
 #include <optional>
 #include <vector>
 
-#include "RuntimeClones.h"
+#include "ArmorClones.h"
 #include "Serialization.h"
 
 namespace EventBindings {
@@ -47,7 +47,7 @@ void RemoveForSource(RE::FormID a_sourceFormID, RE::Actor& a_unequippedActor);
 [[nodiscard]] bool HasLoadedBinding(RE::FormID a_sourceFormID, RE::FormID a_cloneFormID);
 [[nodiscard]] std::optional<RE::VMHandle> GetHandle(RE::FormID a_sourceFormID, RE::FormID a_cloneFormID);
 [[nodiscard]] bool ConsumeLoadedFailure(RE::FormID a_sourceFormID, RE::FormID a_cloneFormID);
-void Save(SKSE::SerializationInterface& a_intfc, const std::vector<RuntimeClones::CloneKey>& a_selectedSources);
+void Save(SKSE::SerializationInterface& a_intfc, const std::vector<ArmorClones::CloneKey>& a_selectedSources);
 bool LoadRecord(Serialization::RecordInfo a_recordInfo, SKSE::SerializationInterface& a_intfc);
 void Revert();
 }

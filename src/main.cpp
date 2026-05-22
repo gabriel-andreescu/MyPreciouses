@@ -1,11 +1,11 @@
+#include "ArmorClones.h"
 #include "BondOfMatrimony.h"
+#include "ClonedEquipment.h"
 #include "EventBindings.h"
 #include "EventListener.h"
 #include "FirstPerson.h"
 #include "Hooks.h"
 #include "Papyrus.h"
-#include "RuntimeClones.h"
-#include "RuntimeEquipment.h"
 #include "Serialization.h"
 #include "Settings.h"
 
@@ -18,7 +18,7 @@ constexpr auto kTrampolineSize = 1024;
 void RefreshEquipmentSoon() {
     stl::add_thread_task(
         [] {
-            RuntimeEquipment::RequestRefresh();
+            ClonedEquipment::RequestRefresh();
         },
         250ms
     );
@@ -31,9 +31,9 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 
     switch (a_msg->type) {
         case SKSE::MessagingInterface::kPreLoadGame:
-            RuntimeClones::Revert();
+            ArmorClones::Revert();
             EventBindings::Revert();
-            RuntimeEquipment::DiscardState();
+            ClonedEquipment::DiscardState();
             break;
         case SKSE::MessagingInterface::kDataLoaded:
             Settings::GetSingleton()->Load();

@@ -1,6 +1,6 @@
 #include "MeshRetargeting.h"
 
-#include "RuntimeEquipment.h"
+#include "ClonedEquipment.h"
 #include "Slots.h"
 
 #include <algorithm>
@@ -30,7 +30,7 @@ namespace {
     };
 
     struct ModelSelection {
-        const RuntimeEquipment::AddonModel::Model* model {nullptr};
+        const ClonedEquipment::AddonModel::Model* model {nullptr};
     };
 
     [[nodiscard]] RE::SEX OppositeSex(const RE::SEX a_sex) {
@@ -178,8 +178,8 @@ namespace {
         return static_cast<std::uint32_t>(a_slot) < std::to_underlying(RE::BIPED_OBJECTS::kTotal);
     }
 
-    [[nodiscard]] const RuntimeEquipment::AddonModel::Model& GetModel(
-        const RuntimeEquipment::AddonModel& a_metadata,
+    [[nodiscard]] const ClonedEquipment::AddonModel::Model& GetModel(
+        const ClonedEquipment::AddonModel& a_metadata,
         const RE::SEX a_sex,
         const bool a_firstPerson
     ) {
@@ -188,7 +188,7 @@ namespace {
     }
 
     [[nodiscard]] std::optional<ModelSelection> SelectCandidateModel(
-        const RuntimeEquipment::AddonModel& a_metadata,
+        const ClonedEquipment::AddonModel& a_metadata,
         const RE::SEX a_selectedSex,
         const bool a_selectedFirstPerson
     ) {
@@ -202,8 +202,8 @@ namespace {
         };
     }
 
-    [[nodiscard]] std::optional<ModelSelection> SelectRuntimeModel(
-        const RuntimeEquipment::AddonModel& a_metadata,
+    [[nodiscard]] std::optional<ModelSelection> SelectAddonModel(
+        const ClonedEquipment::AddonModel& a_metadata,
         RE::TESObjectREFR* a_actor,
         const RE::BSTSmartPointer<RE::BipedAnim>& a_biped
     ) {
@@ -338,7 +338,7 @@ namespace {
         return skinPatched || nodeNamesPatched;
     }
 
-    void ApplyTextureSwap(const RuntimeEquipment::AddonModel::Model& a_model, RE::NiAVObject& a_root) {
+    void ApplyTextureSwap(const ClonedEquipment::AddonModel::Model& a_model, RE::NiAVObject& a_root) {
         if (!a_model.textureSwap || a_model.numAlternateTextures == 0) {
             return;
         }
@@ -353,9 +353,9 @@ namespace {
         RE::BSTSmartPointer<RE::BipedAnim>& a_biped,
         RE::TESObjectARMO& a_armor,
         const RE::TESObjectARMA* a_addon,
-        const RuntimeEquipment::AddonModel& a_metadata
+        const ClonedEquipment::AddonModel& a_metadata
     ) {
-        const auto selection = SelectRuntimeModel(a_metadata, a_actor, a_biped);
+        const auto selection = SelectAddonModel(a_metadata, a_actor, a_biped);
         if (!selection || !selection->model) {
             return std::nullopt;
         }
@@ -411,7 +411,7 @@ namespace {
         }
     }
 
-    void ReplaceRuntimePartClone(const AttachContext& a_context) {
+    void ReplacePartClone(const AttachContext& a_context) {
         auto actor = a_context.actorHandle.get();
         auto* actorRef = actor.get();
         if (!a_context.biped || !a_context.armor) {
@@ -427,7 +427,7 @@ namespace {
             return;
         }
 
-        const auto metadata = RuntimeEquipment::GetAddonModel(a_context.armor, a_context.addon);
+        const auto metadata = ClonedEquipment::GetAddonModel(a_context.armor, a_context.addon);
         if (!metadata) {
             return;
         }
@@ -491,7 +491,7 @@ std::optional<AttachContext> CaptureAttachContext(
     auto* armor = bipedObject.item ? bipedObject.item->As<RE::TESObjectARMO>() : nullptr;
     auto* addon = bipedObject.addon;
 
-    auto metadata = RuntimeEquipment::GetAddonModel(armor, addon);
+    auto metadata = ClonedEquipment::GetAddonModel(armor, addon);
     if (!metadata) {
         return std::nullopt;
     }
@@ -509,7 +509,7 @@ std::optional<AttachContext> CaptureAttachContext(
 
 void QueueReplacement(AttachContext a_context) {
     stl::add_task([a_context = std::move(a_context)] {
-        ReplaceRuntimePartClone(a_context);
+        ReplacePartClone(a_context);
     });
 }
 }

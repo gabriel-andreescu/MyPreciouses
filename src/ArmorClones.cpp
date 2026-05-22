@@ -1,12 +1,13 @@
-#include "RuntimeClones.h"
+#include "ArmorClones.h"
 
 #include "Slots.h"
 
 #include <mutex>
+#include <ranges>
 #include <unordered_map>
 #include <unordered_set>
 
-namespace RuntimeClones {
+namespace ArmorClones {
 namespace {
     constexpr auto kRecordClone = Serialization::MakeRecordType('R', 'C', 'L', 'N');
     constexpr std::uint32_t kCloneVersion = 1;
@@ -74,9 +75,9 @@ namespace {
     template <class T>
     [[nodiscard]] T* DuplicateForm(T& a_source, std::string_view a_kind) {
         auto* duplicateForm = a_source.CreateDuplicateForm(true, nullptr);
-        auto* duplicate = duplicateForm ? duplicateForm->As<T>() : nullptr;
+        auto* duplicate = duplicateForm ? duplicateForm->template As<T>() : nullptr;
         if (!duplicate) {
-            logger::warn("RuntimeClones: duplicate failed | kind={} | source={:08X}", a_kind, a_source.GetFormID());
+            logger::warn("ArmorClones: duplicate failed | kind={} | source={:08X}", a_kind, a_source.GetFormID());
             return nullptr;
         }
 
@@ -114,7 +115,7 @@ bool RegisterForm(RE::TESForm& a_form, const std::string_view a_kind, const RE::
     auto* dataHandler = RE::TESDataHandler::GetSingleton();
     if (!dataHandler) {
         logger::warn(
-            "RuntimeClones: register failed | kind={} | source={:08X} | reason=noDataHandler",
+            "ArmorClones: register failed | kind={} | source={:08X} | reason=noDataHandler",
             a_kind,
             a_sourceFormID
         );
@@ -124,7 +125,7 @@ bool RegisterForm(RE::TESForm& a_form, const std::string_view a_kind, const RE::
     const auto beforeFormID = a_form.GetFormID();
     if (!dataHandler->AddFormToDataHandler(std::addressof(a_form))) {
         logger::warn(
-            "RuntimeClones: register failed | kind={} | source={:08X} | clone={:08X} | reason=dataHandlerRejected",
+            "ArmorClones: register failed | kind={} | source={:08X} | clone={:08X} | reason=dataHandlerRejected",
             a_kind,
             a_sourceFormID,
             beforeFormID
@@ -160,7 +161,7 @@ void CopyRaceCoverage(const RE::TESObjectARMA& a_sourceAddon, RE::TESObjectARMA&
 void Register(const CloneRecord& a_record) {
     if (a_record.sourceArmorFormID == 0 || a_record.cloneArmorFormID == 0 || a_record.sourceAddonFormIDs.empty()) {
         logger::warn(
-            "RuntimeClones: registry record skipped | channel={} | source={:08X} | clone={:08X} | sourceAddons={} | reason=invalidRecord",
+            "ArmorClones: registry record skipped | channel={} | source={:08X} | clone={:08X} | sourceAddons={} | reason=invalidRecord",
             DisplaySlotLabel(a_record.channel),
             a_record.sourceArmorFormID,
             a_record.cloneArmorFormID,
@@ -213,7 +214,7 @@ std::optional<CloneRecord> GetRecord(const DisplaySlot a_channel, const RE::Form
 std::optional<RE::FormID> FindSourceArmorFormID(const RE::TESObjectARMO& a_clone) {
     std::scoped_lock lock(RegistryLock());
     const auto cloneFormID = a_clone.GetFormID();
-    for (const auto& [_, record] : RecordsBySource()) {
+    for (const auto& record : RecordsBySource() | std::views::values) {
         if (record.cloneArmorFormID == cloneFormID) {
             return record.sourceArmorFormID;
         }
@@ -263,7 +264,7 @@ void Save(SKSE::SerializationInterface& a_intfc, const std::vector<CloneKey>& a_
     for (const auto& record : records) {
         if (!a_intfc.OpenRecord(kRecordClone, kCloneVersion)) {
             logger::error(
-                "RuntimeClones: save failed | channel={} | source={:08X} | reason=openRecord",
+                "ArmorClones: save failed | channel={} | source={:08X} | reason=openRecord",
                 DisplaySlotLabel(record.channel),
                 record.sourceArmorFormID
             );
@@ -278,14 +279,14 @@ void Save(SKSE::SerializationInterface& a_intfc, const std::vector<CloneKey>& a_
         };
 
         if (!a_intfc.WriteRecordData(header)) {
-            logger::error("RuntimeClones: save failed | source={:08X} | reason=writeHeader", record.sourceArmorFormID);
+            logger::error("ArmorClones: save failed | source={:08X} | reason=writeHeader", record.sourceArmorFormID);
             return;
         }
 
         for (const auto sourceAddonFormID : record.sourceAddonFormIDs) {
             if (!a_intfc.WriteRecordData(sourceAddonFormID)) {
                 logger::error(
-                    "RuntimeClones: save failed | source={:08X} | sourceAddon={:08X} | reason=writeSourceAddon",
+                    "ArmorClones: save failed | source={:08X} | sourceAddon={:08X} | reason=writeSourceAddon",
                     record.sourceArmorFormID,
                     sourceAddonFormID
                 );
@@ -301,13 +302,13 @@ bool LoadRecord(const Serialization::RecordInfo a_recordInfo, SKSE::Serializatio
     }
 
     if (a_recordInfo.version != kCloneVersion) {
-        logger::warn("RuntimeClones: load skipped | version={} | reason=unsupportedVersion", a_recordInfo.version);
+        logger::warn("ArmorClones: load skipped | version={} | reason=unsupportedVersion", a_recordInfo.version);
         return true;
     }
 
     StoredCloneHeader storedHeader;
     if (a_intfc.ReadRecordData(storedHeader) != sizeof(storedHeader)) {
-        logger::error("RuntimeClones: load failed | reason=readHeader");
+        logger::error("ArmorClones: load failed | reason=readHeader");
         return true;
     }
 
@@ -315,7 +316,7 @@ bool LoadRecord(const Serialization::RecordInfo a_recordInfo, SKSE::Serializatio
     record.channel = static_cast<DisplaySlot>(storedHeader.channel);
     if (record.channel != DisplaySlot::kRegular && record.channel != DisplaySlot::kBond) {
         logger::warn(
-            "RuntimeClones: record skipped | source={:08X} | channel={} | reason=invalidChannel",
+            "ArmorClones: record skipped | source={:08X} | channel={} | reason=invalidChannel",
             storedHeader.sourceArmorFormID,
             storedHeader.channel
         );
@@ -331,7 +332,7 @@ bool LoadRecord(const Serialization::RecordInfo a_recordInfo, SKSE::Serializatio
         RE::FormID storedSourceAddonFormID = 0;
         if (a_intfc.ReadRecordData(storedSourceAddonFormID) != sizeof(storedSourceAddonFormID)) {
             logger::error(
-                "RuntimeClones: load failed | source={:08X} | addonIndex={} | reason=readSourceAddon",
+                "ArmorClones: load failed | source={:08X} | addonIndex={} | reason=readSourceAddon",
                 storedHeader.sourceArmorFormID,
                 index
             );
@@ -348,7 +349,7 @@ bool LoadRecord(const Serialization::RecordInfo a_recordInfo, SKSE::Serializatio
 
     if (!valid) {
         logger::warn(
-            "RuntimeClones: record skipped | source={:08X} | clone={:08X} | sourceAddons={} | reason=invalidResolvedData",
+            "ArmorClones: record skipped | source={:08X} | clone={:08X} | sourceAddons={} | reason=invalidResolvedData",
             storedHeader.sourceArmorFormID,
             storedHeader.cloneArmorFormID,
             storedHeader.sourceAddonCount

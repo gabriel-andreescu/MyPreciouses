@@ -1,7 +1,7 @@
 #pragma once
 
+#include "ArmorClones.h"
 #include "Inventory.h"
-#include "RuntimeClones.h"
 #include "Slots.h"
 
 #include <array>
@@ -60,7 +60,7 @@ void Clear(DisplaySlot a_channel = DisplaySlot::kRegular);
 
 void Load(const Snapshot& a_state, SKSE::SerializationInterface& a_intfc);
 [[nodiscard]] Snapshot GetSnapshot();
-[[nodiscard]] std::vector<RuntimeClones::CloneKey> GetCloneKeys();
+[[nodiscard]] std::vector<ArmorClones::CloneKey> GetCloneKeys();
 void Revert();
 void NormalizeAfterSettingsReload();
 
