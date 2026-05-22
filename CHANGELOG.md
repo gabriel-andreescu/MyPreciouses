@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 - Unreleased
+## 0.2.0 - 2026-05-22
 
 - feat: add controller support
 - fix: flag MCM addon as ESPFE
