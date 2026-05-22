@@ -1,29 +1,5 @@
-if (NOT DEFINED MOD_NAME OR MOD_NAME STREQUAL "")
-    message(FATAL_ERROR "MOD_NAME is required")
-endif ()
-
-if (NOT DEFINED MOD_VERSION OR MOD_VERSION STREQUAL "")
-    message(FATAL_ERROR "MOD_VERSION is required")
-endif ()
-
-if (NOT DEFINED PLUGIN_DLL OR NOT EXISTS "${PLUGIN_DLL}")
-    message(FATAL_ERROR "PLUGIN_DLL does not exist: ${PLUGIN_DLL}")
-endif ()
-
-if (NOT DEFINED PLUGIN_PDB OR NOT EXISTS "${PLUGIN_PDB}")
-    message(FATAL_ERROR "PLUGIN_PDB does not exist: ${PLUGIN_PDB}")
-endif ()
-
-if (NOT DEFINED OUTPUT_DIR OR OUTPUT_DIR STREQUAL "")
-    message(FATAL_ERROR "OUTPUT_DIR is required")
-endif ()
-
-if (NOT DEFINED WORK_DIR OR WORK_DIR STREQUAL "")
-    message(FATAL_ERROR "WORK_DIR is required")
-endif ()
-
 set(main_zip "${OUTPUT_DIR}/${MOD_NAME}-${MOD_VERSION}.zip")
-set(optional_zip "${OUTPUT_DIR}/${MOD_NAME}-${MOD_VERSION}-optional.zip")
+set(optional_zip "${OUTPUT_DIR}/${MOD_NAME}-${OPTIONAL_ASSETS_VERSION}-optional.zip")
 set(main_stage "${WORK_DIR}/main")
 set(optional_stage "${WORK_DIR}/optional")
 
