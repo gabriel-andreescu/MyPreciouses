@@ -6,7 +6,7 @@
       "name": "user-default",
       "inherits": "default",
       "cacheVariables": {
-        "DEPLOY_DIR": "C:\\Games\\Steam Library\\steamapps\\common\\Skyrim Special Edition\\Data",
+        "DEPLOY_DIR": "C:\\Games\\Steam Library\\steamapps\\common\\Skyrim Special Edition\\Data;C:\\MO2\\mods\\MyMod",
         "DEPLOY_DIR_OPTIONAL": "C:\\Games\\Steam Library\\steamapps\\common\\Skyrim Special Edition\\Data"
       }
     }

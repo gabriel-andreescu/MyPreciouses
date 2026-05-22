@@ -162,16 +162,23 @@ add_custom_command(
 )
 
 if (DEPLOY_DIR)
-    set(PLUGIN_DIR "${DEPLOY_DIR}/SKSE/Plugins")
+    foreach (deploy_dir IN LISTS DEPLOY_DIR)
+        set(PLUGIN_DIR "${deploy_dir}/SKSE/Plugins")
+
+        add_custom_command(
+                TARGET ${PROJECT_NAME}
+                POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E echo "Deploying to: ${PLUGIN_DIR}"
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${PLUGIN_DIR}"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:${PROJECT_NAME}>" "${PLUGIN_DIR}"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_PDB_FILE:${PROJECT_NAME}>" "${PLUGIN_DIR}"
+                VERBATIM
+        )
+    endforeach ()
 
     add_custom_command(
             TARGET ${PROJECT_NAME}
             POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E echo "Deploying to: ${PLUGIN_DIR}"
-            COMMAND ${CMAKE_COMMAND} -E make_directory "${PLUGIN_DIR}"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:${PROJECT_NAME}>" "${PLUGIN_DIR}"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_PDB_FILE:${PROJECT_NAME}>" "${PLUGIN_DIR}"
-            COMMAND ${CMAKE_COMMAND} -E echo "Deploying assets to: ${DEPLOY_DIR}"
             COMMAND "${CMAKE_COMMAND}"
             "-DASSET_SOURCE_DIR=${ASSET_SOURCE_DIR}"
             "-DDEPLOY_DIR=${DEPLOY_DIR}"
