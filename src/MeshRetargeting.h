@@ -12,8 +12,6 @@ struct AttachContext {
 };
 
 [[nodiscard]] std::optional<AttachContext> CaptureAttachContext(
-    RE::NiAVObject* a_clonedNode,
-    RE::NiAVObject* a_node,
     std::int32_t a_slot,
     RE::TESObjectREFR* a_actor,
     RE::BSTSmartPointer<RE::BipedAnim>& a_biped

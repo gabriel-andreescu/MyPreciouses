@@ -38,9 +38,7 @@ namespace {
         UI::RefreshRows();
     }
 
-    void OnConfigClose(RE::TESQuest* a_unused) {
-        (void)a_unused;
-
+    void OnConfigClose([[maybe_unused]] RE::TESQuest* a_quest) {
         const auto reload = Settings::GetSingleton()->Reload();
         if (!reload.Changed()) {
             return;

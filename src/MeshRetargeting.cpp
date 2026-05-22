@@ -31,10 +31,6 @@ namespace {
 
     struct ModelSelection {
         const RuntimeEquipment::AddonModel::Model* model {nullptr};
-        RE::SEX requestedSex {RE::SEXES::kMale};
-        RE::SEX selectedSex {RE::SEXES::kMale};
-        bool requestedFirstPerson {false};
-        bool selectedFirstPerson {false};
     };
 
     [[nodiscard]] RE::SEX OppositeSex(const RE::SEX a_sex) {
@@ -193,9 +189,7 @@ namespace {
 
     [[nodiscard]] std::optional<ModelSelection> SelectCandidateModel(
         const RuntimeEquipment::AddonModel& a_metadata,
-        const RE::SEX a_requestedSex,
         const RE::SEX a_selectedSex,
-        const bool a_requestedFirstPerson,
         const bool a_selectedFirstPerson
     ) {
         const auto& model = GetModel(a_metadata, a_selectedSex, a_selectedFirstPerson);
@@ -205,10 +199,6 @@ namespace {
 
         return ModelSelection {
             .model = std::addressof(model),
-            .requestedSex = a_requestedSex,
-            .selectedSex = a_selectedSex,
-            .requestedFirstPerson = a_requestedFirstPerson,
-            .selectedFirstPerson = a_selectedFirstPerson,
         };
     }
 
@@ -221,19 +211,19 @@ namespace {
         const auto oppositeSex = OppositeSex(sex);
         const auto firstPerson = IsFirstPersonBiped(a_actor, a_biped);
 
-        if (auto selection = SelectCandidateModel(a_metadata, sex, sex, firstPerson, firstPerson)) {
+        if (auto selection = SelectCandidateModel(a_metadata, sex, firstPerson)) {
             return selection;
         }
 
-        if (auto selection = SelectCandidateModel(a_metadata, sex, sex, firstPerson, !firstPerson)) {
+        if (auto selection = SelectCandidateModel(a_metadata, sex, !firstPerson)) {
             return selection;
         }
 
-        if (auto selection = SelectCandidateModel(a_metadata, sex, oppositeSex, firstPerson, firstPerson)) {
+        if (auto selection = SelectCandidateModel(a_metadata, oppositeSex, firstPerson)) {
             return selection;
         }
 
-        if (auto selection = SelectCandidateModel(a_metadata, sex, oppositeSex, firstPerson, !firstPerson)) {
+        if (auto selection = SelectCandidateModel(a_metadata, oppositeSex, !firstPerson)) {
             return selection;
         }
 
@@ -354,7 +344,7 @@ namespace {
         }
 
         using ApplyTextureSwap_t = void (*)(RE::TESModelTextureSwap*, RE::NiAVObject*) noexcept;
-        static REL::Relocation<ApplyTextureSwap_t> applyTextureSwap {RELOCATION_ID(14660, 14837)};
+        static REL::Relocation<ApplyTextureSwap_t> applyTextureSwap {REL::VariantID(14660, 14837, 0x1AB7D0)};
         applyTextureSwap(const_cast<RE::TESModelTextureSwap*>(a_model.textureSwap), std::addressof(a_root));
     }
 
@@ -475,31 +465,24 @@ namespace {
             return;
         }
 
-        RE::NiPointer<RE::NiAVObject> detached;
+        RE::NiPointer<RE::NiAVObject> detachedOldPartClone;
         if (oldPartClone && oldPartClone->parent == parent) {
-            parent->DetachChild(oldPartClone.get(), detached);
+            parent->DetachChild(oldPartClone.get(), detachedOldPartClone);
         }
 
         replacement->node->SetAppCulled(false);
         parent->AttachChild(replacement->node, true);
         bipedObject.partClone = RE::NiPointer<RE::NiAVObject> {replacement->node};
         UpdateAttachedNode(*replacement->node, parent);
-
-        (void)detached;
     }
 
 }
 
 std::optional<AttachContext> CaptureAttachContext(
-    RE::NiAVObject* a_clonedNode,
-    RE::NiAVObject* a_node,
     const std::int32_t a_slot,
     RE::TESObjectREFR* a_actor,
     RE::BSTSmartPointer<RE::BipedAnim>& a_biped
 ) {
-    (void)a_clonedNode;
-    (void)a_node;
-
     if (!IsValidBipedObjectSlot(a_slot) || !a_biped) {
         return std::nullopt;
     }

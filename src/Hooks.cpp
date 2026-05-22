@@ -191,7 +191,7 @@ namespace {
         RE::TESObjectREFR* a_actor,
         RE::BSTSmartPointer<RE::BipedAnim>& a_biped
     ) {
-        auto context = MeshRetargeting::CaptureAttachContext(a_clonedNode, a_node, a_slot, a_actor, a_biped);
+        auto context = MeshRetargeting::CaptureAttachContext(a_slot, a_actor, a_biped);
         T::func(a_clonedNode, a_node, a_slot, a_actor, a_biped);
         if (context) {
             MeshRetargeting::QueueReplacement(std::move(*context));
@@ -310,43 +310,53 @@ namespace {
     void InstallPapyrusEventMirrorHook() {
 #ifndef __clang_analyzer__
         REL::Relocation<std::uintptr_t> vmVTable {RE::VTABLE_BSScript__Internal__VirtualMachine[0]};
-        SendEventHook::func = vmVTable.write_vfunc(0x24, SendEventHook::thunk);
+        SendEventHook::func = vmVTable.write_vfunc(REL::Relocate(0x24, 0x24, 0x26), SendEventHook::thunk);
 #endif
 
         logger::info("Papyrus: event hook installed | event=SendEvent");
     }
 
-    struct InventoryLeftEquipHook {
-        static RE::BSEventNotifyControl thunk(
-            RE::MenuControls* a_menuControls,
-            RE::InputEvent* const* a_event,
-            RE::BSTEventSource<RE::InputEvent*>* a_eventSource
-        ) {
-            if (a_event && *a_event) {
-                auto* ui = RE::UI::GetSingleton();
-                const auto inventoryOpen = ui && ui->IsMenuOpen(RE::InventoryMenu::MENU_NAME);
+    [[nodiscard]] RE::ItemList* GetItemListFromItemSelectContext(void* a_menuContext) {
+        if (!a_menuContext) {
+            return nullptr;
+        }
 
-                if (inventoryOpen) {
-                    for (auto* event = *a_event; event; event = event->next) {
-                        if (UI::IsInventoryLeftEquipDown(*event) && UI::SelectInventoryEntryForLeftHand()) {
-                            return RE::BSEventNotifyControl::kStop;
-                        }
-                    }
+        return REL::RelocateMember<RE::ItemList*>(a_menuContext, 0x48, 0x70);
+    }
+
+    [[nodiscard]] RE::InventoryEntryData* GetSelectedEntryFromItemSelectContext(void* a_menuContext) {
+        auto* itemList = GetItemListFromItemSelectContext(a_menuContext);
+        auto* selectedItem = itemList ? itemList->GetSelectedItem() : nullptr;
+        return selectedItem ? selectedItem->data.objDesc : nullptr;
+    }
+
+    struct InventoryItemSelectHook {
+        static void thunk(void* a_menuContext, RE::BGSEquipSlot* a_slot) {
+            if (GetHandEquipSlot(a_slot) == HandEquipSlot::kLeft) {
+                auto* entry = GetSelectedEntryFromItemSelectContext(a_menuContext);
+                if (UI::SelectEntryForLeftHand(entry)) {
+                    return;
                 }
             }
 
-            return func(a_menuControls, a_event, a_eventSource);
+            func(a_menuContext, a_slot);
         }
 
         static inline REL::Relocation<decltype(thunk)> func;
     };
 
-    void InstallMenuControlsHook() {
-#ifndef __clang_analyzer__
-        REL::Relocation<std::uintptr_t> menuControlsVTable {RE::VTABLE_MenuControls[0]};
-        InventoryLeftEquipHook::func = menuControlsVTable.write_vfunc(0x1, InventoryLeftEquipHook::thunk);
-#endif
-        logger::info("UI: InventoryMenu left-equip hook installed");
+    void InstallInventoryItemSelectHook() {
+        // SE/AE/VR: InventoryMenu::ItemSelect + 0x47, +0x66, +0x75
+        stl::write_thunk_branch<InventoryItemSelectHook>(
+            REL::Relocation {REL::VariantID(50977, 51856, 0x8BB9C0), 0x47}
+        );
+        stl::write_thunk_branch<InventoryItemSelectHook>(
+            REL::Relocation {REL::VariantID(50977, 51856, 0x8BB9C0), 0x66}
+        );
+        stl::write_thunk_branch<InventoryItemSelectHook>(
+            REL::Relocation {REL::VariantID(50977, 51856, 0x8BB9C0), 0x75}
+        );
+        logger::info("UI: InventoryMenu ItemSelect hook installed");
     }
 
     struct FavoritesUseQuickslotItemHook {
@@ -371,20 +381,22 @@ namespace {
         static inline REL::Relocation<decltype(thunk)> func;
     };
 
-    void InstallUIHooks() {
+    void InstallUI() {
         UI::InstallMenuEventSink();
-        InstallMenuControlsHook();
+        InstallInventoryItemSelectHook();
         UI::RegisterInventoryData();
 
+        // SE/VR: FavoritesMenu::UseQuickslotItem + 0xC4
+        // AE:    FavoritesMenu::UseQuickslotItem + 0xC2
         stl::write_thunk_call<FavoritesUseQuickslotItemHook>(
-            REL::Relocation {RELOCATION_ID(50654, 51548), REL::Relocate(0xC4, 0xC2)}
+            REL::Relocation {REL::VariantID(50654, 51548, 0x8A5110), REL::Relocate(0xC4, 0xC2)}
         );
         logger::info("UI: FavoritesMenu quickslot hook installed");
     }
 }
 
 void Install() {
-    InstallUIHooks();
+    InstallUI();
     InstallEquipObserverHook();
     InstallEnchantmentPowerHook();
     InstallPapyrusEventMirrorHook();

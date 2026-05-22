@@ -35,6 +35,11 @@ void write_thunk_call(REL::Relocation<> a_target) noexcept {
     T::func = a_target.write_call<Size>(T::thunk);
 }
 
+template <typename T, std::size_t Size = 5>
+void write_thunk_branch(REL::Relocation<> a_target) noexcept {
+    T::func = a_target.write_branch<Size>(T::thunk);
+}
+
 inline void add_task(const std::function<void()>& a_fn) {
     if (const auto* tasks = SKSE::GetTaskInterface()) {
         tasks->AddTask(a_fn);

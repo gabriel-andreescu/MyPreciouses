@@ -23,6 +23,8 @@ namespace {
     constexpr auto kScaleformCustomDisplayName = "lhrsCustomDisplayName";
     constexpr auto kScaleformCustomBlockReason = "lhrsCustomBlockReason";
     constexpr auto kScaleformRightEquipped = "lhrsRightEquipped";
+    constexpr auto kInventoryEntryListPath = "_root.Menu_mc.inventoryLists.itemList.entryList";
+    constexpr auto kInventoryInvalidateListDataPath = "_root.Menu_mc.inventoryLists.InvalidateListData";
 
     struct RowSelection {
         Selection::Kind kind {Selection::Kind::kNone};
@@ -44,15 +46,6 @@ namespace {
 
         auto inventoryMenu = ui->GetMenu<RE::InventoryMenu>();
         return inventoryMenu.get();
-    }
-
-    [[nodiscard]] RE::ItemList* GetInventoryItemList() {
-        auto* inventoryMenu = GetInventoryMenu();
-        if (!inventoryMenu) {
-            return nullptr;
-        }
-
-        return inventoryMenu->GetRuntimeData().itemList;
     }
 
     [[nodiscard]] RE::FavoritesMenu* GetFavoritesMenu() {
@@ -201,30 +194,6 @@ namespace {
         }
 
         return static_cast<std::uint32_t>(value);
-    }
-
-    [[nodiscard]] bool GetSelectedEntryObject(RE::ItemList& a_itemList, RE::GFxValue& a_entryObject) {
-        if (a_itemList.root.GetMember("selectedEntry", std::addressof(a_entryObject))
-            && (a_entryObject.IsObject() || a_entryObject.IsDisplayObject())) {
-            return true;
-        }
-
-        RE::GFxValue selectedIndex;
-        if (!a_itemList.root.GetMember("selectedIndex", std::addressof(selectedIndex)) || !selectedIndex.IsNumber()) {
-            return false;
-        }
-
-        if (!a_itemList.entryList.IsArray()) {
-            return false;
-        }
-
-        const auto index = static_cast<std::int32_t>(selectedIndex.GetNumber());
-        if (index < 0 || static_cast<std::uint32_t>(index) >= a_itemList.entryList.GetArraySize()) {
-            return false;
-        }
-
-        return a_itemList.entryList.GetElement(static_cast<std::uint32_t>(index), std::addressof(a_entryObject))
-               && (a_entryObject.IsObject() || a_entryObject.IsDisplayObject());
     }
 
     [[nodiscard]] int GetScaleformEquipState(const RE::GFxValue& a_object) {
@@ -444,46 +413,45 @@ namespace {
         static_cast<void>(StampEntryRingObject(*a_object, *a_item));
     }
 
-    [[nodiscard]] bool ShouldRebuildInventoryRows(const std::string_view a_reason) {
-        return a_reason == "stateChanged"sv || a_reason == "leftSelectionChanged"sv;
-    }
-
-    [[nodiscard]] bool RebuildInventoryRows(RE::ItemList& a_itemList) {
-        auto* player = RE::PlayerCharacter::GetSingleton();
-        if (!player) {
+    [[nodiscard]] bool InvalidateInventoryListData(RE::InventoryMenu& a_menu) {
+        auto* movie = a_menu.uiMovie.get();
+        if (!movie) {
             return false;
         }
 
-        a_itemList.Update(player);
-        return true;
-    }
-
-    [[nodiscard]] bool RedrawInventoryRows(RE::ItemList& a_itemList) {
-        const auto invalidated = a_itemList.root.Invoke("InvalidateData");
-        return invalidated;
-    }
-
-    [[nodiscard]] bool RestampInventoryRowsFromLiveState(std::string_view a_reason) {
-        auto* itemList = GetInventoryItemList();
-        if (!itemList) {
+        if (!movie->IsAvailable(kInventoryInvalidateListDataPath)) {
             return false;
         }
 
-        if (ShouldRebuildInventoryRows(a_reason)) {
-            static_cast<void>(RebuildInventoryRows(*itemList));
-        }
+        return movie->Invoke(kInventoryInvalidateListDataPath, nullptr, nullptr, 0);
+    }
 
-        if (!itemList->entryList.IsArray()) {
+    [[nodiscard]] bool RestampInventoryRowsFromLiveState() {
+        auto* inventoryMenu = GetInventoryMenu();
+        if (!inventoryMenu) {
             return false;
         }
 
-        std::uint32_t ringRows = 0;
+        auto* movie = inventoryMenu->uiMovie.get();
+        if (!movie) {
+            return false;
+        }
+
+        RE::GFxValue entryList;
+        if (!movie->GetVariable(std::addressof(entryList), kInventoryEntryListPath)) {
+            return false;
+        }
+
+        if (!entryList.IsArray()) {
+            return false;
+        }
+
+        const auto entryCount = entryList.GetArraySize();
         std::uint32_t changedEntryRows = 0;
-        std::uint32_t changedSelectedRows = 0;
 
-        for (std::uint32_t index = 0; index < itemList->entryList.GetArraySize(); ++index) {
+        for (std::uint32_t index = 0; index < entryCount; ++index) {
             RE::GFxValue entryObject;
-            if (!itemList->entryList.GetElement(index, std::addressof(entryObject))
+            if (!entryList.GetElement(index, std::addressof(entryObject))
                 || (!entryObject.IsObject() && !entryObject.IsDisplayObject())) {
                 continue;
             }
@@ -493,30 +461,19 @@ namespace {
                 continue;
             }
 
-            ++ringRows;
-            changedEntryRows += *changed ? 1 : 0;
-            static_cast<void>(itemList->entryList.SetElement(index, entryObject));
-        }
-
-        RE::GFxValue selectedEntry;
-        if (itemList->root.GetMember("selectedEntry", std::addressof(selectedEntry))
-            && (selectedEntry.IsObject() || selectedEntry.IsDisplayObject())) {
-            if (const auto changed = RestampRingObjectFromStoredSelection(selectedEntry)) {
-                changedSelectedRows += *changed ? 1 : 0;
-                static_cast<void>(itemList->root.SetMember("selectedEntry", selectedEntry));
+            if (!*changed) {
+                continue;
             }
+
+            ++changedEntryRows;
+            static_cast<void>(entryList.SetElement(index, entryObject));
         }
 
-        if (ringRows == 0) {
+        if (changedEntryRows == 0) {
             return false;
         }
 
-        if (changedEntryRows == 0 && changedSelectedRows == 0) {
-            return false;
-        }
-
-        const auto redrawn = RedrawInventoryRows(*itemList);
-        return redrawn;
+        return InvalidateInventoryListData(*inventoryMenu);
     }
 
     [[nodiscard]] bool RedrawFavoritesRows(RE::GFxValue& a_itemList) {
@@ -587,9 +544,9 @@ namespace {
         return redrawn;
     }
 
-    void QueueInventoryRefresh(std::string_view a_reason) {
-        stl::add_ui_task([reason = std::string {a_reason}] {
-            static_cast<void>(RestampInventoryRowsFromLiveState(reason));
+    void QueueInventoryRefresh() {
+        stl::add_ui_task([] {
+            static_cast<void>(RestampInventoryRowsFromLiveState());
         });
     }
 
@@ -599,8 +556,8 @@ namespace {
         });
     }
 
-    void QueueMenuEquipStateRowsRefresh(std::string_view a_reason) {
-        QueueInventoryRefresh(a_reason);
+    void QueueEquipStateRefresh() {
+        QueueInventoryRefresh();
         QueueFavoritesRefresh();
     }
 
@@ -623,88 +580,6 @@ namespace {
                 .ring = ring,
                 .customKey = customSelection.key,
                 .sourceExtraList = customSelection.extraList,
-            };
-        }
-
-        return LeftSelectionRequest {
-            .ring = ring,
-        };
-    }
-
-    [[nodiscard]] std::optional<LeftSelectionRequest> BuildSelectionFromScaleformEntry(RE::GFxValue& a_entryObject) {
-        const auto formID = GetScaleformFormID(a_entryObject);
-        if (!formID) {
-            return std::nullopt;
-        }
-
-        auto* ring = Inventory::AsRing(RE::TESForm::LookupByID<RE::TESObjectARMO>(*formID));
-        if (!ring) {
-            return std::nullopt;
-        }
-
-        const auto blockReason = static_cast<Inventory::EntryCustomFailure>(GetScaleformIntMember(
-            a_entryObject,
-            kScaleformCustomBlockReason,
-            static_cast<int>(std::to_underlying(Inventory::EntryCustomFailure::kNone))
-        ));
-        if (blockReason != Inventory::EntryCustomFailure::kNone) {
-            return LeftSelectionRequest {
-                .ring = ring,
-                .blocked = true,
-            };
-        }
-
-        const auto rowSelection = GetScaleformRowSelection(a_entryObject);
-        if (rowSelection.kind == Selection::Kind::kCustomEnchantment && rowSelection.customKey) {
-            auto* player = RE::PlayerCharacter::GetSingleton();
-            if (!player) {
-                return LeftSelectionRequest {
-                    .ring = ring,
-                    .blocked = true,
-                };
-            }
-
-            const auto sourceMatches = Inventory::FindSourceMatches(*player, *ring, *rowSelection.customKey);
-            if (!sourceMatches.HasMatch()) {
-                return LeftSelectionRequest {
-                    .ring = ring,
-                    .blocked = true,
-                };
-            }
-
-            return LeftSelectionRequest {
-                .ring = ring,
-                .customKey = rowSelection.customKey,
-                .sourceExtraList = sourceMatches.firstExtraList,
-            };
-        }
-
-        if (rowSelection.kind == Selection::Kind::kFormOnly) {
-            return LeftSelectionRequest {
-                .ring = ring,
-            };
-        }
-
-        auto* player = RE::PlayerCharacter::GetSingleton();
-        auto* sourceEntry = player ? Inventory::FindEntry(*player, *ring) : nullptr;
-        if (!sourceEntry) {
-            return LeftSelectionRequest {
-                .ring = ring,
-            };
-        }
-
-        const auto customSelection = Inventory::ResolveCustomSelection(*sourceEntry);
-        if (customSelection.failure != Inventory::EntryCustomFailure::kNone) {
-            return LeftSelectionRequest {
-                .ring = ring,
-                .blocked = true,
-            };
-        }
-
-        if (customSelection.HasCustomEnchantment()) {
-            return LeftSelectionRequest {
-                .ring = ring,
-                .blocked = true,
             };
         }
 
@@ -809,7 +684,7 @@ namespace {
         }
 
         RuntimeEquipment::RequestRefresh();
-        QueueMenuEquipStateRowsRefresh("leftSelectionChanged"sv);
+        QueueEquipStateRefresh();
         return true;
     }
 
@@ -824,33 +699,6 @@ namespace {
         }
 
         auto request = BuildSelectionFromEntry(*a_entry);
-        if (!request) {
-            return false;
-        }
-
-        if (request->blocked) {
-            return true;
-        }
-
-        return ToggleRingForLeftHand(*request);
-    }
-
-    [[nodiscard]] std::optional<LeftSelectionRequest> GetSelectedInventorySelection() {
-        auto* itemList = GetInventoryItemList();
-        if (!itemList) {
-            return std::nullopt;
-        }
-
-        RE::GFxValue selectedEntry;
-        if (!GetSelectedEntryObject(*itemList, selectedEntry)) {
-            return std::nullopt;
-        }
-
-        return BuildSelectionFromScaleformEntry(selectedEntry);
-    }
-
-    [[nodiscard]] bool SelectInventoryEntryForLeftHandImpl() {
-        auto request = GetSelectedInventorySelection();
         if (!request) {
             return false;
         }
@@ -879,7 +727,7 @@ namespace {
 
             if (a_event->menuName == RE::InventoryMenu::MENU_NAME.data()) {
                 if (a_event->opening) {
-                    QueueInventoryRefresh("menuOpen"sv);
+                    QueueInventoryRefresh();
                 }
 
                 return RE::BSEventNotifyControl::kContinue;
@@ -915,22 +763,12 @@ void RegisterInventoryData() {
     }
 }
 
-bool IsInventoryLeftEquipDown(RE::InputEvent& a_event) {
-    const auto* button = a_event.AsButtonEvent();
-    const auto* userEvents = RE::UserEvents::GetSingleton();
-    return button && button->IsDown() && userEvents && button->GetUserEvent() == userEvents->leftEquip;
-}
-
-bool SelectInventoryEntryForLeftHand() {
-    return SelectInventoryEntryForLeftHandImpl();
-}
-
 bool SelectEntryForLeftHand(RE::InventoryEntryData* a_entry) {
     return SelectEntryForLeftHandImpl(a_entry);
 }
 
 void RefreshRows() {
-    QueueMenuEquipStateRowsRefresh("stateChanged"sv);
+    QueueEquipStateRefresh();
 }
 
 void RefreshEquipmentSoon(const RE::FormID a_ringFormID) {
