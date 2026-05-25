@@ -268,7 +268,9 @@ namespace {
         if (IsInVanillaRingSlot(*player, *ring, a_customKey, a_customIdentity)) {
             RingSounds::Play(*player, *ring, RingSounds::Event::kEquip);
         }
-        UI::RefreshItemRowsForRing(*player, ring);
+        stl::add_ui_task([] {
+            UI::RefreshInventoryMenuAfterVanillaRingSlotMove();
+        });
     }
 
     void QueueMoveVirtualToVanillaRingSlot(

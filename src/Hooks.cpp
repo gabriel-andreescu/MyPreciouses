@@ -111,9 +111,6 @@ namespace {
 
             func(a_equipManager, a_actor, a_object, a_params);
             Selection::QueueCheck();
-            if (ring) {
-                UI::QueueRefreshAfterRingEquip(ring->GetFormID());
-            }
         }
 
         static inline REL::Relocation<decltype(thunk)> func;

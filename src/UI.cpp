@@ -122,33 +122,6 @@ namespace {
         });
     }
 
-    [[nodiscard]] std::optional<bool> GetLiveVanillaRingSlotState(
-        RE::TESObjectARMO& a_ring,
-        const RowSelection& a_rowSelection
-    ) {
-        auto* player = RE::PlayerCharacter::GetSingleton();
-        if (!player) {
-            return std::nullopt;
-        }
-
-        if (a_rowSelection.kind == Selection::Kind::kCustomEnchantment && a_rowSelection.customKey) {
-            return Inventory::FindSourceMatches(
-                       *player,
-                       a_ring,
-                       *a_rowSelection.customKey,
-                       a_rowSelection.customIdentity
-                   )
-                       .rightWornExtraList
-                   != nullptr;
-        }
-
-        if (a_rowSelection.kind != Selection::Kind::kFormOnly) {
-            return std::nullopt;
-        }
-
-        return Inventory::FindFormOnlyMatches(*player, a_ring).rightWorn;
-    }
-
     [[nodiscard]] std::optional<RE::FormID> GetScaleformFormID(const RE::GFxValue& a_object) {
         if (!a_object.IsObject() && !a_object.IsDisplayObject()) {
             return std::nullopt;
@@ -456,10 +429,7 @@ namespace {
             kScaleformVanillaRingSlotEquipped
         );
         const auto rowSelection = GetScaleformRowSelection(a_entryObject);
-        const auto liveVanillaRingSlotState = GetLiveVanillaRingSlotState(*ring, rowSelection);
-        const auto vanillaRingSlotEquipped = liveVanillaRingSlotState.value_or(
-            storedVanillaRingSlotState.value_or(previousVanillaRingSlotState)
-        );
+        const auto vanillaRingSlotEquipped = storedVanillaRingSlotState.value_or(previousVanillaRingSlotState);
         const auto equipState = GetRingEquipState(*ring, rowSelection, vanillaRingSlotEquipped);
 
         a_entryObject.SetMember(kScaleformVanillaRingSlotEquipped, vanillaRingSlotEquipped);
@@ -524,23 +494,6 @@ namespace {
         }
 
         static_cast<void>(itemList->root.SetMember("selectedIndex", RE::GFxValue {-1.0}));
-    }
-
-    void RefreshInventoryMenuAfterVanillaRingSlotMove() {
-        auto* inventoryMenu = GetInventoryMenu();
-        if (!inventoryMenu) {
-            return;
-        }
-
-        DeselectInventoryItem(*inventoryMenu);
-        if (auto* itemList = inventoryMenu->GetRuntimeData().itemList) {
-            if (auto* player = RE::PlayerCharacter::GetSingleton()) {
-                itemList->Update(player);
-            }
-        }
-        DeselectInventoryItem(*inventoryMenu);
-        static_cast<void>(InvalidateInventoryListData(*inventoryMenu));
-        RefreshFavoritesRows();
     }
 
     [[nodiscard]] bool RedrawFavoritesRows(RE::GFxValue& a_itemList) {
@@ -614,11 +567,6 @@ namespace {
         stl::add_ui_task([] {
             static_cast<void>(RestampInventoryRowsFromLiveState());
         });
-    }
-
-    void QueueEquipStateRefresh() {
-        QueueInventoryRefresh();
-        RefreshFavoritesRows();
     }
 
     [[nodiscard]] std::optional<LeftSelectionRequest> BuildSelectionFromEntry(RE::InventoryEntryData& a_entry) {
@@ -698,7 +646,7 @@ namespace {
             if (result.inventoryChanged) {
                 RefreshInventoryMenuAfterVanillaRingSlotMove();
             } else if (result.selectionChanged) {
-                QueueEquipStateRefresh();
+                RefreshRingRows();
             }
 
             return result.ChangedState() ? RingToggleResult::kHandled : RingToggleResult::kFailed;
@@ -729,7 +677,7 @@ namespace {
             if (result.inventoryChanged) {
                 RefreshInventoryMenuAfterVanillaRingSlotMove();
             } else if (result.selectionChanged) {
-                QueueEquipStateRefresh();
+                RefreshRingRows();
             }
 
             return result.ChangedState() ? RingToggleResult::kHandled : RingToggleResult::kFailed;
@@ -784,7 +732,7 @@ namespace {
     ) {
         const auto sourceMatches = Inventory::FindFormOnlyMatches(a_player, a_ring);
         if (!sourceMatches.HasMatch()) {
-            QueueEquipStateRefresh();
+            RefreshItemRowsForRing(a_player, std::addressof(a_ring));
             return RingToggleResult::kHandled;
         }
 
@@ -836,7 +784,7 @@ namespace {
                 .sound = sound,
             }
         );
-        QueueEquipStateRefresh();
+        RefreshRingRows();
         return true;
     }
 
@@ -910,7 +858,8 @@ bool SelectEntryForLeftHand(RE::InventoryEntryData* a_entry, const SelectionOrig
 }
 
 void RefreshRingRows() {
-    QueueEquipStateRefresh();
+    QueueInventoryRefresh();
+    RefreshFavoritesRows();
 }
 
 void RefreshFavoritesRows() {
@@ -919,18 +868,32 @@ void RefreshFavoritesRows() {
     });
 }
 
-void RefreshItemRowsForRing(RE::Actor& a_actor, const RE::TESObjectARMO* a_ring) {
-    RE::SendUIMessage::SendInventoryUpdateMessage(std::addressof(a_actor), a_ring);
-    RefreshRingRows();
+void RefreshInventoryMenuAfterVanillaRingSlotMove() {
+    auto* inventoryMenu = GetInventoryMenu();
+    if (!inventoryMenu) {
+        return;
+    }
+
+    DeselectInventoryItem(*inventoryMenu);
+    if (auto* itemList = inventoryMenu->GetRuntimeData().itemList) {
+        if (auto* player = RE::PlayerCharacter::GetSingleton()) {
+            itemList->Update(player);
+        }
+    }
+    DeselectInventoryItem(*inventoryMenu);
+    static_cast<void>(InvalidateInventoryListData(*inventoryMenu));
+    RefreshFavoritesRows();
 }
 
-void QueueRefreshAfterRingEquip(const RE::FormID a_ringFormID) {
-    stl::add_task([a_ringFormID] {
+void RefreshItemRowsForRing(RE::Actor& a_actor, const RE::TESObjectARMO* a_ring) {
+    RE::SendUIMessage::SendInventoryUpdateMessage(std::addressof(a_actor), a_ring);
+    RefreshFavoritesRows();
+}
+
+void QueueRefreshAfterRingEquip() {
+    stl::add_task([] {
         VirtualRings::RequestRefresh();
-        if (auto* player = RE::PlayerCharacter::GetSingleton()) {
-            auto* ring = RE::TESForm::LookupByID<RE::TESObjectARMO>(a_ringFormID);
-            RefreshItemRowsForRing(*player, ring);
-        }
+        RefreshFavoritesRows();
     });
 }
 }
