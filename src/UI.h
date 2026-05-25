@@ -1,5 +1,7 @@
 #pragma once
 
+#include "RingTargets.h"
+
 #include <cstdint>
 
 namespace UI {
@@ -15,5 +17,5 @@ void RefreshFavoritesRows();
 void RefreshInventoryMenuAfterVanillaRingSlotMove();
 void QueueRefreshAfterRingEquip();
 void RefreshItemRowsForRing(RE::Actor& a_actor, const RE::TESObjectARMO* a_ring);
-[[nodiscard]] bool SelectEntryForLeftHand(RE::InventoryEntryData* a_entry, SelectionOrigin a_origin);
+[[nodiscard]] bool UseRingFromMenuEntry(RE::InventoryEntryData* a_entry, RingHand a_hand, SelectionOrigin a_origin);
 }

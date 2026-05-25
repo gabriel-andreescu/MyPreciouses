@@ -51,6 +51,16 @@
             "step": 5,
             "formatString": "{0}%"
           }
+        },
+        {
+          "id": "bAlwaysChooseFinger:General",
+          "text": "Always choose finger",
+          "type": "toggle",
+          "help": "Show the finger selection menu whenever you use Equip or Left Equip on a ring.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": false
+          }
         }
       ]
     }

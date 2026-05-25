@@ -14,6 +14,7 @@ constexpr auto kModName = "LeftHandRingsSKSE"sv;
 constexpr auto kSettingsSection = "General";
 constexpr auto kEnchantmentStrengthModeKey = "iEnchantmentStrengthMode";
 constexpr auto kFixedEnchantmentStrengthKey = "iFixedEnchantmentStrengthPercent";
+constexpr auto kAlwaysChooseFingerKey = "bAlwaysChooseFinger";
 
 [[nodiscard]] EnchantmentStrengthMode ClampStrengthMode(const int a_value) {
     switch (a_value) {
@@ -49,6 +50,7 @@ void GetValue(
 void Settings::Load() {
     enchantmentStrengthMode_.store(EnchantmentStrengthMode::kFullStrength);
     fixedEnchantmentStrengthPercent_.store(kDefaultFixedEnchantmentStrengthPercent);
+    alwaysChooseFinger_.store(false);
 
     (void)Reload();
 }
@@ -59,8 +61,9 @@ Settings::ReloadResult Settings::Reload() {
 
     auto rawMode = static_cast<int>(EnchantmentStrengthMode::kFullStrength);
     auto rawFixedStrength = static_cast<int>(kDefaultFixedEnchantmentStrengthPercent);
+    auto alwaysChooseFinger = false;
 
-    const auto readSettings = [&rawMode, &rawFixedStrength](CSimpleIniA& a_ini) {
+    const auto readSettings = [&rawMode, &rawFixedStrength, &alwaysChooseFinger](CSimpleIniA& a_ini) {
         GetValue(
             a_ini,
             rawMode,
@@ -74,6 +77,13 @@ Settings::ReloadResult Settings::Reload() {
             kSettingsSection,
             kFixedEnchantmentStrengthKey,
             "; Fixed ring enchantment strength.\n; Valid range: 5-100.\n; Default: 50"
+        );
+        GetValue(
+            a_ini,
+            alwaysChooseFinger,
+            kSettingsSection,
+            kAlwaysChooseFingerKey,
+            "; Always show the finger selection menu for ring equip actions.\n; Default: false"
         );
     };
 
@@ -103,18 +113,21 @@ Settings::ReloadResult Settings::Reload() {
 
     const auto modeChanged = enchantmentStrengthMode_.exchange(mode) != mode;
     const auto fixedStrengthChanged = fixedEnchantmentStrengthPercent_.exchange(fixedStrength) != fixedStrength;
+    const auto fingerSelectionChanged = alwaysChooseFinger_.exchange(alwaysChooseFinger) != alwaysChooseFinger;
 
     (void)user.SaveFile(userPath.string().c_str());
 
     logger::info(
-        "Settings: loaded | path={} | enchantmentStrengthMode={} | fixedStrength={}",
+        "Settings: loaded | path={} | enchantmentStrengthMode={} | fixedStrength={} | alwaysChooseFinger={}",
         userPath.string(),
         std::to_underlying(GetEnchantmentStrengthMode()),
-        GetFixedEnchantmentStrengthPercent()
+        GetFixedEnchantmentStrengthPercent(),
+        AlwaysChooseFinger()
     );
 
     return ReloadResult {
         .enchantmentStrengthChanged = modeChanged || fixedStrengthChanged,
+        .fingerSelectionChanged = fingerSelectionChanged,
     };
 }
 
@@ -124,6 +137,10 @@ EnchantmentStrengthMode Settings::GetEnchantmentStrengthMode() const {
 
 std::uint32_t Settings::GetFixedEnchantmentStrengthPercent() const {
     return fixedEnchantmentStrengthPercent_.load();
+}
+
+bool Settings::AlwaysChooseFinger() const {
+    return alwaysChooseFinger_.load();
 }
 
 float Settings::GetRingEnchantmentScale(const std::uint32_t a_enchantedRingCount) const {

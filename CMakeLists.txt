@@ -60,6 +60,8 @@ set(SOURCES
         src/Events.h
         src/FirstPerson.cpp
         src/FirstPerson.h
+        src/FingerSelectMenu.cpp
+        src/FingerSelectMenu.h
         src/Forms.h
         src/Hooks.cpp
         src/Hooks.h

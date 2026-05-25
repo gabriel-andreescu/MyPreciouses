@@ -202,6 +202,50 @@ namespace {
         return std::nullopt;
     }
 
+    [[nodiscard]] std::optional<RingTarget> FindVirtualTargetForVanillaRingSlotEquip(
+        RE::Actor& a_actor,
+        const RE::TESObjectARMO& a_ring,
+        const std::optional<Inventory::CustomEnchantmentKey>& a_customKey,
+        const std::optional<Inventory::ExtraListIdentity>& a_identity
+    ) {
+        const auto sourceFormID = a_ring.GetFormID();
+        const auto snapshot = GetSnapshot();
+        for (const auto target : kVirtualRingTargets) {
+            const auto& selection = snapshot.targets[ToIndex(target)];
+            if (!selection.MatchesSource(sourceFormID)) {
+                continue;
+            }
+
+            if (a_customKey) {
+                if (!selection.MatchesCustomEnchantment(sourceFormID, *a_customKey, a_identity)) {
+                    continue;
+                }
+
+                const auto sourceMatches = Inventory::FindSourceMatches(a_actor, a_ring, *a_customKey, a_identity);
+                const auto selectedCopies = CountMatchingSelections(sourceFormID, a_customKey, a_identity, target);
+                if (std::cmp_greater(sourceMatches.count, selectedCopies + 1)) {
+                    continue;
+                }
+
+                return target;
+            }
+
+            if (!selection.MatchesForm(sourceFormID)) {
+                continue;
+            }
+
+            const auto sourceMatches = Inventory::FindFormOnlyMatches(a_actor, a_ring);
+            const auto selectedCopies = CountMatchingSelections(sourceFormID, std::nullopt, std::nullopt, target);
+            if (std::cmp_greater(sourceMatches.count, selectedCopies + 1)) {
+                continue;
+            }
+
+            return target;
+        }
+
+        return std::nullopt;
+    }
+
     [[nodiscard]] RE::FormID EquipSlotFormID(const RE::ObjectEquipParams& a_params) {
         return a_params.equipSlot ? a_params.equipSlot->GetFormID() : RE::FormID {0};
     }
@@ -271,6 +315,122 @@ namespace {
         stl::add_ui_task([] {
             UI::RefreshInventoryMenuAfterVanillaRingSlotMove();
         });
+    }
+
+    [[nodiscard]] bool UnequipVanillaRingSlot(
+        RE::PlayerCharacter& a_player,
+        RE::TESObjectARMO& a_ring,
+        RE::ExtraDataList* a_extraList
+    ) {
+        auto* equipManager = RE::ActorEquipManager::GetSingleton();
+        if (!equipManager) {
+            return false;
+        }
+
+        equipManager->UnequipObject(
+            std::addressof(a_player),
+            std::addressof(a_ring),
+            a_extraList,
+            1,
+            nullptr,
+            true,
+            false,
+            false,
+            true,
+            nullptr
+        );
+
+        return true;
+    }
+
+    [[nodiscard]] bool EquipVanillaRingSlot(
+        RE::PlayerCharacter& a_player,
+        RE::TESObjectARMO& a_ring,
+        RE::ExtraDataList* a_extraList
+    ) {
+        auto* equipManager = RE::ActorEquipManager::GetSingleton();
+        if (!equipManager) {
+            return false;
+        }
+
+        auto* equipSlot = RE::TESForm::LookupByID<RE::BGSEquipSlot>(Forms::kRightHandEquipSlotFormID);
+        equipManager->EquipObject(
+            std::addressof(a_player),
+            std::addressof(a_ring),
+            a_extraList,
+            1,
+            equipSlot,
+            true,
+            false,
+            false,
+            true
+        );
+
+        return true;
+    }
+
+    [[nodiscard]] RingActionResult ToggleVanillaRingSlot(
+        const RE::FormID a_sourceFormID,
+        const std::optional<Inventory::CustomEnchantmentKey>& a_customKey,
+        const std::optional<Inventory::ExtraListIdentity>& a_customIdentity
+    ) {
+        RingActionResult result;
+        auto* player = GetPlayer();
+        auto* ring = LookupSourceRing(a_sourceFormID);
+        if (!player || !ring) {
+            return result;
+        }
+
+        RE::ExtraDataList* rightWornExtraList = nullptr;
+        RE::ExtraDataList* equipExtraList = nullptr;
+        auto rightWorn = false;
+        if (a_customKey) {
+            const auto sourceMatches = Inventory::FindSourceMatches(*player, *ring, *a_customKey, a_customIdentity);
+            if (!sourceMatches.HasMatch()) {
+                return result;
+            }
+
+            rightWornExtraList = sourceMatches.rightWornExtraList;
+            equipExtraList = sourceMatches.firstExtraList;
+            rightWorn = rightWornExtraList != nullptr;
+        } else {
+            const auto sourceMatches = Inventory::FindFormOnlyMatches(*player, *ring);
+            if (!sourceMatches.HasMatch()) {
+                return result;
+            }
+
+            rightWornExtraList = sourceMatches.rightWornExtraList;
+            rightWorn = sourceMatches.rightWorn;
+        }
+
+        if (rightWorn) {
+            if (!UnequipVanillaRingSlot(*player, *ring, rightWornExtraList)) {
+                return result;
+            }
+
+            result.inventoryChanged = true;
+            if (!IsInVanillaRingSlot(*player, *ring, a_customKey, a_customIdentity)) {
+                RingSounds::Play(*player, *ring, RingSounds::Event::kUnequip);
+            }
+            return result;
+        }
+
+        if (const auto
+                target = FindVirtualTargetForVanillaRingSlotEquip(*player, *ring, a_customKey, a_customIdentity)) {
+            Clear(*target);
+            VirtualRings::Clear(*target);
+            result.selectionChanged = true;
+        }
+
+        if (!EquipVanillaRingSlot(*player, *ring, equipExtraList)) {
+            return result;
+        }
+
+        result.inventoryChanged = true;
+        if (IsInVanillaRingSlot(*player, *ring, a_customKey, a_customIdentity)) {
+            RingSounds::Play(*player, *ring, RingSounds::Event::kEquip);
+        }
+        return result;
     }
 
     void QueueMoveVirtualToVanillaRingSlot(
@@ -549,8 +709,8 @@ void Revert() {
     g_snapshot = {};
 }
 
-VanillaRingSlotMoveResult MoveVanillaRingSlotFormToVirtual(const RE::FormID a_sourceFormID, const RingTarget a_target) {
-    VanillaRingSlotMoveResult result;
+RingActionResult MoveVanillaRingSlotFormToVirtual(const RE::FormID a_sourceFormID, const RingTarget a_target) {
+    RingActionResult result;
     if (!CanUseVirtualTarget(a_target, "moveVanillaRingSlotFormToVirtual"sv)) {
         return result;
     }
@@ -597,13 +757,13 @@ VanillaRingSlotMoveResult MoveVanillaRingSlotFormToVirtual(const RE::FormID a_so
     return result;
 }
 
-VanillaRingSlotMoveResult MoveVanillaRingSlotCustomToVirtual(
+RingActionResult MoveVanillaRingSlotCustomToVirtual(
     const RE::FormID a_sourceFormID,
     const Inventory::CustomEnchantmentKey& a_customKey,
     const std::optional<Inventory::ExtraListIdentity> a_customIdentity,
     const RingTarget a_target
 ) {
-    VanillaRingSlotMoveResult result;
+    RingActionResult result;
     if (!CanUseVirtualTarget(a_target, "moveVanillaRingSlotCustomToVirtual"sv)) {
         return result;
     }
@@ -707,6 +867,18 @@ void QueueVanillaRingSlotCustomToVirtual(
             UI::RefreshRingRows();
         }
     });
+}
+
+RingActionResult ToggleVanillaRingSlotForm(const RE::FormID a_sourceFormID) {
+    return ToggleVanillaRingSlot(a_sourceFormID, std::nullopt, std::nullopt);
+}
+
+RingActionResult ToggleVanillaRingSlotCustom(
+    const RE::FormID a_sourceFormID,
+    const Inventory::CustomEnchantmentKey& a_customKey,
+    const std::optional<Inventory::ExtraListIdentity> a_customIdentity
+) {
+    return ToggleVanillaRingSlot(a_sourceFormID, a_customKey, a_customIdentity);
 }
 
 bool InterceptRightEquip(RE::Actor& a_actor, const RE::TESObjectARMO& a_ring, const RE::ObjectEquipParams& a_params) {

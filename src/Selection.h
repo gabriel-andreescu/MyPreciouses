@@ -55,7 +55,7 @@ struct Snapshot {
     std::array<State, kRingTargets.size()> targets;
 };
 
-struct VanillaRingSlotMoveResult {
+struct RingActionResult {
     bool selectionChanged {false};
     bool inventoryChanged {false};
 
@@ -88,11 +88,8 @@ void Load(const Snapshot& a_state, SKSE::SerializationInterface& a_intfc);
 [[nodiscard]] Snapshot GetSnapshot();
 void Revert();
 
-[[nodiscard]] VanillaRingSlotMoveResult MoveVanillaRingSlotFormToVirtual(
-    RE::FormID a_sourceFormID,
-    RingTarget a_target
-);
-[[nodiscard]] VanillaRingSlotMoveResult MoveVanillaRingSlotCustomToVirtual(
+[[nodiscard]] RingActionResult MoveVanillaRingSlotFormToVirtual(RE::FormID a_sourceFormID, RingTarget a_target);
+[[nodiscard]] RingActionResult MoveVanillaRingSlotCustomToVirtual(
     RE::FormID a_sourceFormID,
     const Inventory::CustomEnchantmentKey& a_customKey,
     std::optional<Inventory::ExtraListIdentity> a_customIdentity,
@@ -104,6 +101,12 @@ void QueueVanillaRingSlotCustomToVirtual(
     Inventory::CustomEnchantmentKey a_key,
     std::optional<Inventory::ExtraListIdentity> a_identity,
     RingTarget a_target
+);
+[[nodiscard]] RingActionResult ToggleVanillaRingSlotForm(RE::FormID a_sourceFormID);
+[[nodiscard]] RingActionResult ToggleVanillaRingSlotCustom(
+    RE::FormID a_sourceFormID,
+    const Inventory::CustomEnchantmentKey& a_customKey,
+    std::optional<Inventory::ExtraListIdentity> a_customIdentity
 );
 [[nodiscard]] bool InterceptRightEquip(
     RE::Actor& a_actor,

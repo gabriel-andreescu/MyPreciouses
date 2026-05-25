@@ -1,5 +1,6 @@
 #include "RingFootprints.h"
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cstring>
@@ -212,6 +213,16 @@ namespace {
 
         return footprint;
     }
+
+    [[nodiscard]] std::uint8_t RetargetSegment(const RingBone& a_source, const RingFinger a_targetFinger) {
+        if (a_targetFinger != RingFinger::kThumb || a_source.finger == RingFinger::kThumb) {
+            return a_source.segment;
+        }
+
+        constexpr auto kLastThumbSegment = std::uint8_t {2};
+        const auto segment = static_cast<std::uint8_t>(a_source.segment + 1);
+        return std::min(segment, kLastThumbSegment);
+    }
 }
 
 void RingFootprint::Add(const RingFinger a_finger) {
@@ -278,10 +289,11 @@ std::string MakeFingerBoneName(const RingBone& a_bone) {
 }
 
 RingBone RetargetBone(const RingBone& a_source, const RingTarget a_target, const RingFootprint& a_footprint) {
+    const auto targetFinger = a_footprint.IsMultiFinger() ? a_source.finger : a_target.finger;
     return RingBone {
         .hand = a_target.hand,
-        .finger = a_footprint.IsMultiFinger() ? a_source.finger : a_target.finger,
-        .segment = a_source.segment,
+        .finger = targetFinger,
+        .segment = RetargetSegment(a_source, targetFinger),
     };
 }
 

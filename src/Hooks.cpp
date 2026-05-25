@@ -1,6 +1,7 @@
 #include "Hooks.h"
 
 #include "EventBindings.h"
+#include "FingerSelectMenu.h"
 #include "Forms.h"
 #include "Inventory.h"
 #include "RingEnchantments.h"
@@ -11,6 +12,7 @@
 
 #include <cstring>
 #include <optional>
+#include <string_view>
 
 namespace Hooks {
 namespace {
@@ -29,6 +31,14 @@ namespace {
             case Forms::kRightHandEquipSlotFormID: return HandEquipSlot::kRight;
             case Forms::kLeftHandEquipSlotFormID:  return HandEquipSlot::kLeft;
             default:                               return HandEquipSlot::kOther;
+        }
+    }
+
+    [[nodiscard]] std::optional<RingHand> GetRingHand(const HandEquipSlot a_slot) {
+        switch (a_slot) {
+            case HandEquipSlot::kRight: return RingHand::kRight;
+            case HandEquipSlot::kLeft:  return RingHand::kLeft;
+            default:                    return std::nullopt;
         }
     }
 
@@ -204,9 +214,9 @@ namespace {
     struct InventoryItemSelectHook {
         static void thunk(void* a_menuContext, RE::BGSEquipSlot* a_slot) {
             const auto handSlot = GetHandEquipSlot(a_slot);
-            if (handSlot == HandEquipSlot::kLeft) {
+            if (const auto hand = GetRingHand(handSlot)) {
                 auto* entry = GetSelectedEntryFromItemSelectContext(a_menuContext);
-                if (UI::SelectEntryForLeftHand(entry, UI::SelectionOrigin::kInventoryMenu)) {
+                if (UI::UseRingFromMenuEntry(entry, *hand, UI::SelectionOrigin::kInventoryMenu)) {
                     return;
                 }
             }
@@ -239,11 +249,11 @@ namespace {
             bool a_queueEquip
         ) {
             const auto handSlot = GetHandEquipSlot(a_slot);
+            const auto hand = GetRingHand(handSlot);
             if (a_actor
                 && a_actor->IsPlayerRef()
-                && handSlot
-                == HandEquipSlot::kLeft
-                && UI::SelectEntryForLeftHand(a_entry, UI::SelectionOrigin::kFavoritesMenu)) {
+                && hand
+                && UI::UseRingFromMenuEntry(a_entry, *hand, UI::SelectionOrigin::kFavoritesMenu)) {
                 return;
             }
 

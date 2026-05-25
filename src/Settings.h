@@ -19,9 +19,10 @@ public:
 
     struct ReloadResult {
         bool enchantmentStrengthChanged {false};
+        bool fingerSelectionChanged {false};
 
         [[nodiscard]] bool Changed() const {
-            return enchantmentStrengthChanged;
+            return enchantmentStrengthChanged || fingerSelectionChanged;
         }
     };
 
@@ -31,8 +32,10 @@ public:
     [[nodiscard]] EnchantmentStrengthMode GetEnchantmentStrengthMode() const;
     [[nodiscard]] std::uint32_t GetFixedEnchantmentStrengthPercent() const;
     [[nodiscard]] float GetRingEnchantmentScale(std::uint32_t a_enchantedRingCount) const;
+    [[nodiscard]] bool AlwaysChooseFinger() const;
 
 private:
     std::atomic<EnchantmentStrengthMode> enchantmentStrengthMode_ {EnchantmentStrengthMode::kFullStrength};
     std::atomic<std::uint32_t> fixedEnchantmentStrengthPercent_ {kDefaultFixedEnchantmentStrengthPercent};
+    std::atomic_bool alwaysChooseFinger_ {false};
 };

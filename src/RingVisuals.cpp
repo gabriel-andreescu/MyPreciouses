@@ -134,7 +134,8 @@ namespace {
             return nullptr;
         }
 
-        return FindBone(a_biped, retargetedName->c_str());
+        auto* retargetedBone = FindBone(a_biped, retargetedName->c_str());
+        return retargetedBone;
     }
 
     [[nodiscard]] bool RenameRetargetedNodes(
