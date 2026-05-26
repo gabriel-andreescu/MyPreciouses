@@ -138,15 +138,15 @@ namespace {
                 );
                 break;
             case Data::HostMenu::kFavorites:
-                static_cast<void>(SetBool(a_movie, "_root.Menu_mc.itemList.disableInput", disabled));
-                static_cast<void>(SetBool(a_movie, "_root.Menu_mc.itemList.disableSelection", disabled));
-                static_cast<void>(SetBool(a_movie, "_root.Menu_mc.btnAll.disabled", disabled));
-                static_cast<void>(SetBool(a_movie, "_root.Menu_mc.btnGear.disabled", disabled));
-                static_cast<void>(SetBool(a_movie, "_root.Menu_mc.btnAid.disabled", disabled));
-                static_cast<void>(SetBool(a_movie, "_root.Menu_mc.btnMagic.disabled", disabled));
+                static_cast<void>(SetBool(a_movie, "_root.MenuHolder.Menu_mc.itemList.disableInput", disabled));
+                static_cast<void>(SetBool(a_movie, "_root.MenuHolder.Menu_mc.itemList.disableSelection", disabled));
+                static_cast<void>(SetBool(a_movie, "_root.MenuHolder.Menu_mc.btnAll.disabled", disabled));
+                static_cast<void>(SetBool(a_movie, "_root.MenuHolder.Menu_mc.btnGear.disabled", disabled));
+                static_cast<void>(SetBool(a_movie, "_root.MenuHolder.Menu_mc.btnAid.disabled", disabled));
+                static_cast<void>(SetBool(a_movie, "_root.MenuHolder.Menu_mc.btnMagic.disabled", disabled));
                 for (auto index = 1; index <= 8; ++index) {
                     const auto path = std::format(
-                        "_root.Menu_mc.groupButtonFader.groupButtonHolder.btnGroup{}.disabled",
+                        "_root.MenuHolder.Menu_mc.groupButtonFader.groupButtonHolder.btnGroup{}.disabled",
                         index
                     );
                     static_cast<void>(SetBool(a_movie, path.c_str(), disabled));
