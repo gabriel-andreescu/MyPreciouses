@@ -19,6 +19,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace UI {
 namespace {
@@ -36,6 +37,7 @@ namespace {
     constexpr auto kScaleformCustomUniqueID = "lhrsCustomUniqueID";
     constexpr auto kScaleformCustomBlockReason = "lhrsCustomBlockReason";
     constexpr auto kScaleformVanillaRingSlotEquipped = "lhrsVanillaRingSlotEquipped";
+    constexpr auto kScaleformInventoryBaseText = "lhrsBaseText";
     constexpr auto kInventoryInvalidateListDataPath = "_root.Menu_mc.inventoryLists.InvalidateListData";
     constexpr auto kFingerSelectTitle = "ASSIGN RING";
     constexpr auto kEmptyRingLabel = "-";
@@ -61,6 +63,13 @@ namespace {
         SelectionOrigin origin {SelectionOrigin::kInventoryMenu};
     };
 
+    struct RingRowState {
+        RE::TESObjectARMO& ring;
+        RowSelection selection;
+        bool vanillaRingSlotEquipped {false};
+        Inventory::EntryCustomFailure customFailure {Inventory::EntryCustomFailure::kNone};
+    };
+
     struct FingerSelectTrigger {
         bool requested {false};
         RE::INPUT_DEVICE inputDevice {RE::INPUT_DEVICE::kKeyboard};
@@ -74,6 +83,15 @@ namespace {
 
         auto inventoryMenu = ui->GetMenu<RE::InventoryMenu>();
         return inventoryMenu.get();
+    }
+
+    [[nodiscard]] bool IsInventoryMenuView(const RE::GFxMovieView* a_view) {
+        if (!a_view) {
+            return false;
+        }
+
+        auto* inventoryMenu = GetInventoryMenu();
+        return inventoryMenu && inventoryMenu->uiMovie.get() == a_view;
     }
 
     [[nodiscard]] RE::FavoritesMenu* GetFavoritesMenu() {
@@ -150,6 +168,115 @@ namespace {
         }
 
         return kSkyUIEquipStateNone;
+    }
+
+    [[nodiscard]] std::vector<RingTarget> CollectInventoryRowTargets(
+        const RE::TESObjectARMO& a_ring,
+        const RowSelection& a_rowSelection,
+        const bool a_vanillaRingSlotEquipped
+    ) {
+        std::vector<RingTarget> targets;
+        targets.reserve(kRingTargets.size());
+
+        for (const auto target : kRingTargets) {
+            if (target == kVanillaRingTarget) {
+                if (a_vanillaRingSlotEquipped) {
+                    targets.push_back(target);
+                }
+                continue;
+            }
+
+            if (MatchesRowSelection(Selection::Get(target), a_ring, a_rowSelection)) {
+                targets.push_back(target);
+            }
+        }
+
+        return targets;
+    }
+
+    [[nodiscard]] bool HasNonIndexTarget(const std::vector<RingTarget>& a_targets) {
+        return std::ranges::any_of(a_targets, [](const auto target) {
+            return target.finger != RingFinger::kIndex;
+        });
+    }
+
+    [[nodiscard]] std::string FormatInventoryTargetLabel(const RingTarget a_target) {
+        std::string label;
+        label.reserve(8);
+        label.push_back(TargetSideCode(a_target));
+        label.push_back(' ');
+        label.append(FingerLabel(a_target.finger));
+        return label;
+    }
+
+    [[nodiscard]] std::optional<std::string> GetInventoryRowBaseText(RE::GFxValue& a_entryObject) {
+        RE::GFxValue baseText;
+        if (a_entryObject.GetMember(kScaleformInventoryBaseText, std::addressof(baseText)) && baseText.IsString()) {
+            if (const auto* text = baseText.GetString()) {
+                return std::string {text};
+            }
+        }
+
+        RE::GFxValue currentText;
+        if (!a_entryObject.GetMember("text", std::addressof(currentText)) || !currentText.IsString()) {
+            return std::nullopt;
+        }
+
+        const auto* currentTextValue = currentText.GetString();
+        if (!currentTextValue) {
+            return std::nullopt;
+        }
+
+        std::string text {currentTextValue};
+        RE::GFxValue baseTextValue;
+        baseTextValue.SetString(text);
+        a_entryObject.SetMember(kScaleformInventoryBaseText, baseTextValue);
+        return text;
+    }
+
+    [[nodiscard]] std::string FormatInventoryFingerSuffix(const std::vector<RingTarget>& a_targets) {
+        std::string suffix {" ("};
+
+        for (std::size_t index = 0; index < a_targets.size(); ++index) {
+            if (index > 0) {
+                suffix.append(", ");
+            }
+            suffix.append(FormatInventoryTargetLabel(a_targets[index]));
+        }
+
+        suffix.push_back(')');
+        return suffix;
+    }
+
+    [[nodiscard]] bool UpdateInventoryRowText(
+        RE::GFxValue& a_entryObject,
+        const RE::TESObjectARMO& a_ring,
+        const RowSelection& a_rowSelection,
+        const bool a_vanillaRingSlotEquipped
+    ) {
+        const auto baseText = GetInventoryRowBaseText(a_entryObject);
+        if (!baseText) {
+            return false;
+        }
+
+        auto displayText = *baseText;
+        const auto targets = CollectInventoryRowTargets(a_ring, a_rowSelection, a_vanillaRingSlotEquipped);
+        if (HasNonIndexTarget(targets)) {
+            displayText.append(FormatInventoryFingerSuffix(targets));
+        }
+
+        RE::GFxValue currentText;
+        if (a_entryObject.GetMember("text", std::addressof(currentText)) && currentText.IsString()) {
+            const auto* currentTextValue = currentText.GetString();
+            if (currentTextValue && displayText == currentTextValue) {
+                return false;
+            }
+        }
+
+        RE::GFxValue displayTextValue;
+        displayTextValue.SetString(displayText);
+        a_entryObject.SetMember("text", displayTextValue);
+        return true;
     }
 
     [[nodiscard]] bool IsFormRowInVanillaRingSlot(RE::InventoryEntryData& a_entry) {
@@ -348,7 +475,7 @@ namespace {
         return a_customSelection.identity;
     }
 
-    [[nodiscard]] std::optional<bool> StampEntryRingObject(RE::GFxValue& a_object, RE::InventoryEntryData& a_entry) {
+    [[nodiscard]] std::optional<RingRowState> ResolveRingRowState(RE::InventoryEntryData& a_entry) {
         auto* ring = Inventory::AsRing(a_entry.GetObject());
         if (!ring) {
             return std::nullopt;
@@ -378,23 +505,47 @@ namespace {
             }
         }
 
-        StampScaleformSelection(a_object, selectionKind, customKey, customIdentity, customSelection.failure);
-
-        const auto equipState = GetRingEquipState(
-            *ring,
-            RowSelection {
+        return RingRowState {
+            .ring = *ring,
+            .selection = RowSelection {
                 .kind = selectionKind,
                 .customKey = customKey,
                 .customIdentity = customIdentity,
             },
-            vanillaRingSlotEquipped
+            .vanillaRingSlotEquipped = vanillaRingSlotEquipped,
+            .customFailure = customSelection.failure,
+        };
+    }
+
+    [[nodiscard]] bool StampEntryRingObject(RE::GFxValue& a_object, const RingRowState& a_rowState) {
+        StampScaleformSelection(
+            a_object,
+            a_rowState.selection.kind,
+            a_rowState.selection.customKey,
+            a_rowState.selection.customIdentity,
+            a_rowState.customFailure
+        );
+
+        const auto equipState = GetRingEquipState(
+            a_rowState.ring,
+            a_rowState.selection,
+            a_rowState.vanillaRingSlotEquipped
         );
         const auto previousEquipState = GetScaleformEquipState(a_object);
-        a_object.SetMember(kScaleformVanillaRingSlotEquipped, vanillaRingSlotEquipped);
+        a_object.SetMember(kScaleformVanillaRingSlotEquipped, a_rowState.vanillaRingSlotEquipped);
         a_object.SetMember("equipState", equipState);
         a_object.SetMember("isEquipped", equipState > kSkyUIEquipStateNone);
 
         return previousEquipState != equipState;
+    }
+
+    [[nodiscard]] std::optional<bool> StampEntryRingObject(RE::GFxValue& a_object, RE::InventoryEntryData& a_entry) {
+        const auto rowState = ResolveRingRowState(a_entry);
+        if (!rowState) {
+            return std::nullopt;
+        }
+
+        return StampEntryRingObject(a_object, *rowState);
     }
 
     [[nodiscard]] RE::InventoryEntryData* GetFavoritesEntryDataForRow(
@@ -436,16 +587,26 @@ namespace {
         return StampEntryRingObject(a_entryObject, *entry);
     }
 
-    void InventoryDataCallback(
-        [[maybe_unused]] RE::GFxMovieView* a_view,
-        RE::GFxValue* a_object,
-        RE::InventoryEntryData* a_item
-    ) {
+    void InventoryDataCallback(RE::GFxMovieView* a_view, RE::GFxValue* a_object, RE::InventoryEntryData* a_item) {
         if (!a_object || !a_item) {
             return;
         }
 
-        static_cast<void>(StampEntryRingObject(*a_object, *a_item));
+        const auto rowState = ResolveRingRowState(*a_item);
+        if (!rowState) {
+            return;
+        }
+
+        static_cast<void>(StampEntryRingObject(*a_object, *rowState));
+
+        if (IsInventoryMenuView(a_view)) {
+            static_cast<void>(UpdateInventoryRowText(
+                *a_object,
+                rowState->ring,
+                rowState->selection,
+                rowState->vanillaRingSlotEquipped
+            ));
+        }
     }
 
     [[nodiscard]] std::optional<bool> RestampInventoryRowFromStoredSelection(RE::GFxValue& a_entryObject) {
@@ -471,12 +632,13 @@ namespace {
         const auto rowSelection = GetScaleformRowSelection(a_entryObject);
         const auto vanillaRingSlotEquipped = storedVanillaRingSlotState.value_or(previousVanillaRingSlotState);
         const auto equipState = GetRingEquipState(*ring, rowSelection, vanillaRingSlotEquipped);
+        const auto textChanged = UpdateInventoryRowText(a_entryObject, *ring, rowSelection, vanillaRingSlotEquipped);
 
         a_entryObject.SetMember(kScaleformVanillaRingSlotEquipped, vanillaRingSlotEquipped);
         a_entryObject.SetMember("equipState", equipState);
         a_entryObject.SetMember("isEquipped", equipState > kSkyUIEquipStateNone);
 
-        return previousEquipState != equipState;
+        return previousEquipState != equipState || textChanged;
     }
 
     void InvalidateInventoryListData(RE::InventoryMenu& a_menu) {

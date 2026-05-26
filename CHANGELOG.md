@@ -2,6 +2,7 @@
 
 ## 0.3.0 - Unreleased
 
+- feat: show ring finger assignments in inventory
 - feat: add ring finger selection menu
 - feat: add ring enchantment strength modes
 - feat: replace left-hand ring clones with slotless virtual rings
