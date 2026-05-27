@@ -940,7 +940,8 @@ namespace {
 
         auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
         if (vm) {
-            for (const auto& binding : bindings) {
+            for (auto& binding : bindings) {
+                static_cast<void>(ValidateExpectedScripts(*vm, binding, binding.handle));
                 if (a_unequippedActor) {
                     static_cast<void>(
                         DispatchOwnedEventScripts(*vm, binding, *a_unequippedActor, RE::BSFixedString {kOnUnequipped})

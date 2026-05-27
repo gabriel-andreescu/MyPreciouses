@@ -6,6 +6,7 @@
 #include "RingSounds.h"
 #include "RingVisuals.h"
 #include "Selection.h"
+#include "Settings.h"
 
 #include <algorithm>
 #include <array>
@@ -45,6 +46,7 @@ namespace {
         RE::TESObjectARMO* effectSource {nullptr};
         ExtraDataListPtr extraList;
         Selection::State activeSelection;
+        ExtraRingMode mode {ExtraRingMode::kFunctional};
         RingFootprints::RingFootprint footprint;
         std::vector<SourceAddonVisual> addonVisuals;
         bool active {false};
@@ -71,7 +73,7 @@ namespace {
 
     struct RefreshPlan {
         RingTarget target {kDefaultLeftEquipTarget};
-        PendingClear clear;
+        std::vector<PendingClear> clears;
         PendingApply apply;
         RE::FormID restoredEffectSourceFormID {0};
         bool clearSelection {false};
@@ -233,7 +235,9 @@ namespace {
     }
 
     [[nodiscard]] bool HasActiveEnchantment(const TargetState& a_state) {
+        const auto functional = a_state.mode == ExtraRingMode::kFunctional;
         return a_state.active
+               && functional
                && a_state.effectSource
                && (a_state.effectSource->formEnchanting || Inventory::HasCustomEnchantment(a_state.extraList.get()));
     }
@@ -291,6 +295,32 @@ namespace {
 
         a_state = {};
         return action;
+    }
+
+    void AddPendingClear(RefreshPlan& a_plan, PendingClear a_clear) {
+        if (!a_clear.effectSource || a_clear.effectSourceFormID == 0) {
+            return;
+        }
+
+        auto existing = std::ranges::find_if(a_plan.clears, [&](const auto& a_existing) {
+            return a_existing.effectSourceFormID == a_clear.effectSourceFormID;
+        });
+        if (existing == a_plan.clears.end()) {
+            a_plan.clears.push_back(a_clear);
+            return;
+        }
+
+        if (!existing->actor) {
+            existing->actor = a_clear.actor;
+        }
+        if (existing->sourceFormID == 0) {
+            existing->sourceFormID = a_clear.sourceFormID;
+        }
+        if (existing->sound == RingSounds::Event::kNone) {
+            existing->sound = a_clear.sound;
+        }
+        existing->dispatchUnequipped = existing->dispatchUnequipped || a_clear.dispatchUnequipped;
+        existing->active = existing->active || a_clear.active;
     }
 
     void RunPendingClear(const PendingClear& a_action) {
@@ -400,7 +430,7 @@ namespace {
             return true;
         }
 
-        a_plan.clear = BuildClearPlan(RE::PlayerCharacter::GetSingleton(), a_state, true);
+        AddPendingClear(a_plan, BuildClearPlan(RE::PlayerCharacter::GetSingleton(), a_state, true));
 
         RE::TESObjectARMO* effectSource = nullptr;
         if (a_selection.restoredEffectSourceFormID != 0) {
@@ -440,6 +470,7 @@ namespace {
         RE::Actor& a_actor,
         RE::TESObjectARMO& a_source,
         const Selection::State& a_selection,
+        const ExtraRingMode a_mode,
         TargetState& a_state,
         bool& a_clearSelection
     ) {
@@ -448,6 +479,18 @@ namespace {
         }
 
         a_state.effectSource->SetFullName(a_source.GetName() ? a_source.GetName() : "");
+
+        if (a_mode == ExtraRingMode::kCosmetic) {
+            const auto customSelection = a_selection.kind == Selection::Kind::kCustomEnchantment;
+            if (customSelection && !ResolveCustomSelectionSource(a_actor, a_selection, a_clearSelection)) {
+                return false;
+            }
+
+            a_state.extraList.reset();
+            a_state.effectSource->formEnchanting = nullptr;
+            a_state.effectSource->amountofEnchantment = 0;
+            return true;
+        }
 
         if (a_selection.kind == Selection::Kind::kCustomEnchantment) {
             auto customSource = ResolveCustomSelectionSource(a_actor, a_selection, a_clearSelection);
@@ -487,18 +530,22 @@ namespace {
         std::scoped_lock lock(g_lock);
         auto& state = TargetStates()[ToIndex(a_target)];
         const auto sound = ConsumePendingSound(a_target);
+        const auto mode = Settings::GetSingleton()->GetExtraRingMode();
 
         if (!player || !ring || selection.kind == Selection::Kind::kNone) {
             const auto clearSound = sound == RingSounds::Event::kUnequip ? sound : RingSounds::Event::kNone;
-            plan.clear = BuildClearPlan(player, state, true, clearSound);
+            AddPendingClear(plan, BuildClearPlan(player, state, true, clearSound));
             return plan;
         }
 
-        const auto changedSelection = !state.active
-                                      || state.sourceFormID
-                                      != ring->GetFormID()
-                                      || state.activeSelection
-                                      != selection;
+        const auto modeChanged = state.active && state.mode != mode;
+        if (modeChanged) {
+            AddPendingClear(plan, BuildClearPlan(player, state, true));
+        }
+
+        const auto sourceChanged = state.sourceFormID != ring->GetFormID();
+        const auto selectionChanged = state.activeSelection != selection;
+        const auto changedSelection = !state.active || sourceChanged || selectionChanged || state.mode != mode;
 
         if (!EnsureEffectSource(a_target, *ring, selection, state, plan)) {
             logger::warn(
@@ -507,23 +554,51 @@ namespace {
                 ring->GetFormID()
             );
             plan.clearSelection = true;
-            plan.clear = BuildClearPlan(player, state, true);
+            AddPendingClear(plan, BuildClearPlan(player, state, true));
             return plan;
         }
 
+        const auto restoredEffectSource = state.effectSource
+                                          && state.effectSource->GetFormID()
+                                          == selection.restoredEffectSourceFormID;
+        const auto hasRestoredLoadedBinding = mode
+                                              == ExtraRingMode::kFunctional
+                                              && !state.active
+                                              && restoredEffectSource
+                                              && EventBindings::HasLoadedBinding(
+                                                  ring->GetFormID(),
+                                                  state.effectSource->GetFormID()
+                                              );
+        if (mode == ExtraRingMode::kCosmetic && !state.active && restoredEffectSource) {
+            AddPendingClear(
+                plan,
+                PendingClear {
+                    .actor = player,
+                    .effectSource = state.effectSource,
+                    .sourceFormID = state.sourceFormID,
+                    .effectSourceFormID = state.effectSource->GetFormID(),
+                    .dispatchUnequipped = true,
+                    .active = true,
+                }
+            );
+        }
+
         bool clearSelection = false;
-        if (!ApplySelectionToEffectSource(*player, *ring, selection, state, clearSelection)) {
+        if (!ApplySelectionToEffectSource(*player, *ring, selection, mode, state, clearSelection)) {
             logger::warn(
                 "VirtualRings: effect source apply failed | target={} | source={:08X}",
                 TargetLabel(a_target),
                 ring->GetFormID()
             );
             plan.clearSelection = clearSelection;
-            plan.clear = BuildClearPlan(player, state, true);
+            auto clear = BuildClearPlan(player, state, true);
+            clear.active = clear.active || hasRestoredLoadedBinding;
+            AddPendingClear(plan, clear);
             return plan;
         }
 
         state.activeSelection = selection;
+        state.mode = mode;
         state.active = true;
         state.footprint = RingFootprints::GetSourceRingFootprint(*ring);
         state.addonVisuals = CaptureRingVisuals(*ring, a_target);
@@ -534,7 +609,7 @@ namespace {
             .extraList = state.extraList,
             .sourceFormID = ring->GetFormID(),
             .sound = sound == RingSounds::Event::kEquip ? sound : RingSounds::Event::kNone,
-            .dispatchEquipped = changedSelection,
+            .dispatchEquipped = mode == ExtraRingMode::kFunctional && changedSelection,
         };
         return plan;
     }
@@ -548,7 +623,9 @@ namespace {
         }
 
         for (auto& plan : plans) {
-            RunPendingClear(plan.clear);
+            for (const auto& clear : plan.clears) {
+                RunPendingClear(clear);
+            }
             if (plan.clearSelection) {
                 Selection::Clear(plan.target);
             }
@@ -657,7 +734,8 @@ bool MatchesGetEquippedCondition([[maybe_unused]] RE::Actor& a_actor, RE::TESFor
     std::scoped_lock lock(g_lock);
     for (const auto target : kVirtualRingTargets) {
         const auto& state = TargetStates()[ToIndex(target)];
-        if (state.active && SourceMatchesGetEquippedArgument(state.sourceFormID, a_getEquippedArgument)) {
+        const auto functional = state.mode == ExtraRingMode::kFunctional;
+        if (state.active && functional && SourceMatchesGetEquippedArgument(state.sourceFormID, a_getEquippedArgument)) {
             return true;
         }
     }
@@ -733,7 +811,8 @@ std::vector<EventBindings::ScriptBindingSource> GetEventBindingSources() {
     std::scoped_lock lock(g_lock);
     for (const auto target : kVirtualRingTargets) {
         const auto& state = TargetStates()[ToIndex(target)];
-        if (!state.active || state.sourceFormID == 0 || !state.effectSource) {
+        const auto functional = state.mode == ExtraRingMode::kFunctional;
+        if (!state.active || !functional || state.sourceFormID == 0 || !state.effectSource) {
             continue;
         }
 

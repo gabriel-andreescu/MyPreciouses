@@ -7,6 +7,7 @@
 - feat: show ring finger assignments in inventory
 - feat: add ring finger selection menu
 - feat: add ring enchantment strength modes
+- feat: add cosmetic mode for extra rings
 - feat: replace left-hand ring clones with slotless virtual rings
 - fix: prevent a crash when left-equipping rings from the inventory menu
 - fix: use unique inventory identity for player-enchanted virtual rings

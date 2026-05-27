@@ -22,9 +22,36 @@
           }
         },
         {
+          "type": "hiddenToggle",
+          "text": "Cosmetic extra rings selected",
+          "groupControl": 2,
+          "valueOptions": {
+            "sourceType": "PropertyValueBool",
+            "propertyName": "bCosmeticExtraRingsSelected"
+          }
+        },
+        {
+          "id": "iExtraRingMode:General",
+          "text": "Extra ring mode",
+          "type": "enum",
+          "help": "Functional applies normal ring enchantments and scripts. Cosmetic only shows the ring model.",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 0,
+            "options": [
+              "Functional",
+              "Cosmetic"
+            ]
+          }
+        },
+        {
           "id": "iEnchantmentStrengthMode:General",
           "text": "Enchantment strength",
           "type": "enum",
+          "groupCondition": {
+            "NOT": 2
+          },
+          "groupBehavior": "disable",
           "help": "Full keeps normal strength. Fixed uses the chosen strength. Split divides 100% evenly between enchanted rings.",
           "valueOptions": {
             "sourceType": "ModSettingInt",
@@ -40,7 +67,14 @@
           "id": "iFixedEnchantmentStrengthPercent:General",
           "text": "Fixed strength",
           "type": "slider",
-          "groupCondition": 1,
+          "groupCondition": {
+            "AND": [
+              1,
+              {
+                "NOT": 2
+              }
+            ]
+          },
           "groupBehavior": "hide",
           "help": "All equipped enchanted rings use this strength.",
           "valueOptions": {
@@ -56,7 +90,7 @@
           "id": "bAlwaysChooseFinger:General",
           "text": "Always choose finger",
           "type": "toggle",
-          "help": "Show the finger selection menu whenever you use Equip or Left Equip on a ring.",
+          "help": "Always show the finger selection menu whenever you use Equip or Left Equip on a ring without pressing a modifier key.",
           "valueOptions": {
             "sourceType": "ModSettingBool",
             "defaultValue": false

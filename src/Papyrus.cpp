@@ -6,7 +6,7 @@
 
 namespace Papyrus {
 namespace {
-    void RefreshAfterEnchantmentStrengthSettingsReload() {
+    void RefreshAfterRingSettingsReload() {
         VirtualRings::RequestRefresh();
         UI::RefreshRingRows();
     }
@@ -17,9 +17,9 @@ namespace {
             return;
         }
 
-        if (reload.enchantmentStrengthChanged) {
-            logger::info("Settings: enchantment strength changed | action=refreshRingEnchantments");
-            stl::add_task(RefreshAfterEnchantmentStrengthSettingsReload);
+        if (reload.extraRingModeChanged || reload.enchantmentStrengthChanged) {
+            logger::info("Settings: ring behavior changed | action=refreshVirtualRings");
+            stl::add_task(RefreshAfterRingSettingsReload);
         }
     }
 

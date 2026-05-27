@@ -1,23 +1,26 @@
 Scriptname LeftHandRingsSKSE_MCM extends MCM_ConfigBase
 
 Bool Property bFixedStrengthSelected Auto Hidden
+Bool Property bCosmeticExtraRingsSelected Auto Hidden
 
-Function SyncEnchantmentStrengthMode()
-    Int mode = GetModSettingInt("iEnchantmentStrengthMode:General")
-    bFixedStrengthSelected = mode == 1
+Function SyncSettings()
+    Int enchantmentStrengthMode = GetModSettingInt("iEnchantmentStrengthMode:General")
+    Int extraRingMode = GetModSettingInt("iExtraRingMode:General")
+    bFixedStrengthSelected = enchantmentStrengthMode == 1
+    bCosmeticExtraRingsSelected = extraRingMode == 1
 EndFunction
 
 Event OnConfigInit()
-    SyncEnchantmentStrengthMode()
+    SyncSettings()
 EndEvent
 
 Event OnConfigOpen()
-    SyncEnchantmentStrengthMode()
+    SyncSettings()
 EndEvent
 
 Event OnSettingChange(String a_ID)
-    If a_ID == "iEnchantmentStrengthMode:General"
-        SyncEnchantmentStrengthMode()
+    If a_ID == "iEnchantmentStrengthMode:General" || a_ID == "iExtraRingMode:General"
+        SyncSettings()
         ForcePageReset()
     EndIf
 EndEvent
