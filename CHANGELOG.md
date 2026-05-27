@@ -2,6 +2,7 @@
 
 ## 0.3.0 - Unreleased
 
+- feat: show finger selection modifier hint in the SkyUI inventory footer
 - feat: improve unequip flow for assigned rings
 - feat: show left and right equip controls for rings in inventory
 - feat: show ring finger assignments in inventory
