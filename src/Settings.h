@@ -21,6 +21,8 @@ public:
     static constexpr std::uint32_t kDefaultEnchantmentStrengthPercent {100};
     static constexpr std::uint32_t kMinimumEnchantmentStrengthPercent {5};
     static constexpr std::uint32_t kDefaultFixedEnchantmentStrengthPercent {50};
+    static constexpr std::uint32_t kDefaultFingerSelectModifierKey {42};
+    static constexpr std::uint32_t kDefaultFingerSelectModifierButton {274};
 
     struct ReloadResult {
         bool extraRingModeChanged {false};
@@ -40,10 +42,14 @@ public:
     [[nodiscard]] std::uint32_t GetFixedEnchantmentStrengthPercent() const;
     [[nodiscard]] float GetRingEnchantmentScale(std::uint32_t a_enchantedRingCount) const;
     [[nodiscard]] bool AlwaysChooseFinger() const;
+    [[nodiscard]] std::uint32_t GetFingerSelectModifierKey() const;
+    [[nodiscard]] std::uint32_t GetFingerSelectModifierButton() const;
 
 private:
     std::atomic<ExtraRingMode> extraRingMode_ {ExtraRingMode::kFunctional};
     std::atomic<EnchantmentStrengthMode> enchantmentStrengthMode_ {EnchantmentStrengthMode::kFullStrength};
     std::atomic<std::uint32_t> fixedEnchantmentStrengthPercent_ {kDefaultFixedEnchantmentStrengthPercent};
     std::atomic_bool alwaysChooseFinger_ {false};
+    std::atomic<std::uint32_t> fingerSelectModifierKey_ {kDefaultFingerSelectModifierKey};
+    std::atomic<std::uint32_t> fingerSelectModifierButton_ {kDefaultFingerSelectModifierButton};
 };

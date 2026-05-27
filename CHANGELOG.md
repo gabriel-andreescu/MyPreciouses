@@ -3,6 +3,7 @@
 ## 0.3.0 - Unreleased
 
 - feat: add translation support for UI text
+- feat: add configurable finger selection modifier keybinds
 - feat: show finger selection modifier hint in the SkyUI inventory footer
 - feat: improve unequip flow for assigned rings
 - feat: show left and right equip controls for rings in inventory

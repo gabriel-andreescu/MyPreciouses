@@ -31,6 +31,15 @@
           }
         },
         {
+          "type": "hiddenToggle",
+          "text": "Controller input selected",
+          "groupControl": 3,
+          "valueOptions": {
+            "sourceType": "PropertyValueBool",
+            "propertyName": "bControllerInputSelected"
+          }
+        },
+        {
           "id": "iExtraRingMode:General",
           "text": "Extra ring mode",
           "type": "enum",
@@ -94,6 +103,34 @@
           "valueOptions": {
             "sourceType": "ModSettingBool",
             "defaultValue": false
+          }
+        },
+        {
+          "id": "iFingerSelectModifierKey:General",
+          "text": "Finger select modifier",
+          "type": "keymap",
+          "ignoreConflicts": true,
+          "groupCondition": {
+            "NOT": 3
+          },
+          "groupBehavior": "skip",
+          "help": "Hold this key while equipping a ring to choose a finger.",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 42
+          }
+        },
+        {
+          "id": "iFingerSelectModifierButton:General",
+          "text": "Finger select modifier",
+          "type": "keymap",
+          "ignoreConflicts": true,
+          "groupCondition": 3,
+          "groupBehavior": "skip",
+          "help": "Hold this button while equipping a ring to choose a finger.",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 274
           }
         }
       ]

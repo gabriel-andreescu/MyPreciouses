@@ -6,8 +6,11 @@
 #include <array>
 #include <filesystem>
 #include <format>
+#include <string>
 #include <string_view>
 #include <utility>
+
+#include <SKSE/InputMap.h>
 
 namespace {
 constexpr auto kModName = "LeftHandRingsSKSE"sv;
@@ -16,6 +19,8 @@ constexpr auto kExtraRingModeKey = "iExtraRingMode";
 constexpr auto kEnchantmentStrengthModeKey = "iEnchantmentStrengthMode";
 constexpr auto kFixedEnchantmentStrengthKey = "iFixedEnchantmentStrengthPercent";
 constexpr auto kAlwaysChooseFingerKey = "bAlwaysChooseFinger";
+constexpr auto kFingerSelectModifierKeyKey = "iFingerSelectModifierKey";
+constexpr auto kFingerSelectModifierButtonKey = "iFingerSelectModifierButton";
 
 [[nodiscard]] ExtraRingMode ClampExtraRingMode(const int a_value) {
     switch (a_value) {
@@ -43,6 +48,22 @@ constexpr auto kAlwaysChooseFingerKey = "bAlwaysChooseFinger";
     return std::min(static_cast<std::uint32_t>(a_value), Settings::kDefaultEnchantmentStrengthPercent);
 }
 
+[[nodiscard]] std::uint32_t ClampFingerSelectModifierKey(const int a_value) {
+    if (a_value >= SKSE::InputMap::kMacro_KeyboardOffset && a_value < SKSE::InputMap::kMacro_MouseWheelOffset) {
+        return static_cast<std::uint32_t>(a_value);
+    }
+
+    return Settings::kDefaultFingerSelectModifierKey;
+}
+
+[[nodiscard]] std::uint32_t ClampFingerSelectModifierButton(const int a_value) {
+    if (a_value >= SKSE::InputMap::kMacro_GamepadOffset && a_value < SKSE::InputMap::kMaxMacros) {
+        return static_cast<std::uint32_t>(a_value);
+    }
+
+    return Settings::kDefaultFingerSelectModifierButton;
+}
+
 template <class T>
 void GetValue(
     CSimpleIniA& a_ini,
@@ -61,6 +82,8 @@ void Settings::Load() {
     enchantmentStrengthMode_.store(EnchantmentStrengthMode::kFullStrength);
     fixedEnchantmentStrengthPercent_.store(kDefaultFixedEnchantmentStrengthPercent);
     alwaysChooseFinger_.store(false);
+    fingerSelectModifierKey_.store(kDefaultFingerSelectModifierKey);
+    fingerSelectModifierButton_.store(kDefaultFingerSelectModifierButton);
 
     (void)Reload();
 }
@@ -73,10 +96,15 @@ Settings::ReloadResult Settings::Reload() {
     auto rawEnchantmentStrengthMode = static_cast<int>(EnchantmentStrengthMode::kFullStrength);
     auto rawFixedStrength = static_cast<int>(kDefaultFixedEnchantmentStrengthPercent);
     auto alwaysChooseFinger = false;
+    auto rawFingerSelectModifierKey = static_cast<int>(kDefaultFingerSelectModifierKey);
+    auto rawFingerSelectModifierButton = static_cast<int>(kDefaultFingerSelectModifierButton);
 
-    const auto readSettings = [&rawExtraRingMode, &rawEnchantmentStrengthMode, &rawFixedStrength, &alwaysChooseFinger](
-                                  CSimpleIniA& a_ini
-                              ) {
+    const auto readSettings = [&rawExtraRingMode,
+                                  &rawEnchantmentStrengthMode,
+                                  &rawFixedStrength,
+                                  &alwaysChooseFinger,
+                                  &rawFingerSelectModifierKey,
+                                  &rawFingerSelectModifierButton](CSimpleIniA& a_ini) {
         GetValue(
             a_ini,
             rawExtraRingMode,
@@ -105,6 +133,20 @@ Settings::ReloadResult Settings::Reload() {
             kAlwaysChooseFingerKey,
             "; Always show the finger selection menu whenever you use Equip or Left Equip on a ring without pressing a modifier key.\n; Default: false"
         );
+        GetValue(
+            a_ini,
+            rawFingerSelectModifierKey,
+            kSettingsSection,
+            kFingerSelectModifierKeyKey,
+            "; Finger selection modifier for keyboard and mouse input.\n; Default: 42"
+        );
+        GetValue(
+            a_ini,
+            rawFingerSelectModifierButton,
+            kSettingsSection,
+            kFingerSelectModifierButtonKey,
+            "; Finger selection modifier for controller input.\n; Default: 274"
+        );
     };
 
     if (std::filesystem::exists(defaultPath)) {
@@ -124,6 +166,8 @@ Settings::ReloadResult Settings::Reload() {
     const auto extraRingMode = ClampExtraRingMode(rawExtraRingMode);
     const auto enchantmentStrengthMode = ClampStrengthMode(rawEnchantmentStrengthMode);
     const auto fixedStrength = ClampStrengthPercent(rawFixedStrength);
+    const auto fingerSelectModifierKey = ClampFingerSelectModifierKey(rawFingerSelectModifierKey);
+    const auto fingerSelectModifierButton = ClampFingerSelectModifierButton(rawFingerSelectModifierButton);
 
     if (std::cmp_not_equal(rawExtraRingMode, std::to_underlying(extraRingMode))) {
         user.SetLongValue(kSettingsSection, kExtraRingModeKey, static_cast<long>(std::to_underlying(extraRingMode)));
@@ -138,27 +182,43 @@ Settings::ReloadResult Settings::Reload() {
     if (std::cmp_not_equal(rawFixedStrength, fixedStrength)) {
         user.SetLongValue(kSettingsSection, kFixedEnchantmentStrengthKey, static_cast<long>(fixedStrength));
     }
+    if (std::cmp_not_equal(rawFingerSelectModifierKey, fingerSelectModifierKey)) {
+        user.SetLongValue(kSettingsSection, kFingerSelectModifierKeyKey, static_cast<long>(fingerSelectModifierKey));
+    }
+    if (std::cmp_not_equal(rawFingerSelectModifierButton, fingerSelectModifierButton)) {
+        user.SetLongValue(
+            kSettingsSection,
+            kFingerSelectModifierButtonKey,
+            static_cast<long>(fingerSelectModifierButton)
+        );
+    }
 
     const auto extraRingModeChanged = extraRingMode_.exchange(extraRingMode) != extraRingMode;
     const auto modeChanged = enchantmentStrengthMode_.exchange(enchantmentStrengthMode) != enchantmentStrengthMode;
     const auto fixedStrengthChanged = fixedEnchantmentStrengthPercent_.exchange(fixedStrength) != fixedStrength;
-    const auto fingerSelectionChanged = alwaysChooseFinger_.exchange(alwaysChooseFinger) != alwaysChooseFinger;
+    const auto alwaysChooseFingerChanged = alwaysChooseFinger_.exchange(alwaysChooseFinger) != alwaysChooseFinger;
+    const auto modifierKeyChanged = fingerSelectModifierKey_.exchange(fingerSelectModifierKey)
+                                    != fingerSelectModifierKey;
+    const auto modifierButtonChanged = fingerSelectModifierButton_.exchange(fingerSelectModifierButton)
+                                       != fingerSelectModifierButton;
 
     (void)user.SaveFile(userPath.string().c_str());
 
     logger::info(
-        "Settings: loaded | path={} | extraRingMode={} | enchantmentStrengthMode={} | fixedStrength={} | alwaysChooseFinger={}",
+        "Settings: loaded | path={} | extraRingMode={} | enchantmentStrengthMode={} | fixedStrength={} | alwaysChooseFinger={} | fingerSelectModifierKey={} | fingerSelectModifierButton={}",
         userPath.string(),
         std::to_underlying(GetExtraRingMode()),
         std::to_underlying(GetEnchantmentStrengthMode()),
         GetFixedEnchantmentStrengthPercent(),
-        AlwaysChooseFinger()
+        AlwaysChooseFinger(),
+        GetFingerSelectModifierKey(),
+        GetFingerSelectModifierButton()
     );
 
     return ReloadResult {
         .extraRingModeChanged = extraRingModeChanged,
         .enchantmentStrengthChanged = modeChanged || fixedStrengthChanged,
-        .fingerSelectionChanged = fingerSelectionChanged,
+        .fingerSelectionChanged = alwaysChooseFingerChanged || modifierKeyChanged || modifierButtonChanged,
     };
 }
 
@@ -176,6 +236,14 @@ std::uint32_t Settings::GetFixedEnchantmentStrengthPercent() const {
 
 bool Settings::AlwaysChooseFinger() const {
     return alwaysChooseFinger_.load();
+}
+
+std::uint32_t Settings::GetFingerSelectModifierKey() const {
+    return fingerSelectModifierKey_.load();
+}
+
+std::uint32_t Settings::GetFingerSelectModifierButton() const {
+    return fingerSelectModifierButton_.load();
 }
 
 float Settings::GetRingEnchantmentScale(const std::uint32_t a_enchantedRingCount) const {

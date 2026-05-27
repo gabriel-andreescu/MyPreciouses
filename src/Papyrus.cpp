@@ -20,6 +20,12 @@ namespace {
         if (reload.extraRingModeChanged || reload.enchantmentStrengthChanged) {
             logger::info("Settings: ring behavior changed | action=refreshVirtualRings");
             stl::add_task(RefreshAfterRingSettingsReload);
+            return;
+        }
+
+        if (reload.fingerSelectionChanged) {
+            logger::info("Settings: finger selection changed | action=refreshUI");
+            stl::add_task(UI::RefreshRingRows);
         }
     }
 

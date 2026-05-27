@@ -9,9 +9,11 @@
 #include "Settings.h"
 #include "VirtualRings.h"
 
+#include <RE/B/BSInputDevice.h>
 #include <RE/B/BSPCGamepadDeviceDelegate.h>
 #include <RE/B/BSPCGamepadDeviceHandler.h>
 #include <RE/B/BSWin32KeyboardDevice.h>
+#include <RE/B/BSWin32MouseDevice.h>
 #include <RE/G/GFxFunctionHandler.h>
 #include <RE/S/SendHUDMessage.h>
 #include <RE/S/SendUIMessage.h>
@@ -22,6 +24,8 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+
+#include <SKSE/InputMap.h>
 
 namespace UI {
 namespace {
@@ -49,9 +53,7 @@ namespace {
     constexpr auto kVanillaSelectedEntryPath = "_root.Menu_mc.InventoryLists_mc.ItemsList.selectedEntry";
     constexpr auto kVanillaUpdateBottomBarPath = "_root.Menu_mc.UpdateBottomBarButtons";
     constexpr auto kInventoryInvalidateListDataPath = "_root.Menu_mc.inventoryLists.InvalidateListData";
-    constexpr auto kSkyUIGameplayContext = 0;
     constexpr auto kSkyUIItemMenuContext = 3;
-    constexpr auto kSkyUIShiftKeyCode = 42;
     constexpr auto kFingerSelectTitleKey = "$LHRS_FingerSelect_Title";
     constexpr auto kFingerSelectFingerHeaderKey = "$LHRS_FingerSelect_FingerHeader";
     constexpr auto kFingerSelectEquippedHeaderKey = "$LHRS_FingerSelect_EquippedHeader";
@@ -555,15 +557,9 @@ namespace {
         a_movie.CreateObject(std::addressof(a_control));
 
         const auto platform = GetScaleformIntMember(a_inventoryMenu, "_platform", 0);
-        if (platform == 0) {
-            a_control.SetMember("keyCode", kSkyUIShiftKeyCode);
-            return;
-        }
-
-        RE::GFxValue name;
-        name.SetString("Sprint");
-        a_control.SetMember("name", name);
-        a_control.SetMember("context", kSkyUIGameplayContext);
+        const auto keyCode = platform == 0 ? Settings::GetSingleton()->GetFingerSelectModifierKey()
+                                           : Settings::GetSingleton()->GetFingerSelectModifierButton();
+        a_control.SetMember("keyCode", static_cast<int>(keyCode));
     }
 
     void SetSkyUIRingEquipButtonData(RE::GFxMovie& a_movie, RE::GFxValue& a_result) {
@@ -1870,21 +1866,14 @@ namespace {
         return device ? stl::unrestricted_cast<RE::BSWin32KeyboardDevice*>(device) : nullptr;
     }
 
-    [[nodiscard]] bool IsKeyboardKeyPressed(
-        const RE::BSWin32KeyboardDevice& a_keyboard,
-        const RE::BSKeyboardDevice::Key a_key
-    ) {
+    [[nodiscard]] bool IsKeyboardKeyPressed(const RE::BSWin32KeyboardDevice& a_keyboard, const std::uint32_t a_key) {
         const auto& keys = a_keyboard.GetRuntimeData().curState;
-        const auto key = static_cast<std::uint32_t>(a_key);
-        return key < std::size(keys) && (keys[key] & 0x80) != 0;
+        return a_key < std::size(keys) && (keys[a_key] & 0x80) != 0;
     }
 
-    [[nodiscard]] bool IsShiftDown() {
-        auto* input = RE::BSInputDeviceManager::GetSingleton();
-        auto* keyboard = input ? GetKeyboard(*input) : nullptr;
-        return keyboard
-               && (IsKeyboardKeyPressed(*keyboard, RE::BSKeyboardDevice::Key::kLeftShift)
-                   || IsKeyboardKeyPressed(*keyboard, RE::BSKeyboardDevice::Key::kRightShift));
+    [[nodiscard]] RE::BSWin32MouseDevice* GetMouse(RE::BSInputDeviceManager& a_input) {
+        auto* device = a_input.devices[std::to_underlying(RE::INPUT_DEVICE::kMouse)];
+        return device ? stl::unrestricted_cast<RE::BSWin32MouseDevice*>(device) : nullptr;
     }
 
     [[nodiscard]] RE::BSPCGamepadDeviceDelegate* GetGamepad(RE::BSInputDeviceManager& a_input) {
@@ -1893,26 +1882,43 @@ namespace {
         return handler ? handler->GetRuntimeData().currentPCGamePadDelegate : nullptr;
     }
 
-    [[nodiscard]] bool IsGamepadKeyPressed(RE::BSPCGamepadDeviceDelegate& a_gamepad, const std::uint32_t a_key) {
-        const auto& buttons = static_cast<RE::BSInputDevice&>(a_gamepad).GetRuntimeData().deviceButtons;
+    [[nodiscard]] bool IsDeviceKeyPressed(const RE::BSInputDevice& a_device, const std::uint32_t a_key) {
+        const auto& buttons = a_device.GetRuntimeData().deviceButtons;
         const auto it = buttons.find(a_key);
         return it != buttons.end() && it->second && it->second->heldDownSecs > 0.0F;
     }
 
-    [[nodiscard]] bool IsGamepadSprintDown() {
-        auto* controlMap = RE::ControlMap::GetSingleton();
+    [[nodiscard]] bool IsPCFingerSelectModifierDown() {
         auto* input = RE::BSInputDeviceManager::GetSingleton();
-        if (!controlMap || !input) {
+        if (!input) {
             return false;
         }
 
-        const auto key = controlMap->GetMappedKey(
-            "Sprint",
-            RE::INPUT_DEVICE::kGamepad,
-            RE::UserEvents::INPUT_CONTEXT_ID::kGameplay
+        const auto keyCode = Settings::GetSingleton()->GetFingerSelectModifierKey();
+        if (keyCode < SKSE::InputMap::kMacro_MouseButtonOffset) {
+            auto* keyboard = GetKeyboard(*input);
+            return keyboard && IsKeyboardKeyPressed(*keyboard, keyCode);
+        }
+
+        auto* mouse = GetMouse(*input);
+        return mouse
+               && IsDeviceKeyPressed(
+                   static_cast<const RE::BSInputDevice&>(*mouse),
+                   keyCode - SKSE::InputMap::kMacro_MouseButtonOffset
+               );
+    }
+
+    [[nodiscard]] bool IsGamepadFingerSelectModifierDown() {
+        auto* input = RE::BSInputDeviceManager::GetSingleton();
+        auto* gamepad = input ? GetGamepad(*input) : nullptr;
+        if (!gamepad) {
+            return false;
+        }
+
+        const auto key = SKSE::InputMap::GamepadKeycodeToMask(
+            Settings::GetSingleton()->GetFingerSelectModifierButton()
         );
-        auto* gamepad = GetGamepad(*input);
-        return key != RE::ControlMap::kInvalid && gamepad && IsGamepadKeyPressed(*gamepad, key);
+        return key != 0xFF && IsDeviceKeyPressed(static_cast<const RE::BSInputDevice&>(*gamepad), key);
     }
 
     [[nodiscard]] RE::INPUT_DEVICE GetPreferredInputDevice() {
@@ -1929,14 +1935,14 @@ namespace {
             };
         }
 
-        if (IsShiftDown()) {
+        if (IsPCFingerSelectModifierDown()) {
             return FingerSelectTrigger {
                 .requested = true,
                 .inputDevice = RE::INPUT_DEVICE::kKeyboard,
             };
         }
 
-        if (IsGamepadSprintDown()) {
+        if (IsGamepadFingerSelectModifierDown()) {
             return FingerSelectTrigger {
                 .requested = true,
                 .inputDevice = RE::INPUT_DEVICE::kGamepad,
