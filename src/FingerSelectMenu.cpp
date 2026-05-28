@@ -12,6 +12,8 @@ namespace {
     constexpr auto kClipName = "LHRSFingerSelect_mc";
     constexpr auto kClipPath = "_root.LHRSFingerSelect_mc";
     constexpr auto kClipDepth = 1000000;
+    constexpr auto kClipWidth = 1280.0F;
+    constexpr auto kClipHeight = 720.0F;
     constexpr auto kPlatformPC = 0;
     constexpr auto kPlatform360 = 2;
     constexpr auto kPlatformPS3 = 3;
@@ -119,6 +121,25 @@ namespace {
         RE::GFxValue value;
         value.SetBoolean(a_value);
         return a_movie.SetVariable(a_path, value, RE::GFxMovie::SetVarType::kNormal);
+    }
+
+    [[nodiscard]] bool SetNumber(RE::GFxMovieView& a_movie, const char* a_path, const double a_value) {
+        RE::GFxValue value;
+        value.SetNumber(a_value);
+        return a_movie.SetVariable(a_path, value, RE::GFxMovie::SetVarType::kNormal);
+    }
+
+    [[nodiscard]] float CenterOffset(const float a_left, const float a_right, const float a_size) {
+        return a_left + (a_right - a_left - a_size) * 0.5F;
+    }
+
+    void CenterClip(RE::GFxMovieView& a_movie) {
+        const auto visibleRect = a_movie.GetVisibleFrameRect();
+        const auto x = CenterOffset(visibleRect.left, visibleRect.right, kClipWidth);
+        const auto y = CenterOffset(visibleRect.top, visibleRect.bottom, kClipHeight);
+
+        static_cast<void>(SetNumber(a_movie, std::format("{}._x", kClipPath).c_str(), x));
+        static_cast<void>(SetNumber(a_movie, std::format("{}._y", kClipPath).c_str(), y));
     }
 
     void SetHostControlsEnabled(RE::GFxMovieView& a_movie, const Data::HostMenu a_hostMenu, const bool a_enabled) {
@@ -431,6 +452,7 @@ namespace {
         }
 
         static_cast<void>(SetBool(a_movie, std::format("{}._lockroot", kClipPath).c_str(), true));
+        CenterClip(a_movie);
 
         std::array<RE::GFxValue, 1> loadArgs;
         loadArgs[0].SetString(kMovieFile);
