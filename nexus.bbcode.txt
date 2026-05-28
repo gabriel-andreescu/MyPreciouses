@@ -72,7 +72,8 @@ The mod was designed to avoid conflicts. If you find any compatibility issues, p
 
 [size=4][color=#00ffff]TODO[/color][/size]
 [list]
-[*]NPC and follower left-hand ring support.[/*]
+[*]Follower multi-ring support.[/*]
+[*]NPCs multi-ring support.[/*]
 [*]Vanilla UI support.[/*]
 [*][s]Controller support.[/s] [color=#00ff00]DONE[/color][/*]
 [*][s]VR support.[/s] [color=#00ff00]DONE[/color][/*]
@@ -82,12 +83,12 @@ The mod was designed to avoid conflicts. If you find any compatibility issues, p
 
 [size=4][color=#00ffff]UNINSTALLATION[/color][/size]
 [list]
-[*]Unequip any left-hand rings you have equipped.[/*]
+[*]Unequip any extra rings you have equipped.[/*]
 [*]Save the game.[/*]
 [*]Remove the mod.[/*]
 [/list]
 
-Avoid removing it mid-playthrough without unequipping your left-hand rings first, especially if the rings have scripts attached.
+Avoid removing it mid-playthrough without unequipping your extra rings first, especially if the rings have scripts attached.
 
 
 [size=4][color=#00ffff]SOURCE[/color][/size]

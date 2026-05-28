@@ -110,21 +110,21 @@ Settings::ReloadResult Settings::Reload() {
             rawExtraRingMode,
             kSettingsSection,
             kExtraRingModeKey,
-            "; Extra ring mode.\n; Functional applies normal ring enchantments and scripts. Cosmetic only shows the ring model.\n; 0 = Functional, 1 = Cosmetic.\n; Default: 0"
+            "; Extra ring mode.\n; Functional applies normal ring enchantments and scripts. Cosmetic only shows the ring model.\n; Applies only to extra rings. The vanilla right-hand index finger ring is unaffected.\n; 0 = Functional, 1 = Cosmetic.\n; Default: 0"
         );
         GetValue(
             a_ini,
             rawEnchantmentStrengthMode,
             kSettingsSection,
             kEnchantmentStrengthModeKey,
-            "; Ring enchantment strength mode.\n; Full keeps normal strength. Fixed uses the chosen strength. Split divides 100% evenly between enchanted rings.\n; 0 = Full strength, 1 = Fixed strength, 2 = Split strength.\n; Default: 0"
+            "; Ring enchantment strength mode.\n; Full keeps normal strength. Fixed uses the chosen strength. Split divides 100% evenly between equipped enchanted rings.\n; Applies to all equipped enchanted rings, including the vanilla right-hand index finger, when more than one enchanted ring is equipped.\n; 0 = Full strength, 1 = Fixed strength, 2 = Split strength.\n; Default: 0"
         );
         GetValue(
             a_ini,
             rawFixedStrength,
             kSettingsSection,
             kFixedEnchantmentStrengthKey,
-            "; Fixed ring enchantment strength. Applies only when enchantment strength is set to Fixed strength.\n; Valid range: 5-100.\n; Default: 50"
+            "; Fixed ring enchantment strength.\n; Applies only when enchantment strength mode is Fixed strength and more than one enchanted ring is equipped.\n; Each enchanted ring uses this strength, including the vanilla right-hand index finger.\n; Valid range: 5-100.\n; Default: 50"
         );
         GetValue(
             a_ini,
