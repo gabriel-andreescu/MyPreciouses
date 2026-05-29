@@ -7,6 +7,7 @@
 #include "RingVisuals.h"
 #include "Selection.h"
 #include "Settings.h"
+#include "VanillaCompatibility.h"
 
 #include <algorithm>
 #include <array>
@@ -362,6 +363,28 @@ namespace {
         RingSounds::Play(*a_action.actor, a_action.sourceFormID, a_action.sound);
     }
 
+    [[nodiscard]] std::vector<RE::FormID> GetFunctionalVirtualRingSourceFormIDs() {
+        std::vector<RE::FormID> sourceFormIDs;
+        std::scoped_lock lock(g_lock);
+        for (const auto target : kVirtualRingTargets) {
+            const auto& state = TargetStates()[ToIndex(target)];
+            if (!state.active || state.mode != ExtraRingMode::kFunctional || state.sourceFormID == 0) {
+                continue;
+            }
+
+            sourceFormIDs.push_back(state.sourceFormID);
+        }
+
+        return sourceFormIDs;
+    }
+
+    void RefreshVanillaCompatibility() {
+        const auto sourceFormIDs = GetFunctionalVirtualRingSourceFormIDs();
+        VanillaCompatibility::RefreshFrostmoonVirtualRings(
+            std::span<const RE::FormID> {sourceFormIDs.data(), sourceFormIDs.size()}
+        );
+    }
+
     void StorePendingSound(const RefreshOptions& a_options) {
         if (a_options.sound == RingSounds::Event::kNone || !a_options.soundTarget) {
             return;
@@ -640,6 +663,7 @@ namespace {
 
         if (auto* player = RE::PlayerCharacter::GetSingleton()) {
             RingEnchantments::RefreshVanillaRingSlotEffects(*player);
+            RefreshVanillaCompatibility();
         }
 
         RingVisuals::RequestRefresh();
@@ -706,6 +730,7 @@ void Clear(const RingTarget a_target, const RingSounds::Event a_sound) {
     RunPendingClear(action);
     if (player) {
         RingEnchantments::RefreshVanillaRingSlotEffects(*player);
+        RefreshVanillaCompatibility();
     }
     RequestRefreshImpl({});
     RingVisuals::RequestRefresh();
@@ -727,6 +752,7 @@ void Revert() {
     for (const auto& action : actions) {
         RunPendingClear(action);
     }
+    VanillaCompatibility::Revert();
     RingVisuals::Revert();
 }
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3 - 2026-05-29
+
+- fix: support Frostmoon rings on virtual fingers
+
 ## 0.3.2 - 2026-05-29
 
 - fix: prevent inventory menu crashes when equipping rings through the finger selector

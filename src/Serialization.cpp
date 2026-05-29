@@ -2,6 +2,7 @@
 
 #include "EventBindings.h"
 #include "Selection.h"
+#include "VanillaCompatibility.h"
 #include "VirtualRings.h"
 
 #include <array>
@@ -223,6 +224,7 @@ namespace {
         }
 
         EventBindings::Save(*a_intfc, VirtualRings::GetEventBindingSources());
+        VanillaCompatibility::Save(*a_intfc);
     }
 
     void LoadCallback(SKSE::SerializationInterface* a_intfc) {
@@ -242,6 +244,10 @@ namespace {
             };
 
             if (EventBindings::LoadRecord(recordInfo, *a_intfc)) {
+                continue;
+            }
+
+            if (VanillaCompatibility::LoadRecord(recordInfo, *a_intfc)) {
                 continue;
             }
 

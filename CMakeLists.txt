@@ -91,6 +91,8 @@ set(SOURCES
         src/RingTargets.h
         src/UI.cpp
         src/UI.h
+        src/VanillaCompatibility.cpp
+        src/VanillaCompatibility.h
         src/VirtualRings.cpp
         src/VirtualRings.h
         "${CMAKE_CURRENT_BINARY_DIR}/version.rc"

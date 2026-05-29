@@ -8,6 +8,8 @@ class EventListener final :
     REX::Singleton<EventListener>,
     public RE::BSTEventSink<Events::ContainerChanged>,
     public RE::BSTEventSink<Events::Equip>,
+    public RE::BSTEventSink<Events::SpellCast>,
+    public RE::BSTEventSink<Events::SwitchRaceComplete>,
     public RE::BSTEventSink<RE::MenuOpenCloseEvent>,
     public RE::BSInputDeviceManager::Sink {
 public:
@@ -22,6 +24,14 @@ protected:
         RE::BSTEventSource<Events::ContainerChanged>* a_eventSource
     ) override;
     Control ProcessEvent(const Events::Equip* a_event, RE::BSTEventSource<Events::Equip>* a_eventSource) override;
+    Control ProcessEvent(
+        const Events::SpellCast* a_event,
+        RE::BSTEventSource<Events::SpellCast>* a_eventSource
+    ) override;
+    Control ProcessEvent(
+        const Events::SwitchRaceComplete* a_event,
+        RE::BSTEventSource<Events::SwitchRaceComplete>* a_eventSource
+    ) override;
     Control ProcessEvent(
         const RE::MenuOpenCloseEvent* a_event,
         RE::BSTEventSource<RE::MenuOpenCloseEvent>* a_eventSource

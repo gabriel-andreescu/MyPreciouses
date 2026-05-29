@@ -4,6 +4,7 @@
 #include "Inventory.h"
 #include "Selection.h"
 #include "UI.h"
+#include "VanillaCompatibility.h"
 
 namespace {
 bool g_cancelInputSuppressed = false;
@@ -32,6 +33,8 @@ void EventListener::Register() {
 
     eventSource->AddEventSink<Events::ContainerChanged>(listener);
     eventSource->AddEventSink<Events::Equip>(listener);
+    eventSource->AddEventSink<Events::SpellCast>(listener);
+    eventSource->AddEventSink<Events::SwitchRaceComplete>(listener);
     ui->AddEventSink<RE::MenuOpenCloseEvent>(listener);
 
     auto* input = RE::BSInputDeviceManager::GetSingleton();
@@ -74,6 +77,40 @@ EventListener::Control EventListener::ProcessEvent(
 
     Selection::QueueCheck();
     UI::QueueRefreshAfterRingEquip();
+    return Control::kContinue;
+}
+
+EventListener::Control EventListener::ProcessEvent(
+    const Events::SpellCast* a_event,
+    [[maybe_unused]] RE::BSTEventSource<Events::SpellCast>* a_eventSource
+) {
+    if (!a_event) {
+        return Control::kContinue;
+    }
+
+    auto* eventReference = a_event->object.get();
+    auto* actor = eventReference ? eventReference->As<RE::Actor>() : nullptr;
+    if (actor && actor->IsPlayerRef()) {
+        VanillaCompatibility::OnPlayerSpellCast(*actor, a_event->spell);
+    }
+
+    return Control::kContinue;
+}
+
+EventListener::Control EventListener::ProcessEvent(
+    const Events::SwitchRaceComplete* a_event,
+    [[maybe_unused]] RE::BSTEventSource<Events::SwitchRaceComplete>* a_eventSource
+) {
+    if (!a_event) {
+        return Control::kContinue;
+    }
+
+    auto* eventReference = a_event->subject.get();
+    auto* actor = eventReference ? eventReference->As<RE::Actor>() : nullptr;
+    if (actor && actor->IsPlayerRef()) {
+        VanillaCompatibility::OnPlayerRaceSwitchComplete(*actor);
+    }
+
     return Control::kContinue;
 }
 
