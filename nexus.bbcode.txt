@@ -56,6 +56,7 @@ The mod was designed to avoid conflicts. If you find any compatibility issues, p
 
 [list]
 [*]All vanilla, DLC, and CC rings are supported.[/*]
+[*][b]Frostmoon Pack rings[/b]: Each different Frostmoon ring can provide its werewolf bonus at the same time. Extra copies of the same Frostmoon ring can still be worn, but they are cosmetic only.[/*]
 [*][b]Mod-added rings[/b]: Supported if they are armor records using body slot 36 (Ring) and have a ring armor addon/model.[/*]
 [*][b]Other ring-like items[/b]: Rings that use a different body slot are ignored. That usually means they stay compatible, but this mod's extra ring features will not apply to them.[/*]
 [*][b]Enchantments[/b]: Supported, including player-made enchantments and custom user names.[/*]
