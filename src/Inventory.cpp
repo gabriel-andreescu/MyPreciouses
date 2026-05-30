@@ -7,6 +7,8 @@
 
 namespace Inventory {
 namespace {
+    constexpr auto kClothingRingKeyword = "ClothingRing"sv;
+
     [[nodiscard]] std::optional<std::string> ReadPlayerDisplayName(const RE::ExtraDataList& a_extraList) {
         const auto* displayName = a_extraList.GetByType<RE::ExtraTextDisplayData>();
         if (!displayName || !displayName->IsPlayerSet() || displayName->displayName.c_str()[0] == '\0') {
@@ -67,6 +69,59 @@ namespace {
             }
         }
         return count;
+    }
+
+    struct RightWornRingEntry {
+        RE::TESObjectARMO* ring {nullptr};
+        RE::ExtraDataList* extraList {nullptr};
+        bool protectedStack {false};
+    };
+
+    [[nodiscard]] RightWornRingEntry MakeRightWornRingEntry(RE::TESObjectARMO& a_ring, RE::ExtraDataList* a_extraList) {
+        return RightWornRingEntry {
+            .ring = std::addressof(a_ring),
+            .extraList = a_extraList,
+            .protectedStack = IsProtectedRingStack(a_extraList),
+        };
+    }
+
+    [[nodiscard]] std::optional<RightWornRingEntry> FindRightWornRingEntry(RE::Actor& a_actor) {
+        auto* inventoryChanges = a_actor.GetInventoryChanges();
+        if (!inventoryChanges || !inventoryChanges->entryList) {
+            return std::nullopt;
+        }
+
+        std::optional<RightWornRingEntry> firstRightWorn;
+        for (auto* entry : *inventoryChanges->entryList) {
+            auto* ring = entry ? AsRing(entry->object) : nullptr;
+            if (!ring) {
+                continue;
+            }
+
+            if (entry->extraLists) {
+                for (auto* extraList : *entry->extraLists) {
+                    if (!Inventory::IsRightWorn(extraList)) {
+                        continue;
+                    }
+
+                    auto rightWorn = MakeRightWornRingEntry(*ring, extraList);
+                    if (rightWorn.protectedStack) {
+                        return rightWorn;
+                    }
+
+                    if (!firstRightWorn) {
+                        firstRightWorn = rightWorn;
+                    }
+                }
+                continue;
+            }
+
+            if (entry->IsWorn(false) && !firstRightWorn) {
+                firstRightWorn = MakeRightWornRingEntry(*ring, nullptr);
+            }
+        }
+
+        return firstRightWorn;
     }
 
 }
@@ -246,25 +301,48 @@ bool IsRightWorn(const RE::ExtraDataList* a_extraList) {
     return a_extraList && a_extraList->HasType<RE::ExtraWorn>();
 }
 
+bool HasRightWornRing(RE::Actor& a_actor) {
+    return FindRightWornRingEntry(a_actor).has_value();
+}
+
 bool HasProtectedRightWornRing(RE::Actor& a_actor) {
-    auto* inventoryChanges = a_actor.GetInventoryChanges();
-    if (!inventoryChanges || !inventoryChanges->entryList) {
-        return false;
+    const auto rightWorn = FindRightWornRingEntry(a_actor);
+    return rightWorn && rightWorn->protectedStack;
+}
+
+RightWornRingUnequipResult UnequipRightWornRing(RE::Actor& a_actor) {
+    const auto rightWorn = FindRightWornRingEntry(a_actor);
+    if (!rightWorn) {
+        return RightWornRingUnequipResult::kNone;
     }
 
-    for (auto* entry : *inventoryChanges->entryList) {
-        if (!entry || !AsRing(entry->object) || !entry->extraLists) {
-            continue;
-        }
-
-        for (auto* extraList : *entry->extraLists) {
-            if (IsRightWorn(extraList) && IsProtectedRingStack(extraList)) {
-                return true;
-            }
-        }
+    if (!rightWorn->ring) {
+        return RightWornRingUnequipResult::kFailed;
     }
 
-    return false;
+    if (rightWorn->protectedStack) {
+        return RightWornRingUnequipResult::kProtected;
+    }
+
+    auto* equipManager = RE::ActorEquipManager::GetSingleton();
+    if (!equipManager) {
+        return RightWornRingUnequipResult::kFailed;
+    }
+
+    equipManager->UnequipObject(
+        std::addressof(a_actor),
+        rightWorn->ring,
+        rightWorn->extraList,
+        1,
+        nullptr,
+        true,
+        false,
+        false,
+        true,
+        nullptr
+    );
+
+    return HasRightWornRing(a_actor) ? RightWornRingUnequipResult::kFailed : RightWornRingUnequipResult::kUnequipped;
 }
 
 std::optional<CustomEnchantmentData> ReadCustomEnchantment(const RE::ExtraDataList& a_extraList) {
@@ -432,7 +510,8 @@ RE::TESObjectARMO* AsRing(RE::TESForm* a_form) {
 
 bool IsRing(const RE::TESObjectARMO* a_armor) {
     return a_armor
-           && a_armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing)
+           && (a_armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing)
+               || a_armor->HasKeywordString(kClothingRingKeyword))
            && !a_armor->armorAddons.empty();
 }
 
@@ -462,10 +541,6 @@ bool UnequipRightWornSource(RE::Actor& a_actor, RE::TESObjectARMO& a_ring) {
     }
 
     if (state.rightWornProtected) {
-        return false;
-    }
-
-    if (!state.rightWornExtraList) {
         return false;
     }
 

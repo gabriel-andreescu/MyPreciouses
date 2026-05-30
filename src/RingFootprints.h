@@ -8,6 +8,7 @@
 #include <string_view>
 
 namespace RE {
+class NiSkinInstance;
 class TESObjectARMO;
 }
 
@@ -50,7 +51,12 @@ private:
 
 [[nodiscard]] std::optional<RingBone> ParseFingerBoneName(std::string_view a_name);
 [[nodiscard]] std::string MakeFingerBoneName(const RingBone& a_bone);
-[[nodiscard]] RingBone RetargetBone(const RingBone& a_source, RingTarget a_target, const RingFootprint& a_footprint);
+[[nodiscard]] std::optional<RingBone> RetargetBone(
+    const RingBone& a_source,
+    RingTarget a_target,
+    const RingFootprint& a_footprint
+);
+[[nodiscard]] bool HasOnlyMeaningfulFingerWeights(const RE::NiSkinInstance& a_skin);
 
 [[nodiscard]] RingFootprint GetSourceRingFootprint(const RE::TESObjectARMO& a_ring);
 [[nodiscard]] RingTargetMask GetOccupiedTargets(const RE::TESObjectARMO& a_ring, RingTarget a_target);

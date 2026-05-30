@@ -17,6 +17,7 @@ struct Row {
     std::string fingerLabel;
     std::string equippedRingLabel;
     std::string actionLabel;
+    std::uint16_t previewTargetBits {0};
     bool enabled {true};
 };
 
@@ -31,7 +32,12 @@ struct Result {
     std::size_t index {0};
 };
 
-using ResultCallback = std::function<void(Result)>;
+enum class ResultDisposition : std::uint8_t {
+    kClose,
+    kKeepOpen,
+};
+
+using ResultCallback = std::function<ResultDisposition(Result)>;
 
 struct Labels {
     Labels() = delete;
@@ -43,6 +49,7 @@ struct Labels {
         std::string a_equipAction,
         std::string a_unequipAction,
         std::string a_replaceAction,
+        std::string a_wontFitAction,
         std::string a_cancelAction
     )
         : title(std::move(a_title))
@@ -51,6 +58,7 @@ struct Labels {
         , equipAction(std::move(a_equipAction))
         , unequipAction(std::move(a_unequipAction))
         , replaceAction(std::move(a_replaceAction))
+        , wontFitAction(std::move(a_wontFitAction))
         , cancelAction(std::move(a_cancelAction)) {}
 
     std::string title;
@@ -59,6 +67,7 @@ struct Labels {
     std::string equipAction;
     std::string unequipAction;
     std::string replaceAction;
+    std::string wontFitAction;
     std::string cancelAction;
 };
 
@@ -71,6 +80,8 @@ struct Data {
     Labels labels;
     std::string ringName;
     std::array<Row, kRowCount> rows;
+    std::string previewEmptyRingLabel {"-"};
+    std::uint16_t previewSourceTargetBits {0};
     std::size_t selectedIndex {0};
     RE::INPUT_DEVICE inputDevice {RE::INPUT_DEVICE::kKeyboard};
     HostMenu hostMenu {HostMenu::kInventory};

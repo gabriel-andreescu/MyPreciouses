@@ -64,12 +64,17 @@ struct RingActionResult {
     }
 };
 
-[[nodiscard]] bool Set(RE::TESObjectARMO* a_ring, RingTarget a_target);
+[[nodiscard]] bool Set(
+    RE::TESObjectARMO* a_ring,
+    RingTarget a_target,
+    std::optional<RingTarget> a_moveSourceTarget = std::nullopt
+);
 [[nodiscard]] bool SetCustom(
     RE::TESObjectARMO& a_ring,
     Inventory::CustomEnchantmentKey a_key,
     std::optional<Inventory::ExtraListIdentity> a_identity,
-    RingTarget a_target
+    RingTarget a_target,
+    std::optional<RingTarget> a_moveSourceTarget = std::nullopt
 );
 void Clear(RingTarget a_target);
 void SetRestoredEffectSourceFormID(RingTarget a_target, RE::FormID a_effectSourceFormID);

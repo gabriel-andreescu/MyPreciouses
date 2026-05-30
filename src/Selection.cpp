@@ -95,12 +95,12 @@ namespace {
         const RE::TESObjectARMO& a_ring,
         const std::string_view a_action
     ) {
-        if (!a_occupiedTargets.Contains(kVanillaRingTarget)) {
+        if (!a_occupiedTargets.Empty()) {
             return true;
         }
 
         logger::warn(
-            "Selection: virtual target rejected | action={} | target={} | source={:08X} | reason=vanillaTargetOccupied",
+            "Selection: virtual target rejected | action={} | target={} | source={:08X} | reason=invalidFootprintAnchor",
             a_action,
             TargetLabel(a_target),
             a_ring.GetFormID()
@@ -112,6 +112,49 @@ namespace {
         for (const auto target : a_conflicts) {
             g_snapshot.targets[ToIndex(target)] = {};
         }
+    }
+
+    void ClearVanillaRingSlotConflict(RingActionResult& a_result, const RingTarget a_target) {
+        Clear(a_target);
+        VirtualRings::Clear(a_target);
+        a_result.selectionChanged = true;
+    }
+
+    void ClearVanillaRingSlotConflicts(
+        RingActionResult& a_result,
+        const RE::TESObjectARMO& a_ring,
+        const std::optional<RingTarget> a_selectedTarget
+    ) {
+        const auto occupiedTargets = RingFootprints::GetOccupiedTargets(a_ring, kVanillaRingTarget);
+        auto conflicts = FindConflictingTargets(GetSnapshot(), kVanillaRingTarget, occupiedTargets);
+        if (a_selectedTarget && std::ranges::find(conflicts, *a_selectedTarget) == conflicts.end()) {
+            conflicts.push_back(*a_selectedTarget);
+        }
+
+        for (const auto target : conflicts) {
+            ClearVanillaRingSlotConflict(a_result, target);
+        }
+    }
+
+    template <class Predicate>
+    [[nodiscard]] std::optional<RE::FormID> ClearMoveSourceSelection(
+        Snapshot& a_snapshot,
+        const RingTarget a_target,
+        const RingTarget a_moveSourceTarget,
+        Predicate a_matches
+    ) {
+        if (!IsVirtualRingTarget(a_moveSourceTarget) || a_moveSourceTarget == a_target) {
+            return std::nullopt;
+        }
+
+        auto& selection = a_snapshot.targets[ToIndex(a_moveSourceTarget)];
+        if (!a_matches(selection)) {
+            return std::nullopt;
+        }
+
+        const auto restoredEffectSourceFormID = selection.restoredEffectSourceFormID;
+        selection = {};
+        return restoredEffectSourceFormID;
     }
 
     void ClearVirtualSelection(RE::Actor& a_actor, const RE::TESObjectARMO& a_ring, const RingTarget a_target) {
@@ -424,17 +467,12 @@ namespace {
             return result;
         }
 
-        if (const auto
-                target = FindVirtualTargetForVanillaRingSlotEquip(*player, *ring, a_customKey, a_customIdentity)) {
-            Clear(*target);
-            VirtualRings::Clear(*target);
-            result.selectionChanged = true;
-        }
-
+        const auto target = FindVirtualTargetForVanillaRingSlotEquip(*player, *ring, a_customKey, a_customIdentity);
         if (!EquipVanillaRingSlot(*player, *ring, equipExtraList)) {
             return result;
         }
 
+        ClearVanillaRingSlotConflicts(result, *ring, target);
         result.inventoryChanged = true;
         if (IsInVanillaRingSlot(*player, *ring, a_customKey, a_customIdentity)) {
             RingSounds::Play(*player, *ring, RingSounds::Event::kEquip);
@@ -473,7 +511,13 @@ namespace {
             return;
         }
 
-        if (RingFootprints::GetOccupiedTargets(*ring, a_target).Contains(kVanillaRingTarget)) {
+        const auto occupiedTargets = RingFootprints::GetOccupiedTargets(*ring, a_target);
+        if (occupiedTargets.Empty()) {
+            ClearVirtualSelection(a_actor, *ring, a_target);
+            return;
+        }
+
+        if (occupiedTargets.Contains(kVanillaRingTarget) && Inventory::HasRightWornRing(a_actor)) {
             ClearVirtualSelection(a_actor, *ring, a_target);
             return;
         }
@@ -511,7 +555,7 @@ namespace {
     }
 }
 
-bool Set(RE::TESObjectARMO* a_ring, const RingTarget a_target) {
+bool Set(RE::TESObjectARMO* a_ring, const RingTarget a_target, const std::optional<RingTarget> a_moveSourceTarget) {
     if (!CanUseVirtualTarget(a_target, "set"sv)) {
         return false;
     }
@@ -530,9 +574,24 @@ bool Set(RE::TESObjectARMO* a_ring, const RingTarget a_target) {
 
     std::scoped_lock lock(g_lock);
     auto& selection = g_snapshot.targets[ToIndex(a_target)];
-    const auto restoredEffectSourceFormID = selection.sourceFormID == a_ring->GetFormID()
-                                                ? selection.restoredEffectSourceFormID
-                                                : RE::FormID {0};
+    auto restoredEffectSourceFormID = selection.sourceFormID == a_ring->GetFormID()
+                                          ? selection.restoredEffectSourceFormID
+                                          : RE::FormID {0};
+    if (a_moveSourceTarget) {
+        const auto movedEffectSourceFormID = ClearMoveSourceSelection(
+            g_snapshot,
+            a_target,
+            *a_moveSourceTarget,
+            [formID = a_ring->GetFormID()](const State& a_selection) {
+                return a_selection.MatchesForm(formID);
+            }
+        );
+        if (!movedEffectSourceFormID) {
+            return false;
+        }
+
+        restoredEffectSourceFormID = *movedEffectSourceFormID;
+    }
     ClearConflictingSelections(conflicts);
     selection = State {
         .kind = Kind::kFormOnly,
@@ -546,7 +605,8 @@ bool SetCustom(
     RE::TESObjectARMO& a_ring,
     Inventory::CustomEnchantmentKey a_key,
     std::optional<Inventory::ExtraListIdentity> a_identity,
-    const RingTarget a_target
+    const RingTarget a_target,
+    const std::optional<RingTarget> a_moveSourceTarget
 ) {
     if (!CanUseVirtualTarget(a_target, "setCustom"sv)) {
         return false;
@@ -561,9 +621,24 @@ bool SetCustom(
 
     std::scoped_lock lock(g_lock);
     const auto& oldSelection = g_snapshot.targets[ToIndex(a_target)];
-    const auto restoredEffectSourceFormID = oldSelection.sourceFormID == a_ring.GetFormID()
-                                                ? oldSelection.restoredEffectSourceFormID
-                                                : RE::FormID {0};
+    auto restoredEffectSourceFormID = oldSelection.sourceFormID == a_ring.GetFormID()
+                                          ? oldSelection.restoredEffectSourceFormID
+                                          : RE::FormID {0};
+    if (a_moveSourceTarget) {
+        const auto movedEffectSourceFormID = ClearMoveSourceSelection(
+            g_snapshot,
+            a_target,
+            *a_moveSourceTarget,
+            [formID = a_ring.GetFormID(), &a_key, &a_identity](const State& a_selection) {
+                return a_selection.MatchesCustomEnchantment(formID, a_key, a_identity);
+            }
+        );
+        if (!movedEffectSourceFormID) {
+            return false;
+        }
+
+        restoredEffectSourceFormID = *movedEffectSourceFormID;
+    }
     ClearConflictingSelections(conflicts);
     g_snapshot.targets[ToIndex(a_target)] = State {
         .kind = Kind::kCustomEnchantment,

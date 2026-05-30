@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -30,6 +31,13 @@ struct CustomEnchantmentData {
 enum class EntryCustomFailure : std::uint32_t {
     kNone = 0,
     kMultipleCustomKeys = 1,
+};
+
+enum class RightWornRingUnequipResult : std::uint8_t {
+    kNone,
+    kUnequipped,
+    kProtected,
+    kFailed,
 };
 
 struct EntryCustomSelection {
@@ -93,7 +101,9 @@ struct SourceRingState {
 );
 [[nodiscard]] bool IsProtectedRingStack(RE::ExtraDataList* a_extraList);
 [[nodiscard]] bool IsRightWorn(const RE::ExtraDataList* a_extraList);
+[[nodiscard]] bool HasRightWornRing(RE::Actor& a_actor);
 [[nodiscard]] bool HasProtectedRightWornRing(RE::Actor& a_actor);
+[[nodiscard]] RightWornRingUnequipResult UnequipRightWornRing(RE::Actor& a_actor);
 [[nodiscard]] std::optional<CustomEnchantmentData> ReadCustomEnchantment(const RE::ExtraDataList& a_extraList);
 [[nodiscard]] bool MirrorCustomEnchantment(RE::ExtraDataList& a_target, const RE::ExtraDataList& a_source);
 [[nodiscard]] RE::InventoryEntryData* FindEntry(RE::Actor& a_actor, const RE::TESBoundObject& a_object);

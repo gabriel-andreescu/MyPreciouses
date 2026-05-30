@@ -21,6 +21,7 @@ namespace {
     constexpr auto* kRootNodeName = "LHRSVirtualRings";
     constexpr auto kLeftHandNode = "NPC L Hand [LHnd]"sv;
     constexpr auto kRightHandNode = "NPC R Hand [RHnd]"sv;
+    constexpr auto kRingBodyPart = std::uint16_t {36};
 
     std::mutex g_lock;
     std::atomic_bool g_firstPersonRetryQueued {false};
@@ -32,6 +33,12 @@ namespace {
     struct SkinPatchResult {
         bool foundSkin {false};
         bool retargetedSkin {false};
+    };
+
+    enum class DismemberModelScan {
+        kNoDismemberPartitions,
+        kNonRingPartitions,
+        kRingPartitions,
     };
 
     [[nodiscard]] std::size_t NiNodeAllocationSize() {
@@ -126,7 +133,9 @@ namespace {
         }
 
         if (const auto bone = RingFootprints::ParseFingerBoneName(a_name)) {
-            return RingFootprints::MakeFingerBoneName(RingFootprints::RetargetBone(*bone, a_target, a_footprint));
+            if (const auto retargetedBone = RingFootprints::RetargetBone(*bone, a_target, a_footprint)) {
+                return RingFootprints::MakeFingerBoneName(*retargetedBone);
+            }
         }
 
         return std::nullopt;
@@ -193,6 +202,61 @@ namespace {
         for (auto index = 0; index < runtimeData.numPartitions; ++index) {
             a_skin.UpdateDismemberPartion(runtimeData.partitions[index].slot, true);
         }
+    }
+
+    [[nodiscard]] bool HasRingPartition(RE::BSDismemberSkinInstance& a_skin) {
+        auto& runtimeData = a_skin.GetRuntimeData();
+        if (!runtimeData.partitions || runtimeData.numPartitions <= 0) {
+            return false;
+        }
+
+        for (auto index = 0; index < runtimeData.numPartitions; ++index) {
+            if (runtimeData.partitions[index].slot == kRingBodyPart) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    [[nodiscard]] DismemberModelScan ScanDismemberPartitions(RE::NiAVObject& a_root) {
+        auto sawDismemberPartitions = false;
+        auto foundRingPartitions = false;
+
+        RE::BSVisit::TraverseScenegraphGeometries(std::addressof(a_root), [&](RE::BSGeometry* a_geometry) {
+            if (!a_geometry) {
+                return RE::BSVisit::BSVisitControl::kContinue;
+            }
+
+            auto& geometryData = a_geometry->GetGeometryRuntimeData();
+            auto* skin = geometryData.skinInstance.get();
+            auto* dismemberSkin = skin ? netimmerse_cast<RE::BSDismemberSkinInstance*>(skin) : nullptr;
+            if (!dismemberSkin) {
+                return RE::BSVisit::BSVisitControl::kContinue;
+            }
+
+            auto& runtimeData = dismemberSkin->GetRuntimeData();
+            if (!runtimeData.partitions || runtimeData.numPartitions <= 0) {
+                return RE::BSVisit::BSVisitControl::kContinue;
+            }
+
+            sawDismemberPartitions = true;
+            foundRingPartitions = HasRingPartition(*dismemberSkin)
+                                  || RingFootprints::HasOnlyMeaningfulFingerWeights(*skin)
+                                  || foundRingPartitions;
+            return RE::BSVisit::BSVisitControl::kContinue;
+        });
+
+        if (foundRingPartitions) {
+            return DismemberModelScan::kRingPartitions;
+        }
+
+        return sawDismemberPartitions ? DismemberModelScan::kNonRingPartitions
+                                      : DismemberModelScan::kNoDismemberPartitions;
+    }
+
+    [[nodiscard]] bool IsRingVisualModel(RE::NiAVObject& a_root) {
+        return ScanDismemberPartitions(a_root) != DismemberModelScan::kNonRingPartitions;
     }
 
     [[nodiscard]] bool PatchSkinInstance(
@@ -322,6 +386,17 @@ namespace {
         }
 
         ApplyTextureSwap(*selection->model, *node);
+        if (!IsRingVisualModel(*node)) {
+            logger::debug(
+                "RingVisuals: source skipped | target={} | source={:08X} | addon={:08X} | path='{}' | reason=noRingPartition",
+                TargetLabel(a_visual.target),
+                a_sourceFormID,
+                a_visual.sourceAddon ? a_visual.sourceAddon->GetFormID() : 0,
+                selection->model->path
+            );
+            return nullptr;
+        }
+
         if (!PatchScenegraph(a_biped, *node, a_visual.target, a_footprint)) {
             logger::warn(
                 "RingVisuals: patch failed | target={} | source={:08X} | addon={:08X} | path='{}' | reason=noEditableRingData",

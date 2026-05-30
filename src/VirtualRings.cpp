@@ -135,9 +135,14 @@ namespace {
 
     [[nodiscard]] std::optional<SourceAddonVisual> CaptureSourceAddonVisual(
         const RE::TESObjectARMA& a_sourceAddon,
-        const RingTarget a_target
+        const RingTarget a_target,
+        RE::TESRace& a_actorRace,
+        const bool a_customRingSlots
     ) {
-        if (a_sourceAddon.GetSlotMask() != RE::BGSBipedObjectForm::BipedObjectSlot::kRing) {
+        if (!a_customRingSlots && !a_sourceAddon.HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing)) {
+            return std::nullopt;
+        }
+        if (!a_sourceAddon.IsValidRace(std::addressof(a_actorRace))) {
             return std::nullopt;
         }
 
@@ -161,15 +166,18 @@ namespace {
 
     [[nodiscard]] std::vector<SourceAddonVisual> CaptureRingVisuals(
         const RE::TESObjectARMO& a_source,
-        const RingTarget a_target
+        const RingTarget a_target,
+        RE::TESRace& a_actorRace
     ) {
         std::vector<SourceAddonVisual> visuals;
+        const auto customRingSlots = !a_source.HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing);
+
         for (auto* addon : a_source.armorAddons) {
             if (!addon) {
                 continue;
             }
 
-            if (auto visual = CaptureSourceAddonVisual(*addon, a_target)) {
+            if (auto visual = CaptureSourceAddonVisual(*addon, a_target, a_actorRace, customRingSlots)) {
                 visuals.push_back(std::move(*visual));
             }
         }
@@ -624,7 +632,11 @@ namespace {
         state.mode = mode;
         state.active = true;
         state.footprint = RingFootprints::GetSourceRingFootprint(*ring);
-        state.addonVisuals = CaptureRingVisuals(*ring, a_target);
+        if (auto* playerRace = player->GetRace()) {
+            state.addonVisuals = CaptureRingVisuals(*ring, a_target, *playerRace);
+        } else {
+            state.addonVisuals.clear();
+        }
 
         plan.apply = PendingApply {
             .actor = player,

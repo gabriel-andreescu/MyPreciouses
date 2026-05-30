@@ -18,6 +18,9 @@ namespace {
     constexpr auto kLeftFingerCodePrefix = " [LF"sv;
     constexpr auto kRightFingerCodePrefix = " [RF"sv;
     constexpr auto kNodeCodeSuffix = "]"sv;
+    constexpr auto kRingBodyPart = std::uint16_t {36};
+    constexpr auto kMinimumSkinWeight = 0.000001F;
+    constexpr auto kMeaningfulSkinWeightRatio = 0.10F;
     constexpr std::array kFingers {
         RingFinger::kThumb,
         RingFinger::kIndex,
@@ -34,6 +37,15 @@ namespace {
     };
 
     std::vector<CachedFootprint> g_footprintCache;
+
+    enum class DismemberFootprintScan {
+        kNoDismemberPartitions,
+        kNonRingPartitions,
+        kRingPartitions,
+    };
+
+    constexpr auto kNonFingerWeightBucket = kFingers.size();
+    constexpr auto kWeightBucketCount = kFingers.size() + 1;
 
     [[nodiscard]] bool IsAsciiDigit(const char a_value) {
         return a_value >= '0' && a_value <= '9';
@@ -113,7 +125,34 @@ namespace {
         };
     }
 
-    void CollectFootprintFromSkin(const RE::NiSkinInstance& a_skin, RingFootprint& a_footprint) {
+    struct SkinVertexWeight {
+        std::uint16_t vertex;
+        std::size_t bucket;
+        float weight;
+    };
+
+    struct SkinInfluenceScan {
+        RingFootprint footprint;
+        bool hasWeightedInfluence {false};
+        bool hasMeaningfulFingerInfluence {false};
+        bool hasMeaningfulNonFingerInfluence {false};
+    };
+
+    [[nodiscard]] std::size_t WeightBucketForBoneName(const char* a_boneName) {
+        if (a_boneName && a_boneName[0] != '\0') {
+            if (const auto parsedBone = RingFootprints::ParseFingerBoneName(a_boneName)) {
+                return std::to_underlying(parsedBone->finger);
+            }
+        }
+
+        return kNonFingerWeightBucket;
+    }
+
+    [[nodiscard]] bool HasSkinWeightData(const RE::NiSkinInstance& a_skin) {
+        return a_skin.skinData && a_skin.skinData->boneData;
+    }
+
+    void CollectFootprintFromBoneNames(const RE::NiSkinInstance& a_skin, RingFootprint& a_footprint) {
         const auto boneCount = a_skin.skinData ? a_skin.skinData->bones : a_skin.numMatrices;
         for (std::uint32_t index = 0; index < boneCount; ++index) {
             const auto* bone = a_skin.bones ? a_skin.bones[index] : nullptr;
@@ -128,7 +167,168 @@ namespace {
         }
     }
 
-    void CollectFootprintFromModel(RE::NiAVObject& a_root, RingFootprint& a_footprint) {
+    [[nodiscard]] SkinInfluenceScan ScanSkinInfluences(const RE::NiSkinInstance& a_skin) {
+        SkinInfluenceScan result;
+        if (!HasSkinWeightData(a_skin)) {
+            return result;
+        }
+
+        std::vector<SkinVertexWeight> weights;
+        const auto boneCount = a_skin.skinData->bones;
+        for (std::uint32_t boneIndex = 0; boneIndex < boneCount; ++boneIndex) {
+            const auto* bone = a_skin.bones ? a_skin.bones[boneIndex] : nullptr;
+            const auto* boneName = bone ? bone->name.c_str() : nullptr;
+            const auto bucket = WeightBucketForBoneName(boneName);
+            const auto& boneData = a_skin.skinData->boneData[boneIndex];
+            if (!boneData.boneVertData || boneData.verts == 0) {
+                continue;
+            }
+
+            for (std::uint16_t weightIndex = 0; weightIndex < boneData.verts; ++weightIndex) {
+                const auto& weight = boneData.boneVertData[weightIndex];
+                if (weight.weight <= kMinimumSkinWeight) {
+                    continue;
+                }
+
+                weights.push_back(
+                    SkinVertexWeight {
+                        .vertex = weight.vert,
+                        .bucket = bucket,
+                        .weight = weight.weight,
+                    }
+                );
+            }
+        }
+
+        if (weights.empty()) {
+            return result;
+        }
+
+        std::ranges::sort(weights, [](const auto& a_lhs, const auto& a_rhs) {
+            return a_lhs.vertex < a_rhs.vertex;
+        });
+
+        result.hasWeightedInfluence = true;
+        auto rangeStart = weights.begin();
+        while (rangeStart != weights.end()) {
+            auto rangeEnd = rangeStart;
+            std::array<float, kWeightBucketCount> bucketWeights {};
+            auto strongestWeight = 0.0F;
+            while (rangeEnd != weights.end() && rangeEnd->vertex == rangeStart->vertex) {
+                bucketWeights[rangeEnd->bucket] += rangeEnd->weight;
+                strongestWeight = std::max(strongestWeight, bucketWeights[rangeEnd->bucket]);
+                ++rangeEnd;
+            }
+
+            const auto meaningfulWeight = strongestWeight * kMeaningfulSkinWeightRatio;
+            for (std::size_t bucket = 0; bucket < bucketWeights.size(); ++bucket) {
+                if (bucketWeights[bucket] <= kMinimumSkinWeight || bucketWeights[bucket] < meaningfulWeight) {
+                    continue;
+                }
+
+                if (bucket == kNonFingerWeightBucket) {
+                    result.hasMeaningfulNonFingerInfluence = true;
+                    continue;
+                }
+
+                result.footprint.Add(static_cast<RingFinger>(bucket));
+                result.hasMeaningfulFingerInfluence = true;
+            }
+
+            rangeStart = rangeEnd;
+        }
+
+        return result;
+    }
+
+    void CollectFootprintFromSkin(const RE::NiSkinInstance& a_skin, RingFootprint& a_footprint) {
+        const auto scan = ScanSkinInfluences(a_skin);
+        if (!scan.hasWeightedInfluence) {
+            CollectFootprintFromBoneNames(a_skin, a_footprint);
+            return;
+        }
+
+        a_footprint.Merge(scan.footprint);
+    }
+
+    [[nodiscard]] bool HasRingPartition(RE::BSDismemberSkinInstance& a_skin) {
+        auto& runtimeData = a_skin.GetRuntimeData();
+        if (!runtimeData.partitions || runtimeData.numPartitions <= 0) {
+            return false;
+        }
+
+        for (auto index = 0; index < runtimeData.numPartitions; ++index) {
+            if (runtimeData.partitions[index].slot == kRingBodyPart) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    [[nodiscard]] bool HasOnlyFingerBoneNames(const RE::NiSkinInstance& a_skin) {
+        const auto boneCount = a_skin.skinData ? a_skin.skinData->bones : a_skin.numMatrices;
+        auto sawFingerBone = false;
+
+        for (std::uint32_t index = 0; index < boneCount; ++index) {
+            const auto* bone = a_skin.bones ? a_skin.bones[index] : nullptr;
+            const auto* boneName = bone ? bone->name.c_str() : nullptr;
+            if (!boneName || boneName[0] == '\0') {
+                return false;
+            }
+
+            if (!RingFootprints::ParseFingerBoneName(boneName)) {
+                return false;
+            }
+
+            sawFingerBone = true;
+        }
+
+        return sawFingerBone;
+    }
+
+    [[nodiscard]] DismemberFootprintScan CollectFootprintFromDismemberPartitions(
+        RE::NiAVObject& a_root,
+        RingFootprint& a_footprint
+    ) {
+        auto sawDismemberPartitions = false;
+        auto foundRingPartitions = false;
+
+        RE::BSVisit::TraverseScenegraphGeometries(std::addressof(a_root), [&](RE::BSGeometry* a_geometry) {
+            if (!a_geometry) {
+                return RE::BSVisit::BSVisitControl::kContinue;
+            }
+
+            auto& geometryData = a_geometry->GetGeometryRuntimeData();
+            auto* skin = geometryData.skinInstance.get();
+            auto* dismemberSkin = skin ? netimmerse_cast<RE::BSDismemberSkinInstance*>(skin) : nullptr;
+            if (!dismemberSkin) {
+                return RE::BSVisit::BSVisitControl::kContinue;
+            }
+
+            auto& runtimeData = dismemberSkin->GetRuntimeData();
+            if (!runtimeData.partitions || runtimeData.numPartitions <= 0) {
+                return RE::BSVisit::BSVisitControl::kContinue;
+            }
+
+            sawDismemberPartitions = true;
+            if (HasRingPartition(*dismemberSkin) || RingFootprints::HasOnlyMeaningfulFingerWeights(*skin)) {
+                foundRingPartitions = true;
+                CollectFootprintFromSkin(*skin, a_footprint);
+            }
+
+            return RE::BSVisit::BSVisitControl::kContinue;
+        });
+
+        if (foundRingPartitions) {
+            return DismemberFootprintScan::kRingPartitions;
+        }
+
+        return sawDismemberPartitions ? DismemberFootprintScan::kNonRingPartitions
+                                      : DismemberFootprintScan::kNoDismemberPartitions;
+    }
+
+    void CollectFootprintFromNodeNames(RE::NiAVObject& a_root, RingFootprint& a_footprint) {
         RE::BSVisit::TraverseScenegraphObjects(std::addressof(a_root), [&](RE::NiAVObject* a_object) {
             const auto* nodeName = a_object ? a_object->name.c_str() : nullptr;
             if (nodeName && nodeName[0] != '\0') {
@@ -139,7 +339,9 @@ namespace {
 
             return RE::BSVisit::BSVisitControl::kContinue;
         });
+    }
 
+    void CollectFootprintFromAllSkins(RE::NiAVObject& a_root, RingFootprint& a_footprint) {
         RE::BSVisit::TraverseScenegraphGeometries(std::addressof(a_root), [&](RE::BSGeometry* a_geometry) {
             if (!a_geometry) {
                 return RE::BSVisit::BSVisitControl::kContinue;
@@ -152,6 +354,20 @@ namespace {
 
             return RE::BSVisit::BSVisitControl::kContinue;
         });
+    }
+
+    void CollectFootprintFromModel(RE::NiAVObject& a_root, RingFootprint& a_footprint) {
+        const auto dismemberScan = CollectFootprintFromDismemberPartitions(a_root, a_footprint);
+        if (dismemberScan == DismemberFootprintScan::kRingPartitions) {
+            return;
+        }
+
+        if (dismemberScan == DismemberFootprintScan::kNonRingPartitions) {
+            return;
+        }
+
+        CollectFootprintFromNodeNames(a_root, a_footprint);
+        CollectFootprintFromAllSkins(a_root, a_footprint);
     }
 
     [[nodiscard]] const char* GetModel(const RE::TESModel& a_model) {
@@ -174,8 +390,14 @@ namespace {
 
     [[nodiscard]] std::vector<std::string> GetRingModelPaths(const RE::TESObjectARMO& a_ring) {
         std::vector<std::string> paths;
+        const auto customRingSlots = !a_ring.HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing);
+
         for (const auto* addon : a_ring.armorAddons) {
-            if (!addon || addon->GetSlotMask() != RE::BGSBipedObjectForm::BipedObjectSlot::kRing) {
+            if (!addon) {
+                continue;
+            }
+
+            if (!customRingSlots && !addon->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing)) {
                 continue;
             }
 
@@ -222,6 +444,44 @@ namespace {
         constexpr auto kLastThumbSegment = std::uint8_t {2};
         const auto segment = static_cast<std::uint8_t>(a_source.segment + 1);
         return std::min(segment, kLastThumbSegment);
+    }
+
+    [[nodiscard]] std::optional<RingFinger> FirstOccupiedFinger(const RingFootprint& a_footprint) {
+        for (const auto finger : kFingers) {
+            if (a_footprint.Occupies(finger)) {
+                return finger;
+            }
+        }
+
+        return std::nullopt;
+    }
+
+    [[nodiscard]] std::optional<RingFinger> RetargetFinger(
+        const RingFinger a_source,
+        const RingFinger a_anchor,
+        const RingFootprint& a_footprint
+    ) {
+        if (!a_footprint.IsMultiFinger()) {
+            return a_anchor;
+        }
+
+        const auto firstOccupiedFinger = FirstOccupiedFinger(a_footprint);
+        if (!firstOccupiedFinger) {
+            return std::nullopt;
+        }
+
+        const auto sourceIndex = static_cast<std::size_t>(std::to_underlying(a_source));
+        const auto firstIndex = static_cast<std::size_t>(std::to_underlying(*firstOccupiedFinger));
+        if (sourceIndex < firstIndex) {
+            return std::nullopt;
+        }
+
+        const auto targetIndex = static_cast<std::size_t>(std::to_underlying(a_anchor)) + (sourceIndex - firstIndex);
+        if (targetIndex >= kFingers.size()) {
+            return std::nullopt;
+        }
+
+        return kFingers[targetIndex];
     }
 }
 
@@ -288,13 +548,30 @@ std::string MakeFingerBoneName(const RingBone& a_bone) {
     return ::MakeFingerBoneName(RingTarget {.hand = a_bone.hand, .finger = a_bone.finger}, a_bone.segment);
 }
 
-RingBone RetargetBone(const RingBone& a_source, const RingTarget a_target, const RingFootprint& a_footprint) {
-    const auto targetFinger = a_footprint.IsMultiFinger() ? a_source.finger : a_target.finger;
+std::optional<RingBone> RetargetBone(
+    const RingBone& a_source,
+    const RingTarget a_target,
+    const RingFootprint& a_footprint
+) {
+    const auto targetFinger = RetargetFinger(a_source.finger, a_target.finger, a_footprint);
+    if (!targetFinger) {
+        return std::nullopt;
+    }
+
     return RingBone {
         .hand = a_target.hand,
-        .finger = targetFinger,
-        .segment = RetargetSegment(a_source, targetFinger),
+        .finger = *targetFinger,
+        .segment = RetargetSegment(a_source, *targetFinger),
     };
+}
+
+bool HasOnlyMeaningfulFingerWeights(const RE::NiSkinInstance& a_skin) {
+    const auto scan = ScanSkinInfluences(a_skin);
+    if (!scan.hasWeightedInfluence) {
+        return HasOnlyFingerBoneNames(a_skin);
+    }
+
+    return scan.hasMeaningfulFingerInfluence && !scan.hasMeaningfulNonFingerInfluence;
 }
 
 RingFootprint GetSourceRingFootprint(const RE::TESObjectARMO& a_ring) {
@@ -328,12 +605,13 @@ RingTargetMask GetOccupiedTargets(const RingFootprint& a_footprint, const RingTa
 
     for (const auto finger : kFingers) {
         if (a_footprint.Occupies(finger)) {
-            mask.Add(RingTarget {.hand = a_target.hand, .finger = finger});
-        }
-    }
+            const auto targetFinger = RetargetFinger(finger, a_target.finger, a_footprint);
+            if (!targetFinger) {
+                return {};
+            }
 
-    if (mask.Empty()) {
-        mask.Add(a_target);
+            mask.Add(RingTarget {.hand = a_target.hand, .finger = *targetFinger});
+        }
     }
 
     return mask;

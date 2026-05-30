@@ -4,6 +4,7 @@ $LHRS_FingerSelect_EquippedHeader	EQUIPPED RING
 $LHRS_FingerSelect_Action_Equip	Equip
 $LHRS_FingerSelect_Action_Unequip	Unequip
 $LHRS_FingerSelect_Action_Replace	Replace
+$LHRS_FingerSelect_Action_WontFit	Won't fit
 $LHRS_FingerSelect_Action_Cancel	Cancel
 $LHRS_Inventory_FingerHint	Finger
 $LHRS_Inventory_LeftHandShort	L
@@ -13,5 +14,5 @@ $LHRS_Finger_Index	Index
 $LHRS_Finger_Middle	Middle
 $LHRS_Finger_Ring	Ring
 $LHRS_Finger_Pinky	Pinky
-$LHRS_Message_MultiFingerRing	This ring occupies multiple fingers.
+$LHRS_Message_RingWontFitFinger	This ring won't fit starting from {FINGER}.
 $LHRS_Message_RingUnequipBlocked	This ring cannot be unequipped.
