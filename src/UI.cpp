@@ -1123,12 +1123,13 @@ namespace {
             return;
         }
 
+        const auto buttonHintsInstalled = InstallInventoryButtonHints(*inventoryMenu);
+
         auto* itemList = inventoryMenu->GetRuntimeData().itemList;
         if (!itemList || !itemList->entryList.IsArray()) {
             return;
         }
 
-        const auto buttonHintsInstalled = InstallInventoryButtonHints(*inventoryMenu);
         std::uint32_t changedEntryRows = 0;
         for (std::uint32_t index = 0; index < itemList->entryList.GetArraySize(); ++index) {
             RE::GFxValue entryObject;

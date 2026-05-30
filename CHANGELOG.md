@@ -3,6 +3,7 @@
 ## Unreleased
 
 - fix: properly refresh inventory ring equip markers on all runtimes
+- fix: show the finger selection modifier hint in the SkyUI VR inventory footer
 
 ## 0.3.3 - 2026-05-29
 
