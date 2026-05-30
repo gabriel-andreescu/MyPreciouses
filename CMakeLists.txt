@@ -8,7 +8,7 @@ set(VCPKG_INSTALL_OPTIONS "--no-print-usage")
 
 project(
         LeftHandRingsSKSE
-        VERSION 0.3.3
+        VERSION 0.3.4
         DESCRIPTION "Native multi-ring support"
         LANGUAGES CXX
 )
