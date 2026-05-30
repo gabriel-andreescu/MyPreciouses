@@ -35,6 +35,7 @@ public:
     };
 
     void Load();
+    [[nodiscard]] static bool ReadDebugLoggingEnabled();
     [[nodiscard]] ReloadResult Reload();
 
     [[nodiscard]] ExtraRingMode GetExtraRingMode() const;

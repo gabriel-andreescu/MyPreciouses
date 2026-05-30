@@ -21,6 +21,7 @@ constexpr auto kFixedEnchantmentStrengthSettingKey = "iFixedEnchantmentStrengthP
 constexpr auto kAlwaysChooseFingerSettingKey = "bAlwaysChooseFinger";
 constexpr auto kFingerSelectKeyboardModifierSettingKey = "iFingerSelectModifierKey";
 constexpr auto kFingerSelectGamepadModifierSettingKey = "iFingerSelectModifierButton";
+constexpr auto kDebugLoggingSettingKey = "bEnableDebugLogging";
 
 struct RawSettings {
     int extraRingMode {static_cast<int>(std::to_underlying(ExtraRingMode::kFunctional))};
@@ -214,6 +215,23 @@ void Settings::Load() {
     fingerSelectModifierButton_.store(kDefaultFingerSelectModifierButton);
 
     (void)Reload();
+}
+
+bool Settings::ReadDebugLoggingEnabled() {
+    auto enabled = false;
+    for (const auto& path : {DefaultSettingsPath(), UserSettingsPath()}) {
+        if (!std::filesystem::exists(path)) {
+            continue;
+        }
+
+        CSimpleIniA ini;
+        ini.SetUnicode();
+        if (ini.LoadFile(path.string().c_str()) >= 0) {
+            enabled = ini.GetBoolValue(kSettingsSection, kDebugLoggingSettingKey, enabled);
+        }
+    }
+
+    return enabled;
 }
 
 Settings::ReloadResult Settings::Reload() {

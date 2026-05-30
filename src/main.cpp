@@ -22,6 +22,14 @@ void QueueDelayedVirtualSlotRefresh() {
     );
 }
 
+[[nodiscard]] spdlog::level::level_enum GetDefaultLogLevel() {
+#ifdef NDEBUG
+    return spdlog::level::info;
+#else
+    return spdlog::level::debug;
+#endif
+}
+
 void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
     switch (a_msg->type) {
         case SKSE::MessagingInterface::kDataLoaded:
@@ -38,8 +46,11 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
 }
 
 void InitializeLogging() {
+    const auto debuggerAttached = IsDebuggerPresent();
+    const auto debugLoggingEnabled = Settings::ReadDebugLoggingEnabled();
+
     std::shared_ptr<spdlog::sinks::sink> sink;
-    if (IsDebuggerPresent()) {
+    if (debuggerAttached) {
         sink = std::make_shared<spdlog::sinks::msvc_sink_mt>();
     } else {
         auto path = SKSE::log::log_directory();
@@ -53,13 +64,7 @@ void InitializeLogging() {
     }
 
     auto logger = std::make_shared<spdlog::logger>("Global", std::move(sink));
-    logger->set_level(
-#ifdef NDEBUG
-        spdlog::level::info
-#else
-        spdlog::level::debug
-#endif
-    );
+    logger->set_level((debuggerAttached || debugLoggingEnabled) ? spdlog::level::debug : GetDefaultLogLevel());
     logger->flush_on(spdlog::level::trace);
     spdlog::set_default_logger(std::move(logger));
     spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%n] [%l] [%t] [%s:%#] %v");
