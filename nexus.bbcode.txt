@@ -33,7 +33,7 @@ Or use the optional MCM addon to change the settings in-game.
 
 [list]
 [*][b]Extra ring mode[/b]: Lets you choose between functional extra rings (keep enchantments and scripts) or cosmetic extra rings (only show the ring model).[/*]
-[*][b]Enchantment strength[/b]: Lets you balance ring enchantment strength when you wear multiple enchanted rings. You can keep full strength, use a fixed percentage, or split the total strength between equipped enchanted rings.[/*]
+[*][b]Enchantment strength[/b]: Lets you balance ring enchantment strength. Only equipped rings with at least one non-zero-magnitude enchantment effect are counted. You can keep full strength, use a fixed percentage, or split the total strength between counted rings.[/*]
 [*][b]Always choose finger[/b]: Makes Equip and Left Equip open the finger selection menu without having to hold a modifier key.[/*]
 [/list]
 
@@ -56,6 +56,7 @@ The mod was designed to avoid conflicts. If you find any compatibility issues, p
 
 [list]
 [*]All vanilla, DLC, and CC rings are supported.[/*]
+[*][b]Frostmoon Pack rings[/b]: Each different Frostmoon ring can provide its werewolf bonus at the same time. Extra copies of the same Frostmoon ring can still be worn, but they are cosmetic only.[/*]
 [*][b]Mod-added rings[/b]: Supported if they are armor records using body slot 36 (Ring) and have a ring armor addon/model.[/*]
 [*][b]Other ring-like items[/b]: Rings that use a different body slot are ignored. That usually means they stay compatible, but this mod's extra ring features will not apply to them.[/*]
 [*][b]Enchantments[/b]: Supported, including player-made enchantments and custom user names.[/*]

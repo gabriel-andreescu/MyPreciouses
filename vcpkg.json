@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
   "name": "left-hand-rings-skse",
-  "version-string": "0.3.1",
+  "version-string": "0.3.4",
   "description": "Native multi-ring support for Skyrim.",
   "homepage": "https://github.com/gabriel-andreescu/LeftHandRingsSKSE",
   "license": "GPL-3.0-only",

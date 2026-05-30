@@ -18,7 +18,7 @@ enum class ExtraRingMode : std::uint32_t {
 
 class Settings : public REX::Singleton<Settings> {
 public:
-    static constexpr std::uint32_t kDefaultEnchantmentStrengthPercent {100};
+    static constexpr std::uint32_t kMaximumEnchantmentStrengthPercent {100};
     static constexpr std::uint32_t kMinimumEnchantmentStrengthPercent {5};
     static constexpr std::uint32_t kDefaultFixedEnchantmentStrengthPercent {50};
     static constexpr std::uint32_t kDefaultFingerSelectModifierKey {42};
@@ -38,8 +38,6 @@ public:
     [[nodiscard]] ReloadResult Reload();
 
     [[nodiscard]] ExtraRingMode GetExtraRingMode() const;
-    [[nodiscard]] EnchantmentStrengthMode GetEnchantmentStrengthMode() const;
-    [[nodiscard]] std::uint32_t GetFixedEnchantmentStrengthPercent() const;
     [[nodiscard]] float GetRingEnchantmentScale(std::uint32_t a_enchantedRingCount) const;
     [[nodiscard]] bool AlwaysChooseFinger() const;
     [[nodiscard]] std::uint32_t GetFingerSelectModifierKey() const;

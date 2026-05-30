@@ -1,21 +1,27 @@
 #pragma once
 
-#include "RingTargets.h"
+#include "Core/ActorKey.h"
 
 #include <cstdint>
 
+namespace Equipment {
+struct ActionResult;
+}
+
 namespace UI {
-enum class SelectionOrigin : std::uint8_t {
-    kInventoryMenu,
-    kFavoritesMenu,
+enum class ItemMenuHost : std::uint8_t {
+    kInventory,
+    kFavorites,
 };
 
-void InstallMenuEventSink();
-void RegisterInventoryData();
-void RefreshRingRows();
-void RefreshFavoritesRows();
-void RefreshInventoryMenuAfterVanillaRingSlotMove();
-void QueueRefreshAfterRingEquip();
-void RefreshItemRowsForRing(RE::Actor& a_actor, const RE::TESObjectARMO* a_ring);
-[[nodiscard]] bool UseRingFromMenuEntry(RE::InventoryEntryData* a_entry, RingHand a_hand, SelectionOrigin a_origin);
+void RegisterItemMenuDataCallback();
+void HandleMenuOpenCloseEvent(const RE::MenuOpenCloseEvent& a_event);
+void RefreshRingItemRows();
+void RefreshItemRowsAfterEquipmentAction(
+    ItemMenuHost a_hostMenu,
+    Core::ActorKey a_actor,
+    RE::FormID a_sourceFormID,
+    Equipment::ActionResult a_result
+);
+void QueueFavoritesRefreshAfterRingEquip();
 }

@@ -1,6 +1,7 @@
 #pragma once
 
-#include "RingTargets.h"
+#include "Core/Target.h"
+#include "UI.h"
 
 #include <array>
 #include <cstdint>
@@ -9,11 +10,11 @@
 #include <string>
 #include <utility>
 
-namespace FingerSelectMenu {
+namespace UI::FingerSelectMenu {
 inline constexpr std::size_t kRowCount = 5;
 
 struct Row {
-    RingTarget target;
+    Core::Target target;
     std::string fingerLabel;
     std::string equippedRingLabel;
     std::string actionLabel;
@@ -27,7 +28,7 @@ struct Result {
     };
 
     Action action {Action::kCancel};
-    std::optional<RingTarget> target;
+    std::optional<Core::Target> target;
     std::size_t index {0};
 };
 
@@ -63,23 +64,19 @@ struct Labels {
 };
 
 struct Data {
-    enum class HostMenu : std::uint8_t {
-        kInventory,
-        kFavorites,
-    };
-
     Labels labels;
     std::string ringName;
     std::array<Row, kRowCount> rows;
     std::size_t selectedIndex {0};
     RE::INPUT_DEVICE inputDevice {RE::INPUT_DEVICE::kKeyboard};
-    HostMenu hostMenu {HostMenu::kInventory};
+    ItemMenuHost hostMenu {ItemMenuHost::kInventory};
     ResultCallback onResult;
 };
 
 [[nodiscard]] bool Show(Data a_data);
 [[nodiscard]] bool IsOpen();
 [[nodiscard]] bool IsPendingOrOpen();
+[[nodiscard]] bool ConsumeInput(RE::InputEvent* const* a_events);
 void OnMenuClose(const RE::BSFixedString& a_menuName);
 void Cancel();
 }

@@ -1,62 +1,104 @@
 #include "Serialization.h"
 
-#include "EventBindings.h"
-#include "Selection.h"
-#include "VirtualRings.h"
+#include "Compatibility/Vanilla.h"
+#include "Equipment/AssignmentStore.h"
+#include "Papyrus/ScriptEventMirror.h"
+#include "VirtualSlots.h"
 
+#include <algorithm>
 #include <array>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 namespace Serialization {
+void DrainRecordData(SKSE::SerializationInterface& a_intfc, std::uint32_t a_remaining) {
+    std::array<char, 256> buffer {};
+    while (a_remaining > 0) {
+        const auto toRead = std::min(a_remaining, static_cast<std::uint32_t>(buffer.size()));
+        const auto read = a_intfc.ReadRecordData(buffer.data(), toRead);
+        if (read == 0) {
+            return;
+        }
+        a_remaining -= read;
+    }
+}
+
+bool WriteString(SKSE::SerializationInterface& a_intfc, const std::string& a_value) {
+    const auto length = static_cast<std::uint32_t>(a_value.size());
+    if (!WriteField(a_intfc, length)) {
+        return false;
+    }
+
+    return length == 0 || a_intfc.WriteRecordData(a_value.data(), length);
+}
+
+std::optional<std::string> ReadString(SKSE::SerializationInterface& a_intfc, std::uint32_t& a_remaining) {
+    std::uint32_t length = 0;
+    if (!ReadField(a_intfc, a_remaining, length) || length > a_remaining) {
+        return std::nullopt;
+    }
+
+    std::string value(length, '\0');
+    if (length == 0) {
+        return value;
+    }
+
+    const auto read = a_intfc.ReadRecordData(value.data(), length);
+    if (read != length) {
+        return std::nullopt;
+    }
+
+    a_remaining -= read;
+    return value;
+}
+
 namespace {
     constexpr auto kSerializationID = MakeRecordType('L', 'H', 'R', 'S');
-    constexpr auto kRecordState = MakeRecordType('S', 'T', 'A', 'T');
-    constexpr std::uint32_t kRecordVersion = 4;
+    constexpr auto kRecordAssignments = MakeRecordType('S', 'T', 'A', 'T');
+    constexpr std::uint32_t kLegacyPlayerAssignmentRecordVersion = 4;
+    constexpr std::uint32_t kAssignmentRecordVersion = 5;
+    constexpr RE::FormID kPlayerFormID = 0x14;
 
-    struct SerializedCustomKeyHeader {
+    struct SerializedCustomEnchantmentHeader {
         RE::FormID enchantmentFormID {0};
         std::uint16_t charge {0};
         std::uint8_t removeOnUnequip {0};
-        std::uint8_t hasIdentity {0};
+        std::uint8_t hasUniqueID {0};
         RE::FormID uniqueBaseID {0};
         std::uint16_t uniqueID {0};
         std::uint16_t pad {0};
         std::uint32_t displayNameLength {0};
     };
 
-    template <class T>
-    [[nodiscard]] bool WriteField(SKSE::SerializationInterface& a_intfc, const T& a_value) {
-        return a_intfc.WriteRecordData(a_value);
-    }
-
-    [[nodiscard]] bool WriteState(
+    [[nodiscard]] bool WriteAssignment(
         SKSE::SerializationInterface& a_intfc,
-        const RingTarget a_target,
-        const Selection::State& a_state
+        const Core::Target a_target,
+        const Core::Assignment& a_assignment
     ) {
-        const auto targetIndex = ToIndex(a_target);
-        const auto kind = std::to_underlying(a_state.kind);
+        const auto targetIndex = Core::ToIndex(a_target);
+        const auto kind = std::to_underlying(a_assignment.source.kind);
         if (!WriteField(a_intfc, targetIndex)
             || !WriteField(a_intfc, kind)
-            || !WriteField(a_intfc, a_state.sourceFormID)
-            || !WriteField(a_intfc, a_state.restoredEffectSourceFormID)) {
+            || !WriteField(a_intfc, a_assignment.source.sourceFormID)
+            || !WriteField(a_intfc, a_assignment.retainedEffectSourceFormID)) {
             return false;
         }
 
-        if (a_state.kind != Selection::Kind::kCustomEnchantment) {
+        if (a_assignment.source.kind != Core::ItemSourceKind::kCustomEnchantment) {
             return true;
         }
 
-        const auto& customKey = a_state.customKey;
-        const auto& customIdentity = a_state.customIdentity;
-        const auto header = SerializedCustomKeyHeader {
-            .enchantmentFormID = customKey.enchantmentFormID,
-            .charge = customKey.charge,
-            .removeOnUnequip = customKey.removeOnUnequip ? std::uint8_t {1} : std::uint8_t {0},
-            .hasIdentity = customIdentity ? std::uint8_t {1} : std::uint8_t {0},
-            .uniqueBaseID = customIdentity ? customIdentity->baseID : RE::FormID {0},
-            .uniqueID = customIdentity ? customIdentity->uniqueID : std::uint16_t {0},
-            .displayNameLength = static_cast<std::uint32_t>(customKey.playerDisplayName.size()),
+        const auto& customEnchantment = a_assignment.source.customEnchantment;
+        const auto& extraUniqueID = a_assignment.source.extraUniqueID;
+        const auto header = SerializedCustomEnchantmentHeader {
+            .enchantmentFormID = customEnchantment.enchantmentFormID,
+            .charge = customEnchantment.charge,
+            .removeOnUnequip = customEnchantment.removeOnUnequip ? std::uint8_t {1} : std::uint8_t {0},
+            .hasUniqueID = extraUniqueID ? std::uint8_t {1} : std::uint8_t {0},
+            .uniqueBaseID = extraUniqueID ? extraUniqueID->baseID : RE::FormID {0},
+            .uniqueID = extraUniqueID ? extraUniqueID->uniqueID : std::uint16_t {0},
+            .displayNameLength = static_cast<std::uint32_t>(customEnchantment.playerDisplayName.size()),
         };
 
         if (!WriteField(a_intfc, header)) {
@@ -65,17 +107,17 @@ namespace {
 
         return header.displayNameLength
                == 0
-               || a_intfc.WriteRecordData(customKey.playerDisplayName.data(), header.displayNameLength);
+               || a_intfc.WriteRecordData(customEnchantment.playerDisplayName.data(), header.displayNameLength);
     }
 
-    [[nodiscard]] bool WriteSnapshot(SKSE::SerializationInterface& a_intfc, const Selection::Snapshot& a_state) {
-        const auto targetCount = static_cast<std::uint32_t>(kVirtualRingTargets.size());
+    [[nodiscard]] bool WriteSnapshot(SKSE::SerializationInterface& a_intfc, const Core::TargetAssignments& a_snapshot) {
+        const auto targetCount = static_cast<std::uint32_t>(Core::kVirtualTargets.size());
         if (!WriteField(a_intfc, targetCount)) {
             return false;
         }
 
-        for (const auto target : kVirtualRingTargets) {
-            if (!WriteState(a_intfc, target, a_state.targets[ToIndex(target)])) {
+        for (const auto target : Core::kVirtualTargets) {
+            if (!WriteAssignment(a_intfc, target, a_snapshot.byTarget[Core::ToIndex(target)])) {
                 return false;
             }
         }
@@ -83,34 +125,26 @@ namespace {
         return true;
     }
 
-    template <class T>
-    [[nodiscard]] bool ReadField(SKSE::SerializationInterface& a_intfc, std::uint32_t& a_remaining, T& a_value) {
-        if (a_remaining < sizeof(T)) {
+    [[nodiscard]] bool WriteActorAssignments(
+        SKSE::SerializationInterface& a_intfc,
+        const std::vector<Core::ActorAssignments>& a_actorSnapshots
+    ) {
+        const auto actorCount = static_cast<std::uint32_t>(a_actorSnapshots.size());
+        if (!WriteField(a_intfc, actorCount)) {
             return false;
         }
 
-        const auto read = a_intfc.ReadRecordData(a_value);
-        if (read != sizeof(T)) {
-            return false;
+        for (const auto& actorSnapshot : a_actorSnapshots) {
+            if (!WriteField(a_intfc, actorSnapshot.actor.referenceFormID)
+                || !WriteSnapshot(a_intfc, actorSnapshot.assignments)) {
+                return false;
+            }
         }
 
-        a_remaining -= read;
         return true;
     }
 
-    void DrainRecordData(SKSE::SerializationInterface& a_intfc, std::uint32_t a_remaining) {
-        std::array<char, 256> buffer {};
-        while (a_remaining > 0) {
-            const auto toRead = std::min(a_remaining, static_cast<std::uint32_t>(buffer.size()));
-            const auto read = a_intfc.ReadRecordData(buffer.data(), toRead);
-            if (read == 0) {
-                return;
-            }
-            a_remaining -= read;
-        }
-    }
-
-    [[nodiscard]] std::optional<Selection::State> ReadState(
+    [[nodiscard]] std::optional<Core::Assignment> ReadAssignment(
         SKSE::SerializationInterface& a_intfc,
         std::uint32_t& a_remaining
     ) {
@@ -123,17 +157,19 @@ namespace {
             return std::nullopt;
         }
 
-        auto state = Selection::State {
-            .kind = static_cast<Selection::Kind>(kind),
-            .sourceFormID = sourceFormID,
-            .restoredEffectSourceFormID = effectSourceFormID,
+        auto assignment = Core::Assignment {
+            .source = Core::ItemSource {
+                .kind = static_cast<Core::ItemSourceKind>(kind),
+                .sourceFormID = sourceFormID,
+            },
+            .retainedEffectSourceFormID = effectSourceFormID,
         };
 
-        if (state.kind != Selection::Kind::kCustomEnchantment) {
-            return state;
+        if (assignment.source.kind != Core::ItemSourceKind::kCustomEnchantment) {
+            return assignment;
         }
 
-        SerializedCustomKeyHeader header;
+        SerializedCustomEnchantmentHeader header;
         if (!ReadField(a_intfc, a_remaining, header)) {
             return std::nullopt;
         }
@@ -142,23 +178,23 @@ namespace {
             return std::nullopt;
         }
 
-        state.customKey = Inventory::CustomEnchantmentKey {
+        assignment.source.customEnchantment = Core::CustomEnchantmentSignature {
             .enchantmentFormID = header.enchantmentFormID,
             .charge = header.charge,
             .removeOnUnequip = header.removeOnUnequip != 0,
         };
 
-        if (header.hasIdentity != 0) {
-            state.customIdentity = Inventory::ExtraListIdentity {
+        if (header.hasUniqueID != 0) {
+            assignment.source.extraUniqueID = Core::ExtraUniqueIDKey {
                 .baseID = header.uniqueBaseID,
                 .uniqueID = header.uniqueID,
             };
         }
 
         if (header.displayNameLength > 0) {
-            state.customKey.playerDisplayName.resize(header.displayNameLength);
+            assignment.source.customEnchantment.playerDisplayName.resize(header.displayNameLength);
             const auto read = a_intfc.ReadRecordData(
-                state.customKey.playerDisplayName.data(),
+                assignment.source.customEnchantment.playerDisplayName.data(),
                 header.displayNameLength
             );
             if (read != header.displayNameLength) {
@@ -167,36 +203,56 @@ namespace {
             a_remaining -= read;
         }
 
-        return state;
+        return assignment;
     }
 
-    [[nodiscard]] std::optional<Selection::Snapshot> ReadSnapshot(
+    [[nodiscard]] std::optional<Core::TargetAssignments> ReadSnapshot(
+        SKSE::SerializationInterface& a_intfc,
+        std::uint32_t& a_remaining
+    ) {
+        std::uint32_t targetCount = 0;
+        if (!ReadField(a_intfc, a_remaining, targetCount) || targetCount != Core::kVirtualTargets.size()) {
+            return std::nullopt;
+        }
+
+        Core::TargetAssignments snapshot;
+        for (std::uint32_t index = 0; index < targetCount; ++index) {
+            std::uint32_t storedTargetIndex = 0;
+            if (!ReadField(a_intfc, a_remaining, storedTargetIndex)) {
+                return std::nullopt;
+            }
+
+            const auto target = Core::FromIndex(storedTargetIndex);
+            auto assignment = ReadAssignment(a_intfc, a_remaining);
+            if (!target || !Core::IsVirtualTarget(*target) || !assignment) {
+                return std::nullopt;
+            }
+
+            snapshot.byTarget[Core::ToIndex(*target)] = std::move(*assignment);
+        }
+
+        return snapshot;
+    }
+
+    [[nodiscard]] Core::ActorKey LegacyPlayerActorKey() {
+        if (const auto actor = Core::GetPlayerActorKey()) {
+            return actor;
+        }
+
+        return Core::ActorKey {
+            .referenceFormID = kPlayerFormID,
+        };
+    }
+
+    [[nodiscard]] std::optional<std::vector<Core::ActorAssignments>> ReadLegacyPlayerAssignments(
         SKSE::SerializationInterface& a_intfc,
         const std::uint32_t a_length
     ) {
         auto remaining = a_length;
-        std::uint32_t targetCount = 0;
-        if (!ReadField(a_intfc, remaining, targetCount) || targetCount != kVirtualRingTargets.size()) {
+        auto snapshot = ReadSnapshot(a_intfc, remaining);
+        if (!snapshot) {
             DrainRecordData(a_intfc, remaining);
             return std::nullopt;
-        }
-
-        Selection::Snapshot snapshot;
-        for (std::uint32_t index = 0; index < targetCount; ++index) {
-            std::uint32_t storedTargetIndex = 0;
-            if (!ReadField(a_intfc, remaining, storedTargetIndex)) {
-                DrainRecordData(a_intfc, remaining);
-                return std::nullopt;
-            }
-
-            const auto target = FromIndex(storedTargetIndex);
-            auto state = ReadState(a_intfc, remaining);
-            if (!target || !IsVirtualRingTarget(*target) || !state) {
-                DrainRecordData(a_intfc, remaining);
-                return std::nullopt;
-            }
-
-            snapshot.targets[ToIndex(*target)] = std::move(*state);
         }
 
         if (remaining != 0) {
@@ -204,7 +260,268 @@ namespace {
             return std::nullopt;
         }
 
-        return snapshot;
+        return std::vector {
+            Core::ActorAssignments {
+                .actor = LegacyPlayerActorKey(),
+                .assignments = std::move(*snapshot),
+            },
+        };
+    }
+
+    [[nodiscard]] std::optional<std::vector<Core::ActorAssignments>> ReadActorAssignments(
+        SKSE::SerializationInterface& a_intfc,
+        const std::uint32_t a_length
+    ) {
+        auto remaining = a_length;
+        std::uint32_t actorCount = 0;
+        if (!ReadField(a_intfc, remaining, actorCount)) {
+            DrainRecordData(a_intfc, remaining);
+            return std::nullopt;
+        }
+
+        std::vector<Core::ActorAssignments> snapshots;
+        snapshots.reserve(actorCount);
+        for (std::uint32_t index = 0; index < actorCount; ++index) {
+            RE::FormID actorFormID = 0;
+            if (!ReadField(a_intfc, remaining, actorFormID)) {
+                DrainRecordData(a_intfc, remaining);
+                return std::nullopt;
+            }
+
+            auto snapshot = ReadSnapshot(a_intfc, remaining);
+            if (!snapshot) {
+                DrainRecordData(a_intfc, remaining);
+                return std::nullopt;
+            }
+
+            snapshots.push_back(
+                Core::ActorAssignments {
+                    .actor = Core::ActorKey {
+                        .referenceFormID = actorFormID,
+                    },
+                    .assignments = std::move(*snapshot),
+                }
+            );
+        }
+
+        if (remaining != 0) {
+            DrainRecordData(a_intfc, remaining);
+            return std::nullopt;
+        }
+
+        return snapshots;
+    }
+
+    [[nodiscard]] std::optional<std::vector<Core::ActorAssignments>> ReadAssignments(
+        SKSE::SerializationInterface& a_intfc,
+        const std::uint32_t a_version,
+        const std::uint32_t a_length
+    ) {
+        if (a_version == kLegacyPlayerAssignmentRecordVersion) {
+            return ReadLegacyPlayerAssignments(a_intfc, a_length);
+        }
+
+        if (a_version == kAssignmentRecordVersion) {
+            return ReadActorAssignments(a_intfc, a_length);
+        }
+
+        return std::nullopt;
+    }
+
+    [[nodiscard]] RE::FormID ResolveFormID(
+        SKSE::SerializationInterface& a_intfc,
+        const RE::FormID a_formID,
+        const std::string_view a_label
+    ) {
+        if (a_formID == 0) {
+            return 0;
+        }
+
+        RE::FormID resolvedFormID = 0;
+        if (!a_intfc.ResolveFormID(a_formID, resolvedFormID)) {
+            logger::warn("Serialization: virtual ring resolve failed | field={} | form={:08X}", a_label, a_formID);
+            return 0;
+        }
+        return resolvedFormID;
+    }
+
+    [[nodiscard]] std::optional<Core::Assignment> ResolveAssignment(
+        const Core::ActorKey a_actor,
+        const Core::Target a_target,
+        const Core::Assignment& a_savedAssignment,
+        SKSE::SerializationInterface& a_intfc
+    ) {
+        if (!a_savedAssignment.source.IsAssigned()) {
+            return std::nullopt;
+        }
+
+        const auto sourceFormID = ResolveFormID(a_intfc, a_savedAssignment.source.sourceFormID, "source form"sv);
+        if (sourceFormID == 0) {
+            return std::nullopt;
+        }
+
+        const auto retainedEffectSourceFormID = ResolveFormID(
+            a_intfc,
+            a_savedAssignment.retainedEffectSourceFormID,
+            "effect source form"sv
+        );
+
+        if (a_savedAssignment.source.kind == Core::ItemSourceKind::kFormOnly) {
+            return Core::Assignment {
+                .source = Core::ItemSource {
+                    .kind = Core::ItemSourceKind::kFormOnly,
+                    .sourceFormID = sourceFormID,
+                },
+                .retainedEffectSourceFormID = retainedEffectSourceFormID,
+            };
+        }
+
+        if (a_savedAssignment.source.kind != Core::ItemSourceKind::kCustomEnchantment) {
+            logger::warn(
+                "Serialization: virtual assignment cleared | actor={:08X} | target={} | source={:08X} | kind={} | reason=unsupportedKind",
+                a_actor.referenceFormID,
+                Core::TargetName(a_target),
+                sourceFormID,
+                std::to_underlying(a_savedAssignment.source.kind)
+            );
+            return std::nullopt;
+        }
+
+        auto customEnchantment = a_savedAssignment.source.customEnchantment;
+        customEnchantment
+            .enchantmentFormID = ResolveFormID(a_intfc, customEnchantment.enchantmentFormID, "custom enchantment"sv);
+        if (customEnchantment.enchantmentFormID
+            == 0
+            || !RE::TESForm::LookupByID<RE::EnchantmentItem>(customEnchantment.enchantmentFormID)) {
+            logger::warn(
+                "Serialization: custom virtual assignment cleared | actor={:08X} | target={} | source={:08X} | enchantment={:08X} | reason=enchantmentMissing",
+                a_actor.referenceFormID,
+                Core::TargetName(a_target),
+                sourceFormID,
+                a_savedAssignment.source.customEnchantment.enchantmentFormID
+            );
+            return std::nullopt;
+        }
+
+        auto extraUniqueID = a_savedAssignment.source.extraUniqueID;
+        if (extraUniqueID) {
+            extraUniqueID->baseID = ResolveFormID(a_intfc, extraUniqueID->baseID, "custom unique base"sv);
+            if (!extraUniqueID->IsValid()) {
+                logger::warn(
+                    "Serialization: custom virtual assignment cleared | actor={:08X} | target={} | source={:08X} | reason=uniqueIDResolveFailed",
+                    a_actor.referenceFormID,
+                    Core::TargetName(a_target),
+                    sourceFormID
+                );
+                return std::nullopt;
+            }
+        }
+
+        return Core::Assignment {
+            .source = Core::ItemSource {
+                .kind = Core::ItemSourceKind::kCustomEnchantment,
+                .sourceFormID = sourceFormID,
+                .customEnchantment = std::move(customEnchantment),
+                .extraUniqueID = extraUniqueID,
+            },
+            .retainedEffectSourceFormID = retainedEffectSourceFormID,
+        };
+    }
+
+    [[nodiscard]] std::vector<Core::ActorAssignments> ResolveLoadedAssignments(
+        const std::vector<Core::ActorAssignments>& a_savedSnapshots,
+        SKSE::SerializationInterface& a_intfc
+    ) {
+        std::vector<Core::ActorAssignments> resolvedSnapshots;
+        resolvedSnapshots.reserve(a_savedSnapshots.size());
+        for (const auto& actorSnapshot : a_savedSnapshots) {
+            const auto actorFormID = ResolveFormID(a_intfc, actorSnapshot.actor.referenceFormID, "actor"sv);
+            if (actorFormID == 0) {
+                continue;
+            }
+
+            const auto actor = Core::ActorKey {
+                .referenceFormID = actorFormID,
+            };
+            Core::TargetAssignments resolvedSnapshot;
+            for (const auto target : Core::kVirtualTargets) {
+                const auto& savedAssignment = actorSnapshot.assignments.byTarget[Core::ToIndex(target)];
+                auto resolvedAssignment = ResolveAssignment(actor, target, savedAssignment, a_intfc);
+                if (resolvedAssignment) {
+                    resolvedSnapshot.byTarget[Core::ToIndex(target)] = std::move(*resolvedAssignment);
+                }
+            }
+
+            resolvedSnapshots.push_back(
+                Core::ActorAssignments {
+                    .actor = actor,
+                    .assignments = std::move(resolvedSnapshot),
+                }
+            );
+        }
+
+        return resolvedSnapshots;
+    }
+
+    [[nodiscard]] bool SameBindingRetentionKey(
+        const Papyrus::ScriptEventMirror::BindingRetentionKey& a_lhs,
+        const Papyrus::ScriptEventMirror::BindingRetentionKey& a_rhs
+    ) {
+        return a_lhs.sourceFormID == a_rhs.sourceFormID && a_lhs.effectSourceFormID == a_rhs.effectSourceFormID;
+    }
+
+    void AddBindingRetentionKey(
+        std::vector<Papyrus::ScriptEventMirror::BindingRetentionKey>& a_keys,
+        Papyrus::ScriptEventMirror::BindingRetentionKey a_key
+    ) {
+        if (a_key.sourceFormID == 0 || a_key.effectSourceFormID == 0) {
+            return;
+        }
+
+        const auto duplicate = std::ranges::any_of(a_keys, [&](const auto& a_existing) {
+            return SameBindingRetentionKey(a_existing, a_key);
+        });
+        if (!duplicate) {
+            a_keys.push_back(a_key);
+        }
+    }
+
+    [[nodiscard]] std::vector<Papyrus::ScriptEventMirror::BindingRetentionKey> GetSaveBindingRetentionKeys(
+        const std::vector<Core::ActorAssignments>& a_snapshots
+    ) {
+        auto keys = VirtualSlots::GetActiveBindingRetentionKeys();
+        for (const auto& actorState : a_snapshots) {
+            for (const auto target : Core::kVirtualTargets) {
+                const auto& assignment = actorState.assignments.byTarget[Core::ToIndex(target)];
+                if (!assignment.IsAssigned()) {
+                    continue;
+                }
+
+                AddBindingRetentionKey(
+                    keys,
+                    Papyrus::ScriptEventMirror::BindingRetentionKey {
+                        .sourceFormID = assignment.source.sourceFormID,
+                        .effectSourceFormID = assignment.retainedEffectSourceFormID,
+                    }
+                );
+            }
+        }
+
+        return keys;
+    }
+
+    void QueueAssignmentRefresh() {
+        stl::add_task([] {
+            const auto snapshots = Equipment::AssignmentStore::GetAllSnapshots();
+            if (snapshots.empty()) {
+                VirtualSlots::RequestRefresh(Core::GetPlayerActorKey());
+                return;
+            }
+
+            for (const auto& snapshot : snapshots) {
+                VirtualSlots::RequestRefresh(snapshot.actor);
+            }
+        });
     }
 
     void SaveCallback(SKSE::SerializationInterface* a_intfc) {
@@ -212,17 +529,18 @@ namespace {
             return;
         }
 
-        const auto state = Selection::GetSnapshot();
-        if (!a_intfc->OpenRecord(kRecordState, kRecordVersion)) {
-            logger::error("Serialization: save failed | record=state | reason=openRecord");
+        const auto snapshots = Equipment::AssignmentStore::GetAllSnapshots();
+        if (!a_intfc->OpenRecord(kRecordAssignments, kAssignmentRecordVersion)) {
+            logger::error("Serialization: save failed | record=STAT | reason=openRecord");
             return;
         }
 
-        if (!WriteSnapshot(*a_intfc, state)) {
-            logger::error("Serialization: save failed | record=state | reason=writeRecord");
+        if (!WriteActorAssignments(*a_intfc, snapshots)) {
+            logger::error("Serialization: save failed | record=STAT | reason=writeRecord");
         }
 
-        EventBindings::Save(*a_intfc, VirtualRings::GetEventBindingSources());
+        Papyrus::ScriptEventMirror::SaveBindings(*a_intfc, GetSaveBindingRetentionKeys(snapshots));
+        Compatibility::Vanilla::Save(*a_intfc);
     }
 
     void LoadCallback(SKSE::SerializationInterface* a_intfc) {
@@ -241,11 +559,15 @@ namespace {
                 .length = length,
             };
 
-            if (EventBindings::LoadRecord(recordInfo, *a_intfc)) {
+            if (Papyrus::ScriptEventMirror::TryLoadBindingRecord(recordInfo, *a_intfc)) {
                 continue;
             }
 
-            if (type != kRecordState) {
+            if (Compatibility::Vanilla::TryLoadRecord(recordInfo, *a_intfc)) {
+                continue;
+            }
+
+            if (type != kRecordAssignments) {
                 logger::warn(
                     "Serialization: record skipped | type={:08X} | length={} | reason=unknownType",
                     type,
@@ -255,9 +577,9 @@ namespace {
                 continue;
             }
 
-            if (version != kRecordVersion) {
+            if (version != kAssignmentRecordVersion && version != kLegacyPlayerAssignmentRecordVersion) {
                 logger::warn(
-                    "Serialization: record skipped | version={} | length={} | reason=unsupportedStateVersion",
+                    "Serialization: record skipped | version={} | length={} | reason=unsupportedAssignmentVersion",
                     version,
                     length
                 );
@@ -265,27 +587,23 @@ namespace {
                 continue;
             }
 
-            auto state = ReadSnapshot(*a_intfc, length);
-            if (!state) {
-                logger::error("Serialization: load failed | record=state | reason=readRecord");
+            auto snapshots = ReadAssignments(*a_intfc, version, length);
+            if (!snapshots) {
+                logger::error("Serialization: load failed | record=STAT | reason=readRecord");
                 continue;
             }
 
-            Selection::Load(*state, *a_intfc);
+            Equipment::AssignmentStore::ReplaceAll(ResolveLoadedAssignments(*snapshots, *a_intfc));
         }
 
-        stl::add_task([] {
-            VirtualRings::RequestRefresh();
-        });
+        QueueAssignmentRefresh();
     }
 
     void RevertCallback([[maybe_unused]] SKSE::SerializationInterface* a_intfc) {
-        Selection::Revert();
-        EventBindings::Revert();
-        VirtualRings::Revert();
-        stl::add_task([] {
-            VirtualRings::RequestRefresh();
-        });
+        Equipment::AssignmentStore::Revert();
+        Papyrus::ScriptEventMirror::RevertBindings();
+        VirtualSlots::Revert();
+        QueueAssignmentRefresh();
     }
 }
 

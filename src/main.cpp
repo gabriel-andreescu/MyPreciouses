@@ -1,13 +1,11 @@
-#include "EventBindings.h"
 #include "EventListener.h"
-#include "FirstPerson.h"
 #include "Hooks.h"
 #include "Localization.h"
 #include "Papyrus.h"
-#include "RingVisuals.h"
 #include "Serialization.h"
 #include "Settings.h"
-#include "VirtualRings.h"
+#include "VirtualSlots.h"
+#include "Visuals/Attachments.h"
 
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/msvc_sink.h>
@@ -15,10 +13,10 @@
 namespace {
 constexpr auto kTrampolineSize = 1024;
 
-void QueueDelayedVirtualRingRefresh() {
+void QueueDelayedVirtualSlotRefresh() {
     stl::add_thread_task(
         [] {
-            VirtualRings::RequestRefresh();
+            VirtualSlots::RequestRefresh(Core::GetPlayerActorKey());
         },
         250ms
     );
@@ -26,25 +24,16 @@ void QueueDelayedVirtualRingRefresh() {
 
 void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
     switch (a_msg->type) {
-        case SKSE::MessagingInterface::kPreLoadGame:
-            EventBindings::Revert();
-            VirtualRings::Revert();
-            RingVisuals::Revert();
-            break;
         case SKSE::MessagingInterface::kDataLoaded:
             Localization::Load("LeftHandRingsSKSE");
             Settings::GetSingleton()->Load();
-            FirstPerson::ApplyRaceFlags();
+            Visuals::Attachments::EnableFirstPersonRingSlotForRaces();
             Hooks::Install();
             EventListener::Register();
-            QueueDelayedVirtualRingRefresh();
             break;
         case SKSE::MessagingInterface::kNewGame:
-        case SKSE::MessagingInterface::kPostLoadGame:
-            FirstPerson::ApplyRaceFlags();
-            QueueDelayedVirtualRingRefresh();
-            break;
-        default: break;
+        case SKSE::MessagingInterface::kPostLoadGame: QueueDelayedVirtualSlotRefresh(); break;
+        default:                                      break;
     }
 }
 

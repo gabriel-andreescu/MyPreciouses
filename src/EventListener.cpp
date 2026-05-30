@@ -1,14 +1,17 @@
 #include "EventListener.h"
 
-#include "FingerSelectMenu.h"
+#include "Compatibility/Vanilla.h"
+#include "Equipment/AssignmentActions.h"
 #include "Inventory.h"
-#include "Selection.h"
 #include "UI.h"
+#include "UI/FingerSelectMenu.h"
 
 namespace {
-bool g_cancelInputSuppressed = false;
-RE::INPUT_DEVICE g_cancelInputDevice {};
-std::uint32_t g_cancelInputCode = 0;
+void RefreshRingItemRowsAfterReconciliation(const Equipment::ActionResult a_result) {
+    if (a_result.selectionChanged) {
+        UI::RefreshRingItemRows();
+    }
+}
 }
 
 void EventListener::Register() {
@@ -30,8 +33,10 @@ void EventListener::Register() {
         return;
     }
 
-    eventSource->AddEventSink<Events::ContainerChanged>(listener);
-    eventSource->AddEventSink<Events::Equip>(listener);
+    eventSource->AddEventSink<RE::TESContainerChangedEvent>(listener);
+    eventSource->AddEventSink<RE::TESEquipEvent>(listener);
+    eventSource->AddEventSink<RE::TESSpellCastEvent>(listener);
+    eventSource->AddEventSink<RE::TESSwitchRaceCompleteEvent>(listener);
     ui->AddEventSink<RE::MenuOpenCloseEvent>(listener);
 
     auto* input = RE::BSInputDeviceManager::GetSingleton();
@@ -45,18 +50,22 @@ void EventListener::Register() {
 }
 
 EventListener::Control EventListener::ProcessEvent(
-    const Events::ContainerChanged* a_event,
-    [[maybe_unused]] RE::BSTEventSource<Events::ContainerChanged>* a_eventSource
+    const RE::TESContainerChangedEvent* a_event,
+    [[maybe_unused]] RE::BSTEventSource<RE::TESContainerChangedEvent>* a_eventSource
 ) {
     if (a_event) {
-        Selection::OnContainerChanged(*a_event);
+        Equipment::HandleContainerChangedForAssignments(
+            Core::GetPlayerActorKey(),
+            *a_event,
+            RefreshRingItemRowsAfterReconciliation
+        );
     }
     return Control::kContinue;
 }
 
 EventListener::Control EventListener::ProcessEvent(
-    const Events::Equip* a_event,
-    [[maybe_unused]] RE::BSTEventSource<Events::Equip>* a_eventSource
+    const RE::TESEquipEvent* a_event,
+    [[maybe_unused]] RE::BSTEventSource<RE::TESEquipEvent>* a_eventSource
 ) {
     if (!a_event) {
         return Control::kContinue;
@@ -72,8 +81,42 @@ EventListener::Control EventListener::ProcessEvent(
         return Control::kContinue;
     }
 
-    Selection::QueueCheck();
-    UI::QueueRefreshAfterRingEquip();
+    Equipment::QueueAssignmentReconciliation(Core::MakeActorKey(*actor), RefreshRingItemRowsAfterReconciliation);
+    UI::QueueFavoritesRefreshAfterRingEquip();
+    return Control::kContinue;
+}
+
+EventListener::Control EventListener::ProcessEvent(
+    const RE::TESSpellCastEvent* a_event,
+    [[maybe_unused]] RE::BSTEventSource<RE::TESSpellCastEvent>* a_eventSource
+) {
+    if (!a_event) {
+        return Control::kContinue;
+    }
+
+    auto* eventReference = a_event->object.get();
+    auto* actor = eventReference ? eventReference->As<RE::Actor>() : nullptr;
+    if (actor && actor->IsPlayerRef()) {
+        Compatibility::Vanilla::HandleSpellCast(*actor, a_event->spell);
+    }
+
+    return Control::kContinue;
+}
+
+EventListener::Control EventListener::ProcessEvent(
+    const RE::TESSwitchRaceCompleteEvent* a_event,
+    [[maybe_unused]] RE::BSTEventSource<RE::TESSwitchRaceCompleteEvent>* a_eventSource
+) {
+    if (!a_event) {
+        return Control::kContinue;
+    }
+
+    auto* eventReference = a_event->subject.get();
+    auto* actor = eventReference ? eventReference->As<RE::Actor>() : nullptr;
+    if (actor && actor->IsPlayerRef()) {
+        Compatibility::Vanilla::HandleRaceSwitchComplete(*actor);
+    }
+
     return Control::kContinue;
 }
 
@@ -81,10 +124,11 @@ EventListener::Control EventListener::ProcessEvent(
     const RE::MenuOpenCloseEvent* a_event,
     [[maybe_unused]] RE::BSTEventSource<RE::MenuOpenCloseEvent>* a_eventSource
 ) {
-    if (a_event && !a_event->opening) {
-        FingerSelectMenu::OnMenuClose(a_event->menuName);
+    if (!a_event) {
+        return Control::kContinue;
     }
 
+    UI::HandleMenuOpenCloseEvent(*a_event);
     return Control::kContinue;
 }
 
@@ -92,67 +136,5 @@ EventListener::Control EventListener::ProcessEvent(
     const InputEvents* a_event,
     [[maybe_unused]] RE::BSTEventSource<InputEvents>* a_eventSource
 ) {
-    const auto fingerSelectOpen = FingerSelectMenu::IsOpen();
-    if (!fingerSelectOpen && !g_cancelInputSuppressed) {
-        return Control::kContinue;
-    }
-
-    for (auto* event = a_event ? *a_event : nullptr; event; event = event->next) {
-        const auto* button = event->AsButtonEvent();
-        if (!button) {
-            continue;
-        }
-
-        const auto device = button->GetDevice();
-        const auto key = button->GetIDCode();
-
-        if (g_cancelInputSuppressed && device == g_cancelInputDevice && key == g_cancelInputCode) {
-            if (button->Value() <= 0.0F) {
-                g_cancelInputSuppressed = false;
-                return Control::kStop;
-            }
-
-            if (!button->IsDown()) {
-                return Control::kStop;
-            }
-
-            g_cancelInputSuppressed = false;
-        }
-
-        if (!fingerSelectOpen || !button->IsDown()) {
-            continue;
-        }
-
-        auto isCancel = false;
-        if (const auto* userEvents = RE::UserEvents::GetSingleton(); userEvents) {
-            isCancel = button->GetUserEvent() == userEvents->cancel;
-        }
-
-        if (!isCancel) {
-            switch (button->GetDevice()) {
-                case RE::INPUT_DEVICE::kKeyboard:
-                    isCancel = key == RE::BSKeyboardDevice::Keys::kEscape || key == RE::BSKeyboardDevice::Keys::kTab;
-                    break;
-                case RE::INPUT_DEVICE::kGamepad:
-                    if (const auto* controlMap = RE::ControlMap::GetSingleton();
-                        controlMap && controlMap->GetGamePadType() == RE::PC_GAMEPAD_TYPE::kOrbis) {
-                        isCancel = key == RE::BSPCOrbisGamepadDevice::Keys::kPS3_B;
-                    } else {
-                        isCancel = key == RE::BSWin32GamepadDevice::Keys::kB;
-                    }
-                    break;
-                default: break;
-            }
-        }
-
-        if (isCancel) {
-            g_cancelInputSuppressed = true;
-            g_cancelInputDevice = device;
-            g_cancelInputCode = key;
-            FingerSelectMenu::Cancel();
-            return Control::kStop;
-        }
-    }
-
-    return Control::kContinue;
+    return UI::FingerSelectMenu::ConsumeInput(a_event) ? Control::kStop : Control::kContinue;
 }

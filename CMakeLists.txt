@@ -8,12 +8,12 @@ set(VCPKG_INSTALL_OPTIONS "--no-print-usage")
 
 project(
         LeftHandRingsSKSE
-        VERSION 0.3.1
+        VERSION 0.3.4
         DESCRIPTION "Native multi-ring support"
         LANGUAGES CXX
 )
 
-set(OPTIONAL_ASSETS_VERSION 0.2.0)
+set(OPTIONAL_ASSETS_VERSION 0.2.2)
 
 option(LHRS_ENABLE_PRECOMPILED_HEADERS "Enable CMake precompiled headers" ON)
 
@@ -53,16 +53,22 @@ configure_file(
 )
 
 set(SOURCES
-        src/EventBindings.cpp
-        src/EventBindings.h
+        src/Audio/EquipSounds.h
+        src/Compatibility/Vanilla.cpp
+        src/Compatibility/Vanilla.h
+        src/Core/ActorKey.h
+        src/Core/Assignment.h
+        src/Core/FingerMask.h
+        src/Core/ItemSource.h
+        src/Core/Target.h
+        src/Equipment/AssignmentStore.cpp
+        src/Equipment/AssignmentStore.h
+        src/Equipment/AssignmentActions.cpp
+        src/Equipment/AssignmentActions.h
+        src/Papyrus/ScriptEventMirror.cpp
+        src/Papyrus/ScriptEventMirror.h
         src/EventListener.cpp
         src/EventListener.h
-        src/Events.h
-        src/FirstPerson.cpp
-        src/FirstPerson.h
-        src/FingerSelectMenu.cpp
-        src/FingerSelectMenu.h
-        src/Forms.h
         src/Hooks.cpp
         src/Hooks.h
         src/Inventory.cpp
@@ -70,29 +76,37 @@ set(SOURCES
         src/Localization.cpp
         src/Localization.h
         src/main.cpp
-        src/RingEnchantments.cpp
-        src/RingEnchantments.h
-        src/RingFootprints.cpp
-        src/RingFootprints.h
-        src/RingSounds.cpp
-        src/RingSounds.h
-        src/RingVisuals.cpp
-        src/RingVisuals.h
+        src/Papyrus/FormScriptNames.cpp
+        src/Papyrus/FormScriptNames.h
+        src/VirtualSlots/EnchantmentEffects.cpp
+        src/VirtualSlots/EnchantmentEffects.h
+        src/SourceModelFootprints.cpp
+        src/SourceModelFootprints.h
+        src/Visuals/Attachments.cpp
+        src/Visuals/Attachments.h
         src/Papyrus.cpp
         src/Papyrus.h
         src/PCH.h
-        src/Selection.cpp
-        src/Selection.h
         src/Serialization.cpp
         src/Serialization.h
         src/Settings.cpp
         src/Settings.h
-        src/RingTargets.cpp
-        src/RingTargets.h
         src/UI.cpp
         src/UI.h
-        src/VirtualRings.cpp
-        src/VirtualRings.h
+        src/UI/FavoritesMenu.cpp
+        src/UI/FavoritesMenu.h
+        src/UI/FingerSelectMenu.cpp
+        src/UI/FingerSelectMenu.h
+        src/UI/InventoryMenu.cpp
+        src/UI/InventoryMenu.h
+        src/UI/ItemMenuActions.cpp
+        src/UI/ItemMenuActions.h
+        src/UI/RingItemRows.cpp
+        src/UI/RingItemRows.h
+        src/UI/Scaleform.h
+        src/VirtualSlots.cpp
+        src/VirtualSlots.h
+        src/ModelPaths.h
         "${CMAKE_CURRENT_BINARY_DIR}/version.rc"
 )
 

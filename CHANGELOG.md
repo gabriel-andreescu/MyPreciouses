@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.4 - 2026-05-30
+
+- fix: properly refresh inventory ring equip markers on all runtimes
+- fix: show the finger selection modifier hint in the SkyUI VR inventory footer
+
+## 0.3.3 - 2026-05-29
+
+- fix: support Frostmoon rings on virtual fingers
+- fix: ignore zero-magnitude enchantments in strength scaling
+
+## 0.3.2 - 2026-05-29
+
+- fix: prevent inventory menu crashes when equipping rings through the finger selector
+
 ## 0.3.1 - 2026-05-28
 
 - fix: center the finger selector in wider inventory menus such as Dear Diary

@@ -1,36 +1,37 @@
 #include "Papyrus.h"
 
+#include "Core/ActorKey.h"
 #include "Settings.h"
 #include "UI.h"
-#include "VirtualRings.h"
+#include "VirtualSlots.h"
 
 namespace Papyrus {
 namespace {
-    void RefreshAfterRingSettingsReload() {
-        VirtualRings::RequestRefresh();
-        UI::RefreshRingRows();
+    void RefreshRingsAfterSettingsChanged() {
+        VirtualSlots::RequestRefresh(Core::GetPlayerActorKey());
+        UI::RefreshRingItemRows();
     }
 
-    void OnConfigCloseNative([[maybe_unused]] RE::TESQuest* a_quest) {
+    void OnMcmConfigClose([[maybe_unused]] RE::TESQuest* a_quest) {
         const auto reload = Settings::GetSingleton()->Reload();
         if (!reload.Changed()) {
             return;
         }
 
         if (reload.extraRingModeChanged || reload.enchantmentStrengthChanged) {
-            logger::info("Settings: ring behavior changed | action=refreshVirtualRings");
-            stl::add_task(RefreshAfterRingSettingsReload);
+            logger::info("Papyrus: MCM ring settings changed | action=refreshRings");
+            stl::add_task(RefreshRingsAfterSettingsChanged);
             return;
         }
 
         if (reload.fingerSelectionChanged) {
-            logger::info("Settings: finger selection changed | action=refreshUI");
-            stl::add_task(UI::RefreshRingRows);
+            logger::info("Papyrus: MCM finger settings changed | action=refreshUI");
+            stl::add_task(UI::RefreshRingItemRows);
         }
     }
 
-    bool RegisterMCM(RE::BSScript::IVirtualMachine* a_vm) {
-        a_vm->RegisterFunction("OnConfigCloseNative", "LeftHandRingsSKSE_MCM", OnConfigCloseNative);
+    bool RegisterMcmNativeFunctions(RE::BSScript::IVirtualMachine* a_vm) {
+        a_vm->RegisterFunction("OnConfigCloseNative", "LeftHandRingsSKSE_MCM", OnMcmConfigClose);
         logger::info("Papyrus: MCM reload callback registered");
         return true;
     }
@@ -43,6 +44,6 @@ void Register() {
         return;
     }
 
-    papyrus->Register(RegisterMCM);
+    papyrus->Register(RegisterMcmNativeFunctions);
 }
 }

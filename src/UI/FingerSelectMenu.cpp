@@ -1,4 +1,4 @@
-#include "FingerSelectMenu.h"
+#include "UI/FingerSelectMenu.h"
 
 #include <algorithm>
 #include <array>
@@ -6,7 +6,7 @@
 #include <mutex>
 #include <utility>
 
-namespace FingerSelectMenu {
+namespace UI::FingerSelectMenu {
 namespace {
     constexpr auto kMovieFile = "pv_fingerselect.swf";
     constexpr auto kClipName = "LHRSFingerSelect_mc";
@@ -20,7 +20,7 @@ namespace {
     constexpr bool kSwapPS3Buttons = false;
 
     struct Session {
-        Data::HostMenu hostMenu;
+        ItemMenuHost hostMenu;
         RE::BSFixedString menuName;
         RE::GPtr<RE::IMenu> menu;
         RE::GPtr<RE::GFxMovieView> movie;
@@ -32,6 +32,59 @@ namespace {
     std::mutex g_lock;
     std::optional<Data> g_data;
     std::optional<Session> g_session;
+    bool g_cancelInputSuppressed = false;
+    RE::INPUT_DEVICE g_cancelInputDevice {};
+    std::uint32_t g_cancelInputCode = 0;
+
+    [[nodiscard]] bool StopAfterSuppressedCancelInput(const RE::ButtonEvent& a_button) {
+        const auto device = a_button.GetDevice();
+        const auto key = a_button.GetIDCode();
+        if (!g_cancelInputSuppressed || device != g_cancelInputDevice || key != g_cancelInputCode) {
+            return false;
+        }
+
+        if (a_button.Value() <= 0.0F) {
+            g_cancelInputSuppressed = false;
+            return true;
+        }
+
+        if (!a_button.IsDown()) {
+            return true;
+        }
+
+        g_cancelInputSuppressed = false;
+        return false;
+    }
+
+    [[nodiscard]] bool IsGamepadCancelInput(const std::uint32_t a_key) {
+        const auto* controlMap = RE::ControlMap::GetSingleton();
+        if (controlMap && controlMap->GetGamePadType() == RE::PC_GAMEPAD_TYPE::kOrbis) {
+            return a_key == RE::BSPCOrbisGamepadDevice::Keys::kPS3_B;
+        }
+
+        return a_key == RE::BSWin32GamepadDevice::Keys::kB;
+    }
+
+    [[nodiscard]] bool IsCancelInput(const RE::ButtonEvent& a_button) {
+        if (const auto* userEvents = RE::UserEvents::GetSingleton();
+            userEvents && a_button.GetUserEvent() == userEvents->cancel) {
+            return true;
+        }
+
+        const auto key = a_button.GetIDCode();
+        switch (a_button.GetDevice()) {
+            case RE::INPUT_DEVICE::kKeyboard:
+                return key == RE::BSKeyboardDevice::Keys::kEscape || key == RE::BSKeyboardDevice::Keys::kTab;
+            case RE::INPUT_DEVICE::kGamepad: return IsGamepadCancelInput(key);
+            default:                         return false;
+        }
+    }
+
+    void SuppressCancelInput(const RE::ButtonEvent& a_button) {
+        g_cancelInputSuppressed = true;
+        g_cancelInputDevice = a_button.GetDevice();
+        g_cancelInputCode = a_button.GetIDCode();
+    }
 
     [[nodiscard]] bool IsPCInputDevice(const RE::INPUT_DEVICE a_device) {
         return a_device
@@ -82,24 +135,24 @@ namespace {
         return g_session;
     }
 
-    [[nodiscard]] RE::BSFixedString GetHostMenuName(const Data::HostMenu a_hostMenu) {
+    [[nodiscard]] RE::BSFixedString GetHostMenuName(const ItemMenuHost a_hostMenu) {
         switch (a_hostMenu) {
-            case Data::HostMenu::kInventory: return RE::InventoryMenu::MENU_NAME;
-            case Data::HostMenu::kFavorites: return RE::FavoritesMenu::MENU_NAME;
-            default:                         return RE::InventoryMenu::MENU_NAME;
+            case ItemMenuHost::kInventory: return RE::InventoryMenu::MENU_NAME;
+            case ItemMenuHost::kFavorites: return RE::FavoritesMenu::MENU_NAME;
+            default:                       return RE::InventoryMenu::MENU_NAME;
         }
     }
 
-    [[nodiscard]] RE::GPtr<RE::IMenu> GetHostMenu(const Data::HostMenu a_hostMenu) {
+    [[nodiscard]] RE::GPtr<RE::IMenu> GetHostMenu(const ItemMenuHost a_hostMenu) {
         auto* ui = RE::UI::GetSingleton();
         if (!ui) {
             return nullptr;
         }
 
         switch (a_hostMenu) {
-            case Data::HostMenu::kInventory: return ui->GetMenu(RE::InventoryMenu::MENU_NAME);
-            case Data::HostMenu::kFavorites: return ui->GetMenu(RE::FavoritesMenu::MENU_NAME);
-            default:                         return nullptr;
+            case ItemMenuHost::kInventory: return ui->GetMenu(RE::InventoryMenu::MENU_NAME);
+            case ItemMenuHost::kFavorites: return ui->GetMenu(RE::FavoritesMenu::MENU_NAME);
+            default:                       return nullptr;
         }
     }
 
@@ -142,11 +195,11 @@ namespace {
         static_cast<void>(SetNumber(a_movie, std::format("{}._y", kClipPath).c_str(), y));
     }
 
-    void SetHostControlsEnabled(RE::GFxMovieView& a_movie, const Data::HostMenu a_hostMenu, const bool a_enabled) {
+    void SetHostControlsEnabled(RE::GFxMovieView& a_movie, const ItemMenuHost a_hostMenu, const bool a_enabled) {
         const auto disabled = !a_enabled;
 
         switch (a_hostMenu) {
-            case Data::HostMenu::kInventory:
+            case ItemMenuHost::kInventory:
                 static_cast<void>(SetBool(a_movie, "_root.Menu_mc.inventoryLists.itemList.disableInput", disabled));
                 static_cast<void>(SetBool(a_movie, "_root.Menu_mc.inventoryLists.itemList.disableSelection", disabled));
                 static_cast<void>(SetBool(a_movie, "_root.Menu_mc.inventoryLists.categoryList.disableInput", disabled));
@@ -158,7 +211,7 @@ namespace {
                     SetBool(a_movie, "_root.Menu_mc.inventoryLists.columnSelectButton.disabled", disabled)
                 );
                 break;
-            case Data::HostMenu::kFavorites:
+            case ItemMenuHost::kFavorites:
                 static_cast<void>(SetBool(a_movie, "_root.MenuHolder.Menu_mc.itemList.disableInput", disabled));
                 static_cast<void>(SetBool(a_movie, "_root.MenuHolder.Menu_mc.itemList.disableSelection", disabled));
                 static_cast<void>(SetBool(a_movie, "_root.MenuHolder.Menu_mc.btnAll.disabled", disabled));
@@ -213,7 +266,7 @@ namespace {
         args[0].SetNumber(static_cast<double>(platform));
         args[1].SetBoolean(kSwapPS3Buttons);
         if (!InvokeClip(a_movie, "SetPlatform", args.data(), static_cast<std::uint32_t>(args.size()))) {
-            logger::warn("FingerSelectMenu: platform update failed | platform={}", platform);
+            logger::warn("UI: finger selector platform update failed | platform={}", platform);
             return false;
         }
 
@@ -230,7 +283,7 @@ namespace {
         args[5].SetString(a_data.labels.cancelAction.c_str());
 
         if (!InvokeClip(a_movie, "SetLabels", args.data(), static_cast<std::uint32_t>(args.size()))) {
-            logger::warn("FingerSelectMenu: label update failed");
+            logger::warn("UI: finger selector label update failed");
             return false;
         }
 
@@ -243,14 +296,14 @@ namespace {
             const auto& row = a_data.rows[index];
             std::array<RE::GFxValue, 6> args;
             args[0].SetNumber(static_cast<double>(index));
-            args[1].SetNumber(static_cast<double>(ToIndex(row.target)));
+            args[1].SetNumber(static_cast<double>(Core::ToIndex(row.target)));
             args[2].SetString(row.fingerLabel.c_str());
             args[3].SetString(row.equippedRingLabel.c_str());
             args[4].SetBoolean(row.enabled);
             args[5].SetString(row.actionLabel.c_str());
 
             if (!InvokeClip(a_movie, "SetRow", args.data(), static_cast<std::uint32_t>(args.size()))) {
-                logger::warn("FingerSelectMenu: row update failed | index={}", index);
+                logger::warn("UI: finger selector row update failed | index={}", index);
                 applied = false;
             }
         }
@@ -262,7 +315,7 @@ namespace {
         std::array<RE::GFxValue, 1> args;
         args[0].SetNumber(static_cast<double>(ClampIndex(a_data.selectedIndex)));
         if (!InvokeClip(a_movie, "CommitData", args.data(), static_cast<std::uint32_t>(args.size()))) {
-            logger::warn("FingerSelectMenu: commit failed | selectedIndex={}", a_data.selectedIndex);
+            logger::warn("UI: finger selector commit failed | selectedIndex={}", a_data.selectedIndex);
             return false;
         }
 
@@ -296,7 +349,7 @@ namespace {
         return ClampIndex(static_cast<std::size_t>(rawIndex));
     }
 
-    [[nodiscard]] std::optional<RingTarget> ReadTargetArgument(const RE::FxDelegateArgs& a_params) {
+    [[nodiscard]] std::optional<Core::Target> ReadTargetArgument(const RE::FxDelegateArgs& a_params) {
         if (a_params.GetArgCount() < 2 || !a_params[1].IsNumber()) {
             return std::nullopt;
         }
@@ -306,13 +359,13 @@ namespace {
             return std::nullopt;
         }
 
-        return FromIndex(static_cast<std::uint32_t>(rawTarget));
+        return Core::FromIndex(static_cast<std::uint32_t>(rawTarget));
     }
 
     [[nodiscard]] std::size_t ResolveResultIndex(
         const Data& a_data,
         const std::optional<std::size_t> a_index,
-        const std::optional<RingTarget> a_target
+        const std::optional<Core::Target> a_target
     ) {
         if (a_target) {
             const auto it = std::ranges::find_if(a_data.rows, [&](const Row& a_row) {
@@ -355,7 +408,7 @@ namespace {
 
         if (a_restoreHostControls) {
             SetHostControlsEnabled(*session->movie, session->hostMenu, true);
-            if (session->hostMenu == Data::HostMenu::kInventory && session->menu) {
+            if (session->hostMenu == ItemMenuHost::kInventory && session->menu) {
                 SetInventoryItem3DVisibility(*session->menu, *session->movie, true);
             }
             static_cast<void>(InvokeClip(*session->movie, "RestoreFocus", nullptr, 0));
@@ -447,7 +500,7 @@ namespace {
                 createArgs.data(),
                 static_cast<std::uint32_t>(createArgs.size())
             )) {
-            logger::warn("FingerSelectMenu: open failed | reason=viewCreationFailed");
+            logger::warn("UI: finger selector open failed | reason=viewCreationFailed");
             return false;
         }
 
@@ -462,7 +515,7 @@ namespace {
                 loadArgs.data(),
                 static_cast<std::uint32_t>(loadArgs.size())
             )) {
-            logger::warn("FingerSelectMenu: open failed | reason=viewLoadFailed");
+            logger::warn("UI: finger selector open failed | reason=viewLoadFailed");
             return false;
         }
 
@@ -492,7 +545,7 @@ bool Show(Data a_data) {
     if (data && menu && movie && menu->fxDelegate && handler) {
         menu->fxDelegate->RegisterHandler(handler);
         SetHostControlsEnabled(*movie, data->hostMenu, false);
-        if (data->hostMenu == Data::HostMenu::kInventory) {
+        if (data->hostMenu == ItemMenuHost::kInventory) {
             SetInventoryItem3DVisibility(*menu, *movie, false);
         }
         {
@@ -510,7 +563,7 @@ bool Show(Data a_data) {
 
         CloseSession(true);
     } else {
-        logger::warn("FingerSelectMenu: open failed | reason=menuUnavailable");
+        logger::warn("UI: finger selector open failed | reason=menuUnavailable");
     }
 
     {
@@ -529,6 +582,36 @@ bool IsOpen() {
 bool IsPendingOrOpen() {
     std::scoped_lock lock(g_lock);
     return g_data.has_value() || g_session.has_value();
+}
+
+bool ConsumeInput(RE::InputEvent* const* a_events) {
+    const auto fingerSelectOpen = IsOpen();
+    if (!fingerSelectOpen && !g_cancelInputSuppressed) {
+        return false;
+    }
+
+    for (auto* event = a_events ? *a_events : nullptr; event; event = event->next) {
+        const auto* button = event->AsButtonEvent();
+        if (!button) {
+            continue;
+        }
+
+        if (StopAfterSuppressedCancelInput(*button)) {
+            return true;
+        }
+
+        if (!fingerSelectOpen || !button->IsDown()) {
+            continue;
+        }
+
+        if (IsCancelInput(*button)) {
+            SuppressCancelInput(*button);
+            Cancel();
+            return true;
+        }
+    }
+
+    return false;
 }
 
 void OnMenuClose(const RE::BSFixedString& a_menuName) {
