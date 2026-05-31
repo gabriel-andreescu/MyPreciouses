@@ -11,20 +11,6 @@
 
 namespace UI {
 namespace {
-    constexpr auto kSkyUIInventoryMenuMarkerPath = "_root.Menu_mc.openMagicMenu";
-    constexpr auto kVanillaInventoryMenuMarkerPath = "_root.Menu_mc.InventoryLists_mc.ZoomButtonHolderInstance";
-    constexpr auto kFavoritesItemListPath = "_root.Menu_mc.ItemList";
-    constexpr auto kSkyUIFavoritesItemListPath = "_root.Menu_mc.itemList";
-
-    [[nodiscard]] bool IsInventoryMenuMovie(RE::GFxMovie& a_movie) {
-        return a_movie.IsAvailable(kSkyUIInventoryMenuMarkerPath)
-               || a_movie.IsAvailable(kVanillaInventoryMenuMarkerPath);
-    }
-
-    [[nodiscard]] bool IsFavoritesMenuMovie(RE::GFxMovie& a_movie) {
-        return a_movie.IsAvailable(kFavoritesItemListPath) || a_movie.IsAvailable(kSkyUIFavoritesItemListPath);
-    }
-
     [[nodiscard]] bool IsOpenInventoryMenuMovie(const RE::GFxMovieView* a_view) {
         if (!a_view) {
             return false;
@@ -40,23 +26,16 @@ namespace {
     }
 
     void StampItemMenuRingRowData(RE::GFxMovieView* a_view, RE::GFxValue* a_object, RE::InventoryEntryData* a_item) {
-        if (!a_view || !a_object || !a_item) {
+        if (!a_object || !a_item) {
             return;
         }
 
-        if (IsInventoryMenuMovie(*a_view)) {
-            static_cast<void>(RingItemRows::StampRingEntry(
-                *a_object,
-                *a_item,
-                Core::GetPlayerActorKey(),
-                IsOpenInventoryMenuMovie(a_view)
-            ));
-            return;
-        }
-
-        if (IsFavoritesMenuMovie(*a_view)) {
-            static_cast<void>(RingItemRows::StampRingEntry(*a_object, *a_item, Core::GetPlayerActorKey(), false));
-        }
+        static_cast<void>(RingItemRows::StampRingEntry(
+            *a_object,
+            *a_item,
+            Core::GetPlayerActorKey(),
+            IsOpenInventoryMenuMovie(a_view)
+        ));
     }
 
     void RefreshRingItemRowsForRing(RE::Actor& a_actor, const RE::TESObjectARMO* a_ring) {

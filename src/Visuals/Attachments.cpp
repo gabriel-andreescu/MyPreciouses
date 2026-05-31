@@ -15,6 +15,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -30,10 +31,31 @@ namespace {
     bool g_firstPersonRetryQueued {false};
     Core::ActorKey g_firstPersonRetryActor;
     std::vector<AttachmentSource> g_firstPersonRetrySources;
+    std::uint64_t g_firstPersonRetryGeneration {0};
+    std::uint64_t g_nextRefreshGeneration {0};
 
     [[nodiscard]] std::unordered_set<Core::ActorKey>& TrackedActors() {
         static auto* actors = new std::unordered_set<Core::ActorKey>();
         return *actors;
+    }
+
+    [[nodiscard]] std::unordered_map<Core::ActorKey, std::uint64_t>& RefreshGenerations() {
+        static auto* generations = new std::unordered_map<Core::ActorKey, std::uint64_t>();
+        return *generations;
+    }
+
+    [[nodiscard]] bool IsCurrentRefreshGenerationLocked(
+        const Core::ActorKey a_actor,
+        const std::uint64_t a_generation
+    ) {
+        const auto& generations = RefreshGenerations();
+        const auto it = generations.find(a_actor);
+        return it != generations.end() && it->second == a_generation;
+    }
+
+    [[nodiscard]] bool IsCurrentRefreshGeneration(const Core::ActorKey a_actor, const std::uint64_t a_generation) {
+        std::scoped_lock lock(g_lock);
+        return IsCurrentRefreshGenerationLocked(a_actor, a_generation);
     }
 
     struct ModelVariant {
@@ -560,12 +582,17 @@ namespace {
         UpdateAttachedNode(*root, a_biped.root);
     }
 
-    void QueueFirstPersonRetry(const Core::ActorKey a_actor, std::vector<AttachmentSource> a_sources) {
+    void QueueFirstPersonRetry(
+        const Core::ActorKey a_actor,
+        std::vector<AttachmentSource> a_sources,
+        const std::uint64_t a_generation
+    ) {
         bool shouldQueueRetry = false;
         {
             std::scoped_lock lock(g_firstPersonRetryLock);
             g_firstPersonRetryActor = a_actor;
             g_firstPersonRetrySources = std::move(a_sources);
+            g_firstPersonRetryGeneration = a_generation;
             shouldQueueRetry = !g_firstPersonRetryQueued;
             g_firstPersonRetryQueued = true;
         }
@@ -578,12 +605,19 @@ namespace {
             [] {
                 Core::ActorKey actor;
                 std::vector<AttachmentSource> sources;
+                std::uint64_t generation {0};
                 {
                     std::scoped_lock lock(g_firstPersonRetryLock);
                     actor = g_firstPersonRetryActor;
                     sources = std::move(g_firstPersonRetrySources);
+                    generation = g_firstPersonRetryGeneration;
                     g_firstPersonRetryActor = {};
                     g_firstPersonRetryQueued = false;
+                    g_firstPersonRetryGeneration = 0;
+                }
+
+                if (!IsCurrentRefreshGeneration(actor, generation)) {
+                    return;
                 }
 
                 RequestRefresh(actor, std::move(sources));
@@ -592,7 +626,11 @@ namespace {
         );
     }
 
-    void RebuildActorAttachments(const Core::ActorKey a_actor, const std::vector<AttachmentSource>& a_sources) {
+    void RebuildActorAttachments(
+        const Core::ActorKey a_actor,
+        const std::vector<AttachmentSource>& a_sources,
+        const std::uint64_t a_generation
+    ) {
         auto* actor = Core::ResolveActor(a_actor);
         if (!actor) {
             return;
@@ -619,13 +657,21 @@ namespace {
         if (firstPersonBiped) {
             RebuildBipedAttachments(*actor, *firstPersonBiped, true, visuals);
         } else if (!visuals.empty()) {
-            QueueFirstPersonRetry(a_actor, a_sources);
+            QueueFirstPersonRetry(a_actor, a_sources, a_generation);
         }
     }
 
-    void RefreshWithLock(const Core::ActorKey a_actor, const std::vector<AttachmentSource>& a_sources) {
+    void RefreshWithLock(
+        const Core::ActorKey a_actor,
+        const std::vector<AttachmentSource>& a_sources,
+        const std::uint64_t a_generation
+    ) {
         std::scoped_lock lock(g_lock);
-        RebuildActorAttachments(a_actor, a_sources);
+        if (!IsCurrentRefreshGenerationLocked(a_actor, a_generation)) {
+            return;
+        }
+
+        RebuildActorAttachments(a_actor, a_sources, a_generation);
     }
 }
 
@@ -657,18 +703,28 @@ void RequestRefresh(const Core::ActorKey a_actor, std::vector<AttachmentSource> 
         return;
     }
 
-    stl::add_task([a_actor, sources = std::move(a_sources)] {
-        RefreshWithLock(a_actor, sources);
+    std::uint64_t generation {0};
+    {
+        std::scoped_lock lock(g_lock);
+        generation = ++g_nextRefreshGeneration;
+        RefreshGenerations()[a_actor] = generation;
+    }
+
+    stl::add_task([a_actor, sources = std::move(a_sources), generation] {
+        RefreshWithLock(a_actor, sources, generation);
     });
 }
 
 void Revert() {
     std::scoped_lock lock(g_lock);
+    ++g_nextRefreshGeneration;
+    RefreshGenerations().clear();
     {
         std::scoped_lock retryLock(g_firstPersonRetryLock);
         g_firstPersonRetryActor = {};
         g_firstPersonRetrySources.clear();
         g_firstPersonRetryQueued = false;
+        g_firstPersonRetryGeneration = 0;
     }
 
     auto actors = std::move(TrackedActors());

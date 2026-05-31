@@ -208,7 +208,7 @@ namespace {
         it->sourceFormID = a_sourceFormID;
         it->effectSourceFormID = a_effectSourceFormID;
         it->handle = a_handle;
-        it->loadedFromSave = a_loadedFromSave;
+        it->loadedFromSave = it->loadedFromSave || a_loadedFromSave;
         if (!expectedScriptNames.empty()) {
             it->expectedScriptNames = expectedScriptNames;
         }
