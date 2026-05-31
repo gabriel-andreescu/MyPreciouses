@@ -7,6 +7,8 @@
 
 namespace Inventory {
 namespace {
+    constexpr auto kClothingRingKeyword = "ClothingRing"sv;
+
     enum class RightWornExtraListFilter {
         kAny,
         kFormOnly,
@@ -89,6 +91,41 @@ namespace {
             }
         }
         return count;
+    }
+
+    [[nodiscard]] RightWornRing MakeRightWornRing(RE::TESObjectARMO& a_ring, RE::ExtraDataList* a_extraList) {
+        return RightWornRing {
+            .ring = std::addressof(a_ring),
+            .extraList = a_extraList,
+            .protectedStack = IsProtectedRingStack(a_extraList),
+        };
+    }
+
+    [[nodiscard]] std::optional<RightWornRing> FindProtectedRightWornRingInExtraLists(
+        RE::TESObjectARMO& a_ring,
+        RE::InventoryEntryData& a_entry,
+        std::optional<RightWornRing>& a_firstRightWorn
+    ) {
+        if (!a_entry.extraLists) {
+            return std::nullopt;
+        }
+
+        for (auto* extraList : *a_entry.extraLists) {
+            if (!IsRightWorn(extraList)) {
+                continue;
+            }
+
+            auto rightWorn = MakeRightWornRing(a_ring, extraList);
+            if (rightWorn.protectedStack) {
+                return rightWorn;
+            }
+
+            if (!a_firstRightWorn) {
+                a_firstRightWorn = rightWorn;
+            }
+        }
+
+        return std::nullopt;
     }
 
 }
@@ -257,25 +294,41 @@ bool IsRightWorn(const RE::ExtraDataList* a_extraList) {
     return a_extraList && a_extraList->HasType<RE::ExtraWorn>();
 }
 
-bool HasProtectedRightWornRing(RE::Actor& a_actor) {
+std::optional<RightWornRing> FindRightWornRing(RE::Actor& a_actor) {
     auto* inventoryChanges = a_actor.GetInventoryChanges();
     if (!inventoryChanges || !inventoryChanges->entryList) {
-        return false;
+        return std::nullopt;
     }
 
+    std::optional<RightWornRing> firstRightWorn;
     for (auto* entry : *inventoryChanges->entryList) {
-        if (!entry || !AsRing(entry->object) || !entry->extraLists) {
+        auto* ring = entry ? AsRing(entry->object) : nullptr;
+        if (!ring) {
             continue;
         }
 
-        for (auto* extraList : *entry->extraLists) {
-            if (IsRightWorn(extraList) && IsProtectedRingStack(extraList)) {
-                return true;
+        if (entry->extraLists) {
+            if (auto protectedRightWorn = FindProtectedRightWornRingInExtraLists(*ring, *entry, firstRightWorn)) {
+                return protectedRightWorn;
             }
+            continue;
+        }
+
+        if (entry->IsWorn(false) && !firstRightWorn) {
+            firstRightWorn = MakeRightWornRing(*ring, nullptr);
         }
     }
 
-    return false;
+    return firstRightWorn;
+}
+
+bool HasRightWornRing(RE::Actor& a_actor) {
+    return FindRightWornRing(a_actor).has_value();
+}
+
+bool HasProtectedRightWornRing(RE::Actor& a_actor) {
+    const auto rightWorn = FindRightWornRing(a_actor);
+    return rightWorn && rightWorn->protectedStack;
 }
 
 std::optional<CustomEnchantmentData> ReadCustomEnchantment(const RE::ExtraDataList& a_extraList) {
@@ -490,7 +543,8 @@ RE::TESObjectARMO* AsRing(RE::TESForm* a_form) {
 
 bool IsRing(const RE::TESObjectARMO* a_armor) {
     return a_armor
-           && a_armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing)
+           && (a_armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing)
+               || a_armor->HasKeywordString(kClothingRingKeyword))
            && !a_armor->armorAddons.empty();
 }
 

@@ -1,5 +1,6 @@
 #include "Equipment/AssignmentStore.h"
 
+#include "Inventory.h"
 #include "SourceModelFootprints.h"
 
 #include <algorithm>
@@ -19,12 +20,7 @@ namespace {
     }
 
     [[nodiscard]] RE::TESObjectARMO* LookupAssignedRing(const RE::FormID a_sourceFormID) {
-        auto* armor = RE::TESForm::LookupByID<RE::TESObjectARMO>(a_sourceFormID);
-        if (!armor || !armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing) || armor->armorAddons.empty()) {
-            return nullptr;
-        }
-
-        return armor;
+        return Inventory::AsRing(RE::TESForm::LookupByID(a_sourceFormID));
     }
 
     [[nodiscard]] bool CanUseActor(const Core::ActorKey a_actor, const std::string_view a_action) {
@@ -103,12 +99,12 @@ namespace {
         const RE::TESObjectARMO& a_ring,
         const std::string_view a_action
     ) {
-        if (!a_occupiedTargets.Contains(Core::kVanillaRingSlotTarget)) {
+        if (!a_occupiedTargets.Empty()) {
             return true;
         }
 
         logger::warn(
-            "Equipment: virtual target rejected | action={} | target={} | source={:08X} | reason=vanillaTargetOccupied",
+            "Equipment: virtual target rejected | action={} | target={} | source={:08X} | reason=invalidFootprintAnchor",
             a_action,
             Core::TargetName(a_target),
             a_ring.GetFormID()
@@ -131,6 +127,26 @@ namespace {
         });
     }
 
+    [[nodiscard]] std::optional<RE::FormID> ClearMovedSourceAssignment(
+        Core::TargetAssignments& a_snapshot,
+        const Core::Target a_target,
+        const Core::Target a_moveSourceTarget,
+        const Core::ItemSource& a_expectedSource
+    ) {
+        if (!Core::IsVirtualTarget(a_moveSourceTarget) || a_moveSourceTarget == a_target) {
+            return std::nullopt;
+        }
+
+        auto& assignment = a_snapshot.byTarget[Core::ToIndex(a_moveSourceTarget)];
+        if (!assignment.source.Matches(a_expectedSource)) {
+            return std::nullopt;
+        }
+
+        const auto retainedEffectSourceFormID = assignment.retainedEffectSourceFormID;
+        assignment = {};
+        return retainedEffectSourceFormID;
+    }
+
     [[nodiscard]] bool MatchesAssignmentIdentity(
         const Core::Assignment& a_assignment,
         const Core::Assignment& a_expected
@@ -141,8 +157,9 @@ namespace {
     [[nodiscard]] bool AssignSource(
         const Core::ActorKey a_actor,
         RE::TESObjectARMO& a_ring,
-        Core::ItemSource a_nextSource,
+        const Core::ItemSource& a_nextSource,
         const Core::Target a_target,
+        const std::optional<Core::Target> a_moveSourceTarget,
         const std::string_view a_action
     ) {
         if (!CanUseActor(a_actor, a_action) || !CanUseVirtualTarget(a_target, a_action)) {
@@ -160,10 +177,26 @@ namespace {
         auto& snapshot = GetOrCreateSnapshot(a_actor);
         auto& assignment = snapshot.byTarget[Core::ToIndex(a_target)];
         auto nextAssignment = Core::Assignment {
-            .source = std::move(a_nextSource),
+            .source = a_nextSource,
         };
         if (assignment.source.sourceFormID == a_ring.GetFormID()) {
             nextAssignment.retainedEffectSourceFormID = assignment.retainedEffectSourceFormID;
+        }
+        if (a_moveSourceTarget) {
+            const auto movedEffectSourceFormID = ClearMovedSourceAssignment(
+                snapshot,
+                a_target,
+                *a_moveSourceTarget,
+                a_nextSource
+            );
+            if (!movedEffectSourceFormID) {
+                if (!HasAnyAssignment(snapshot)) {
+                    Snapshots().erase(a_actor);
+                }
+                return false;
+            }
+
+            nextAssignment.retainedEffectSourceFormID = *movedEffectSourceFormID;
         }
         ClearConflictingAssignments(snapshot, conflicts);
         assignment = std::move(nextAssignment);
@@ -171,7 +204,12 @@ namespace {
     }
 }
 
-bool AssignForm(const Core::ActorKey a_actor, RE::TESObjectARMO& a_ring, const Core::Target a_target) {
+bool AssignForm(
+    const Core::ActorKey a_actor,
+    RE::TESObjectARMO& a_ring,
+    const Core::Target a_target,
+    const std::optional<Core::Target> a_moveSourceTarget
+) {
     return AssignSource(
         a_actor,
         a_ring,
@@ -180,6 +218,7 @@ bool AssignForm(const Core::ActorKey a_actor, RE::TESObjectARMO& a_ring, const C
             .sourceFormID = a_ring.GetFormID(),
         },
         a_target,
+        a_moveSourceTarget,
         "assignForm"sv
     );
 }
@@ -189,7 +228,8 @@ bool AssignCustom(
     RE::TESObjectARMO& a_ring,
     Core::CustomEnchantmentSignature a_signature,
     std::optional<Core::ExtraUniqueIDKey> a_uniqueID,
-    const Core::Target a_target
+    const Core::Target a_target,
+    const std::optional<Core::Target> a_moveSourceTarget
 ) {
     return AssignSource(
         a_actor,
@@ -201,6 +241,7 @@ bool AssignCustom(
             .extraUniqueID = a_uniqueID,
         },
         a_target,
+        a_moveSourceTarget,
         "assignCustom"sv
     );
 }

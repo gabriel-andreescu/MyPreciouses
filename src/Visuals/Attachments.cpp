@@ -105,9 +105,15 @@ namespace {
 
     [[nodiscard]] std::optional<ArmorAddonVisual> CaptureArmorAddonVisual(
         const RE::TESObjectARMA& a_sourceAddon,
-        const Core::Target a_target
+        const Core::Target a_target,
+        RE::TESRace& a_actorRace,
+        const bool a_customRingSlots
     ) {
-        if (a_sourceAddon.GetSlotMask() != RE::BGSBipedObjectForm::BipedObjectSlot::kRing) {
+        if (!a_customRingSlots && !a_sourceAddon.HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing)) {
+            return std::nullopt;
+        }
+
+        if (!a_sourceAddon.IsValidRace(std::addressof(a_actorRace))) {
             return std::nullopt;
         }
 
@@ -131,15 +137,17 @@ namespace {
 
     [[nodiscard]] std::vector<ArmorAddonVisual> CaptureArmorAddonVisuals(
         const RE::TESObjectARMO& a_source,
-        const Core::Target a_target
+        const Core::Target a_target,
+        RE::TESRace& a_actorRace
     ) {
         std::vector<ArmorAddonVisual> visuals;
+        const auto customRingSlots = !a_source.HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing);
         for (auto* addon : a_source.armorAddons) {
             if (!addon) {
                 continue;
             }
 
-            if (auto visual = CaptureArmorAddonVisual(*addon, a_target)) {
+            if (auto visual = CaptureArmorAddonVisual(*addon, a_target, a_actorRace, customRingSlots)) {
                 visuals.push_back(std::move(*visual));
             }
         }
@@ -147,7 +155,8 @@ namespace {
     }
 
     [[nodiscard]] std::vector<AttachmentSourceVisuals> BuildAttachmentVisuals(
-        const std::vector<AttachmentSource>& a_sources
+        const std::vector<AttachmentSource>& a_sources,
+        RE::TESRace& a_actorRace
     ) {
         std::vector<AttachmentSourceVisuals> visuals;
         for (const auto& source : a_sources) {
@@ -160,7 +169,7 @@ namespace {
                 continue;
             }
 
-            auto addonVisuals = CaptureArmorAddonVisuals(*sourceArmor, source.target);
+            auto addonVisuals = CaptureArmorAddonVisuals(*sourceArmor, source.target, a_actorRace);
             if (addonVisuals.empty()) {
                 continue;
             }
@@ -430,6 +439,17 @@ namespace {
         }
 
         ApplyTextureSwap(*model, *node);
+        if (!SourceModelFootprints::IsRingModel(*node)) {
+            logger::debug(
+                "Visuals: source skipped | target={} | source={:08X} | addon={:08X} | path='{}' | reason=noRingPartition",
+                Core::TargetName(a_visual.target),
+                a_sourceFormID,
+                a_visual.sourceAddon ? a_visual.sourceAddon->GetFormID() : 0,
+                model->path
+            );
+            return nullptr;
+        }
+
         if (!PatchScenegraph(a_biped, *node, a_visual.target, a_sourceFingerMask)) {
             logger::warn(
                 "Visuals: patch failed | target={} | source={:08X} | addon={:08X} | path='{}' | reason=noEditableRingData",
@@ -580,7 +600,12 @@ namespace {
 
         TrackedActors().insert(a_actor);
 
-        const auto visuals = BuildAttachmentVisuals(a_sources);
+        auto* actorRace = actor->GetRace();
+        if (!actorRace) {
+            return;
+        }
+
+        const auto visuals = BuildAttachmentVisuals(a_sources, *actorRace);
         const auto& thirdPersonBiped = actor->GetBiped(false);
         if (thirdPersonBiped) {
             RebuildBipedAttachments(*actor, *thirdPersonBiped, false, visuals);

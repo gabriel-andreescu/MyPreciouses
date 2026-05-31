@@ -45,6 +45,12 @@ struct FormOnlySourceMatch {
     [[nodiscard]] bool HasMatch() const;
 };
 
+struct RightWornRing {
+    RE::TESObjectARMO* ring {nullptr};
+    RE::ExtraDataList* extraList {nullptr};
+    bool protectedStack {false};
+};
+
 struct RingInventoryState {
     RE::ExtraDataList* rightWornExtraList {nullptr};
     bool rightWorn {false};
@@ -58,6 +64,8 @@ struct RingInventoryState {
 );
 [[nodiscard]] bool IsProtectedRingStack(RE::ExtraDataList* a_extraList);
 [[nodiscard]] bool IsRightWorn(const RE::ExtraDataList* a_extraList);
+[[nodiscard]] std::optional<RightWornRing> FindRightWornRing(RE::Actor& a_actor);
+[[nodiscard]] bool HasRightWornRing(RE::Actor& a_actor);
 [[nodiscard]] bool HasProtectedRightWornRing(RE::Actor& a_actor);
 [[nodiscard]] std::optional<CustomEnchantmentData> ReadCustomEnchantment(const RE::ExtraDataList& a_extraList);
 [[nodiscard]] bool MirrorCustomEnchantment(RE::ExtraDataList& a_target, const RE::ExtraDataList& a_source);

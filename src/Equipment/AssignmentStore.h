@@ -7,13 +7,19 @@
 #include <vector>
 
 namespace Equipment::AssignmentStore {
-[[nodiscard]] bool AssignForm(Core::ActorKey a_actor, RE::TESObjectARMO& a_ring, Core::Target a_target);
+[[nodiscard]] bool AssignForm(
+    Core::ActorKey a_actor,
+    RE::TESObjectARMO& a_ring,
+    Core::Target a_target,
+    std::optional<Core::Target> a_moveSourceTarget = std::nullopt
+);
 [[nodiscard]] bool AssignCustom(
     Core::ActorKey a_actor,
     RE::TESObjectARMO& a_ring,
     Core::CustomEnchantmentSignature a_signature,
     std::optional<Core::ExtraUniqueIDKey> a_uniqueID,
-    Core::Target a_target
+    Core::Target a_target,
+    std::optional<Core::Target> a_moveSourceTarget = std::nullopt
 );
 void Clear(Core::ActorKey a_actor, Core::Target a_target);
 [[nodiscard]] bool TrySetRetainedEffectSourceFormID(

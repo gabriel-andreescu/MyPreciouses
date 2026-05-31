@@ -85,22 +85,34 @@ namespace {
     }
 
     [[nodiscard]] std::vector<Core::Target> CollectRingRowTargets(
+        const RE::TESObjectARMO& a_ring,
         const Core::ActorKey a_actor,
         const Core::ItemSource& a_source,
         const bool a_vanillaRingSlotEquipped
     ) {
+        Core::TargetMask targetMask;
+        auto addOccupiedTargets = [&targetMask](const Core::TargetMask& a_occupiedTargets) {
+            for (const auto target : Core::kAllTargets) {
+                if (a_occupiedTargets.Contains(target)) {
+                    targetMask.Add(target);
+                }
+            }
+        };
+
+        if (a_vanillaRingSlotEquipped) {
+            addOccupiedTargets(SourceModelFootprints::GetProjectedTargets(a_ring, Core::kVanillaRingSlotTarget));
+        }
+
+        for (const auto target : Core::kVirtualTargets) {
+            if (Equipment::AssignmentStore::Get(a_actor, target).source.Matches(a_source)) {
+                addOccupiedTargets(SourceModelFootprints::GetProjectedTargets(a_ring, target));
+            }
+        }
+
         std::vector<Core::Target> targets;
         targets.reserve(Core::kAllTargets.size());
-
         for (const auto target : Core::kAllTargets) {
-            if (target == Core::kVanillaRingSlotTarget) {
-                if (a_vanillaRingSlotEquipped) {
-                    targets.push_back(target);
-                }
-                continue;
-            }
-
-            if (Equipment::AssignmentStore::Get(a_actor, target).source.Matches(a_source)) {
+            if (targetMask.Contains(target)) {
                 targets.push_back(target);
             }
         }
@@ -112,6 +124,10 @@ namespace {
         return std::ranges::any_of(a_targets, [](const auto target) {
             return target.finger != Core::Finger::kIndex;
         });
+    }
+
+    [[nodiscard]] bool ShouldShowRingFingerSuffix(const std::vector<Core::Target>& a_targets) {
+        return a_targets.size() > 1 || HasNonIndexTarget(a_targets);
     }
 
     [[nodiscard]] std::string FormatRingRowTargetLabel(const Core::Target a_target) {
@@ -164,8 +180,10 @@ namespace {
         }
 
         auto displayText = *baseText;
-        const auto targets = CollectRingRowTargets(a_actor, a_source, a_vanillaRingSlotEquipped);
-        if (HasNonIndexTarget(targets)) {
+        auto* ring = Inventory::AsRing(RE::TESForm::LookupByID(a_source.sourceFormID));
+        const auto targets = ring ? CollectRingRowTargets(*ring, a_actor, a_source, a_vanillaRingSlotEquipped)
+                                  : std::vector<Core::Target> {};
+        if (ShouldShowRingFingerSuffix(targets)) {
             displayText.append(FormatRingFingerSuffix(targets));
         }
 

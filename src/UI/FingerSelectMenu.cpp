@@ -294,13 +294,14 @@ namespace {
         auto applied = true;
         for (std::size_t index = 0; index < a_data.rows.size(); ++index) {
             const auto& row = a_data.rows[index];
-            std::array<RE::GFxValue, 6> args;
+            std::array<RE::GFxValue, 7> args;
             args[0].SetNumber(static_cast<double>(index));
             args[1].SetNumber(static_cast<double>(Core::ToIndex(row.target)));
             args[2].SetString(row.fingerLabel.c_str());
             args[3].SetString(row.equippedRingLabel.c_str());
             args[4].SetBoolean(row.enabled);
             args[5].SetString(row.actionLabel.c_str());
+            args[6].SetNumber(static_cast<double>(row.previewTargetBits));
 
             if (!InvokeClip(a_movie, "SetRow", args.data(), static_cast<std::uint32_t>(args.size()))) {
                 logger::warn("UI: finger selector row update failed | index={}", index);
@@ -309,6 +310,18 @@ namespace {
         }
 
         return applied;
+    }
+
+    [[nodiscard]] bool ApplyPreviewSource(RE::GFxMovieView& a_movie, const Data& a_data) {
+        std::array<RE::GFxValue, 2> args;
+        args[0].SetNumber(static_cast<double>(a_data.previewSourceTargetBits));
+        args[1].SetString(a_data.previewEmptyRingLabel.c_str());
+        if (!InvokeClip(a_movie, "SetPreviewSource", args.data(), static_cast<std::uint32_t>(args.size()))) {
+            logger::warn("UI: finger selector preview source update failed");
+            return false;
+        }
+
+        return true;
     }
 
     [[nodiscard]] bool ApplyCommit(RE::GFxMovieView& a_movie, const Data& a_data) {
@@ -326,8 +339,9 @@ namespace {
         const auto platform = ApplyPlatform(a_movie, a_data.inputDevice);
         const auto labels = ApplyLabels(a_movie, a_data);
         const auto rows = ApplyRows(a_movie, a_data);
+        const auto previewSource = ApplyPreviewSource(a_movie, a_data);
         const auto commit = ApplyCommit(a_movie, a_data);
-        return platform && labels && rows && commit;
+        return platform && labels && rows && previewSource && commit;
     }
 
     void ApplyCurrentData(RE::GFxMovieView& a_movie) {
@@ -385,13 +399,13 @@ namespace {
             return;
         }
 
-        data->onResult(
+        static_cast<void>(data->onResult(
             Result {
                 .action = Result::Action::kCancel,
                 .target = std::nullopt,
                 .index = ClampIndex(data->selectedIndex),
             }
-        );
+        ));
     }
 
     void CloseSession(const bool a_restoreHostControls) {
@@ -422,15 +436,28 @@ namespace {
         static_cast<void>(Invoke(*session->movie, std::format("{}.removeMovieClip", kClipPath).c_str(), nullptr, 0));
     }
 
-    void CompleteResult(Result a_result) {
-        auto data = TakeData();
-        CloseSession(true);
-
+    void CompleteEquipResult(Result a_result) {
+        const auto data = GetData();
         if (!data || !data->onResult) {
             return;
         }
 
-        data->onResult(a_result);
+        if (data->onResult(a_result) == ResultDisposition::kKeepOpen) {
+            return;
+        }
+
+        static_cast<void>(TakeData());
+        CloseSession(true);
+    }
+
+    void CompleteCloseResult(Result a_result) {
+        auto data = TakeData();
+        CloseSession(true);
+        if (!data || !data->onResult) {
+            return;
+        }
+
+        static_cast<void>(data->onResult(a_result));
     }
 
     class EmbeddedHandler final : public RE::FxDelegateHandler {
@@ -469,7 +496,7 @@ namespace {
             const auto index = ResolveResultIndex(*data, ReadIndexArgument(a_params), targetArg);
             const auto target = targetArg.value_or(data->rows[index].target);
             UpdateSelectedIndex(index);
-            CompleteResult(
+            CompleteEquipResult(
                 Result {
                     .action = Result::Action::kEquip,
                     .target = target,
@@ -625,7 +652,7 @@ void OnMenuClose(const RE::BSFixedString& a_menuName) {
 void Cancel() {
     auto data = GetData();
     if (data && data->onResult) {
-        CompleteResult(
+        CompleteCloseResult(
             Result {
                 .action = Result::Action::kCancel,
                 .target = std::nullopt,

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.5 - 2026-05-30
+
+- feat: improve finger selector menu previews, action labels, and multi-finger ring handling
+- feat: support mod-added rings with the ClothingRing keyword regardless of body slot
+- fix: ignore alternate-form body addons when checking ring finger coverage (eg: Alternate Forms Keep Utility)
+- fix: ignore negligible incidental skin weights when checking ring finger coverage (eg: Ahzidal's Rings by Ave)
+- fix: allow multi-finger rings to start from valid fingers in the finger selector
+- fix: allow single-copy virtual rings to be moved between fingers in the finger selector
+
 ## 0.3.4 - 2026-05-30
 
 - fix: properly refresh inventory ring equip markers on all runtimes

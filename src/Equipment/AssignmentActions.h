@@ -11,7 +11,7 @@
 namespace Equipment {
 enum class ActionBlockReason : std::uint8_t {
     kNone = 0,
-    kProtectedRightHandRing,
+    kRightHandRingCannotBeUnequipped,
 };
 
 struct SourceSelection {
@@ -53,6 +53,7 @@ enum class QueueMode : std::uint8_t {
 [[nodiscard]] ActionResult ToggleTarget(
     const SourceSelection& a_selection,
     Core::Target a_target,
+    std::optional<Core::Target> a_moveSourceTarget = std::nullopt,
     QueueMode a_queueMode = QueueMode::kImmediate,
     CompletionCallback a_onQueuedComplete = {}
 );

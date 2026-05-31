@@ -21,6 +21,10 @@ public:
         return (_mask & static_cast<std::uint8_t>(1u << std::to_underlying(a_finger))) != 0;
     }
 
+    [[nodiscard]] bool Empty() const {
+        return _mask == 0;
+    }
+
 private:
     std::uint8_t _mask {0};
 };
@@ -37,6 +41,14 @@ public:
 
     [[nodiscard]] bool Intersects(const TargetMask& a_other) const {
         return (_bits & a_other._bits) != 0;
+    }
+
+    [[nodiscard]] bool Empty() const {
+        return _bits == 0;
+    }
+
+    [[nodiscard]] std::uint16_t Bits() const {
+        return _bits;
     }
 
 private:

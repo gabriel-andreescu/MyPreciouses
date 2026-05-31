@@ -33,7 +33,7 @@ namespace {
         return false;
     }
 
-    [[nodiscard]] ActionResult ProtectedRightHandRingResult();
+    [[nodiscard]] ActionResult RightHandRingCannotBeUnequippedResult();
 
     [[nodiscard]] bool ClearVirtualAssignment(RE::Actor& a_actor, const Core::Target a_target) {
         const auto actorKey = Core::MakeActorKey(a_actor);
@@ -338,7 +338,8 @@ namespace {
         const Core::ActorKey a_actor,
         RE::TESObjectARMO& a_ring,
         const Core::ItemSource& a_source,
-        const Core::Target a_target
+        const Core::Target a_target,
+        const std::optional<Core::Target> a_moveSourceTarget = std::nullopt
     ) {
         if (a_source.IsCustomEnchantment()) {
             return AssignmentStore::AssignCustom(
@@ -346,11 +347,98 @@ namespace {
                 a_ring,
                 a_source.customEnchantment,
                 a_source.extraUniqueID,
-                a_target
+                a_target,
+                a_moveSourceTarget
             );
         }
 
-        return AssignmentStore::AssignForm(a_actor, a_ring, a_target);
+        return AssignmentStore::AssignForm(a_actor, a_ring, a_target, a_moveSourceTarget);
+    }
+
+    void MergeActionResult(ActionResult& a_result, const ActionResult a_next) {
+        a_result.selectionChanged = a_result.selectionChanged || a_next.selectionChanged;
+        a_result.inventoryChanged = a_result.inventoryChanged || a_next.inventoryChanged;
+        a_result.sourceUnavailable = a_result.sourceUnavailable || a_next.sourceUnavailable;
+        a_result.handled = a_result.handled || a_next.handled;
+        if (a_result.blockReason == ActionBlockReason::kNone) {
+            a_result.blockReason = a_next.blockReason;
+        }
+    }
+
+    [[nodiscard]] ActionResult PrepareVanillaRingSlotForVirtualTarget(
+        RE::Actor& a_actor,
+        const Core::TargetMask& a_occupiedTargets
+    ) {
+        ActionResult result;
+        if (!a_occupiedTargets.Contains(Core::kVanillaRingSlotTarget)) {
+            return result;
+        }
+
+        const auto rightWorn = Inventory::FindRightWornRing(a_actor);
+        if (!rightWorn) {
+            return result;
+        }
+
+        if (!rightWorn->ring || rightWorn->protectedStack) {
+            return RightHandRingCannotBeUnequippedResult();
+        }
+
+        if (!UnequipVanillaRingSlot(a_actor, *rightWorn->ring, rightWorn->extraList)
+            || Inventory::HasRightWornRing(a_actor)) {
+            return RightHandRingCannotBeUnequippedResult();
+        }
+
+        result.inventoryChanged = true;
+        return result;
+    }
+
+    void ClearVanillaRingSlotConflict(
+        ActionResult& a_result,
+        const Core::ActorKey a_actor,
+        const Core::Target a_target
+    ) {
+        auto* actor = Core::ResolveActor(a_actor);
+        if (!actor) {
+            return;
+        }
+
+        if (ClearVirtualAssignment(*actor, a_target)) {
+            a_result.selectionChanged = true;
+        }
+    }
+
+    void ClearVanillaRingSlotConflicts(
+        ActionResult& a_result,
+        const Core::ActorKey a_actor,
+        const RE::TESObjectARMO& a_ring,
+        const std::optional<Core::Target> a_selectedTarget
+    ) {
+        const auto occupiedTargets = SourceModelFootprints::GetProjectedTargets(a_ring, Core::kVanillaRingSlotTarget);
+        const auto snapshot = AssignmentStore::GetSnapshot(a_actor);
+        std::vector<Core::Target> conflicts;
+        for (const auto target : Core::kVirtualTargets) {
+            const auto& assignment = snapshot.byTarget[Core::ToIndex(target)];
+            if (!assignment.IsAssigned()) {
+                continue;
+            }
+
+            auto* assignedRing = LookupSourceRing(assignment.source.sourceFormID);
+            if (!assignedRing) {
+                continue;
+            }
+
+            if (occupiedTargets.Intersects(SourceModelFootprints::GetProjectedTargets(*assignedRing, target))) {
+                conflicts.push_back(target);
+            }
+        }
+
+        if (a_selectedTarget && std::ranges::find(conflicts, *a_selectedTarget) == conflicts.end()) {
+            conflicts.push_back(*a_selectedTarget);
+        }
+
+        for (const auto target : conflicts) {
+            ClearVanillaRingSlotConflict(a_result, a_actor, target);
+        }
     }
 
     [[nodiscard]] ActionResult ToggleVanillaRingSlot(const Core::ActorKey a_actor, const Core::ItemSource& a_source) {
@@ -368,11 +456,7 @@ namespace {
 
         if (sourceMatches.rightWorn) {
             if (sourceMatches.rightWornProtected) {
-                return ProtectedRightHandRingResult();
-            }
-
-            if (!sourceMatches.rightWornExtraList) {
-                return result;
+                return RightHandRingCannotBeUnequippedResult();
             }
 
             if (!UnequipVanillaRingSlot(*actor, *ring, sourceMatches.rightWornExtraList)) {
@@ -386,16 +470,13 @@ namespace {
             return result;
         }
 
-        if (const auto target = FindVirtualTargetForVanillaRingSlotEquip(a_actor, *actor, *ring, a_source)) {
-            AssignmentStore::Clear(a_actor, *target);
-            VirtualSlots::ClearTarget(a_actor, *target);
-            result.selectionChanged = true;
-        }
+        const auto target = FindVirtualTargetForVanillaRingSlotEquip(a_actor, *actor, *ring, a_source);
 
         if (!EquipVanillaRingSlot(*actor, *ring, sourceMatches.equipExtraList)) {
             return result;
         }
 
+        ClearVanillaRingSlotConflicts(result, a_actor, *ring, target);
         result.inventoryChanged = true;
         if (IsInVanillaRingSlot(*actor, *ring, a_source)) {
             Audio::EquipSounds::Play(*actor, *ring, Audio::EquipSounds::Cue::kEquip);
@@ -436,7 +517,12 @@ namespace {
             return false;
         }
 
-        if (SourceModelFootprints::GetProjectedTargets(*ring, a_target).Contains(Core::kVanillaRingSlotTarget)) {
+        const auto occupiedTargets = SourceModelFootprints::GetProjectedTargets(*ring, a_target);
+        if (occupiedTargets.Empty()) {
+            return ClearVirtualAssignment(a_actor, a_target);
+        }
+
+        if (occupiedTargets.Contains(Core::kVanillaRingSlotTarget) && Inventory::HasRightWornRing(a_actor)) {
             return ClearVirtualAssignment(a_actor, a_target);
         }
 
@@ -452,10 +538,10 @@ namespace {
         return false;
     }
 
-    [[nodiscard]] ActionResult ProtectedRightHandRingResult() {
+    [[nodiscard]] ActionResult RightHandRingCannotBeUnequippedResult() {
         return ActionResult {
             .handled = true,
-            .blockReason = ActionBlockReason::kProtectedRightHandRing,
+            .blockReason = ActionBlockReason::kRightHandRingCannotBeUnequipped,
         };
     }
 
@@ -537,7 +623,7 @@ namespace {
         const auto selectedCopies = CountSelectedVirtualCopies(a_actor, a_source, a_target);
         if (RightSlotConsumesNeededCopy(sourceMatches, selectedCopies)) {
             if (sourceMatches.rightWornProtected) {
-                return ProtectedRightHandRingResult();
+                return RightHandRingCannotBeUnequippedResult();
             }
 
             if (!UnequipVanillaRingSlot(*actor, *ring, sourceMatches.rightWornExtraList)) {
@@ -552,6 +638,15 @@ namespace {
                 return result;
             }
         }
+
+        const auto prepareResult = PrepareVanillaRingSlotForVirtualTarget(
+            *actor,
+            SourceModelFootprints::GetProjectedTargets(*ring, a_target)
+        );
+        if (prepareResult.blockReason != ActionBlockReason::kNone) {
+            return prepareResult;
+        }
+        MergeActionResult(result, prepareResult);
 
         if (!AssignSourceToTarget(a_actor, *ring, a_source, a_target)) {
             return result;
@@ -590,7 +685,7 @@ namespace {
     [[nodiscard]] ActionResult ToggleVanillaTarget(const SourceSelection& a_selection) {
         if (auto* actor = Core::ResolveActor(a_selection.actor);
             actor && Inventory::HasProtectedRightWornRing(*actor)) {
-            return ProtectedRightHandRingResult();
+            return RightHandRingCannotBeUnequippedResult();
         }
 
         return ToggleVanillaRingSlot(a_selection.actor, a_selection.itemSource);
@@ -638,6 +733,7 @@ namespace {
         const SourceSelection& a_selection,
         RE::TESObjectARMO& a_ring,
         const Core::Target a_target,
+        const std::optional<Core::Target> a_moveSourceTarget,
         const QueueMode a_queueMode,
         CompletionCallback a_onQueuedComplete
     ) {
@@ -673,7 +769,7 @@ namespace {
         const auto selectedCopies = CountSelectedVirtualCopies(a_selection.actor, source, a_target);
         if (RightSlotConsumesNeededCopy(sourceMatches, selectedCopies)) {
             if (sourceMatches.rightWornProtected) {
-                return ProtectedRightHandRingResult();
+                return RightHandRingCannotBeUnequippedResult();
             }
 
             return MoveRightWornSourceToVirtual(
@@ -685,11 +781,22 @@ namespace {
             );
         }
 
-        if (HasNoFreeVirtualCopy(sourceMatches, selectedCopies)) {
+        const auto hasNoFreeVirtualCopy = HasNoFreeVirtualCopy(sourceMatches, selectedCopies);
+        const auto moveSourceTarget = hasNoFreeVirtualCopy ? a_moveSourceTarget : std::nullopt;
+        if (hasNoFreeVirtualCopy && !moveSourceTarget) {
             return result;
         }
 
-        if (!AssignSourceToTarget(a_selection.actor, a_ring, source, a_target)) {
+        const auto prepareResult = PrepareVanillaRingSlotForVirtualTarget(
+            *actor,
+            SourceModelFootprints::GetProjectedTargets(a_ring, a_target)
+        );
+        if (prepareResult.blockReason != ActionBlockReason::kNone) {
+            return prepareResult;
+        }
+        MergeActionResult(result, prepareResult);
+
+        if (!AssignSourceToTarget(a_selection.actor, a_ring, source, a_target, moveSourceTarget)) {
             return result;
         }
 
@@ -708,6 +815,7 @@ namespace {
         const SourceSelection& a_selection,
         RE::TESObjectARMO& a_ring,
         const Core::Target a_target,
+        const std::optional<Core::Target> a_moveSourceTarget,
         const QueueMode a_queueMode,
         CompletionCallback a_onQueuedComplete
     ) {
@@ -728,7 +836,7 @@ namespace {
         const auto selectedCopies = CountSelectedVirtualCopies(a_selection.actor, source, a_target);
         if (RightSlotConsumesNeededCopy(sourceMatches, selectedCopies)) {
             if (sourceMatches.rightWornProtected) {
-                return ProtectedRightHandRingResult();
+                return RightHandRingCannotBeUnequippedResult();
             }
 
             return MoveRightWornSourceToVirtual(
@@ -740,11 +848,22 @@ namespace {
             );
         }
 
-        if (HasNoFreeVirtualCopy(sourceMatches, selectedCopies)) {
+        const auto hasNoFreeVirtualCopy = HasNoFreeVirtualCopy(sourceMatches, selectedCopies);
+        const auto moveSourceTarget = hasNoFreeVirtualCopy ? a_moveSourceTarget : std::nullopt;
+        if (hasNoFreeVirtualCopy && !moveSourceTarget) {
             return result;
         }
 
-        if (!AssignSourceToTarget(a_selection.actor, a_ring, source, a_target)) {
+        const auto prepareResult = PrepareVanillaRingSlotForVirtualTarget(
+            *actor,
+            SourceModelFootprints::GetProjectedTargets(a_ring, a_target)
+        );
+        if (prepareResult.blockReason != ActionBlockReason::kNone) {
+            return prepareResult;
+        }
+        MergeActionResult(result, prepareResult);
+
+        if (!AssignSourceToTarget(a_selection.actor, a_ring, source, a_target, moveSourceTarget)) {
             return result;
         }
 
@@ -763,6 +882,7 @@ namespace {
 ActionResult ToggleTarget(
     const SourceSelection& a_selection,
     const Core::Target a_target,
+    const std::optional<Core::Target> a_moveSourceTarget,
     const QueueMode a_queueMode,
     CompletionCallback a_onQueuedComplete
 ) {
@@ -785,10 +905,24 @@ ActionResult ToggleTarget(
     }
 
     if (a_selection.itemSource.IsCustomEnchantment()) {
-        return AssignCustomTarget(a_selection, *ring, a_target, a_queueMode, std::move(a_onQueuedComplete));
+        return AssignCustomTarget(
+            a_selection,
+            *ring,
+            a_target,
+            a_moveSourceTarget,
+            a_queueMode,
+            std::move(a_onQueuedComplete)
+        );
     }
 
-    return AssignFormTarget(a_selection, *ring, a_target, a_queueMode, std::move(a_onQueuedComplete));
+    return AssignFormTarget(
+        a_selection,
+        *ring,
+        a_target,
+        a_moveSourceTarget,
+        a_queueMode,
+        std::move(a_onQueuedComplete)
+    );
 }
 
 bool InterceptRightEquip(
