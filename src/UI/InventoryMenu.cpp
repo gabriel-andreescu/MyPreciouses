@@ -23,7 +23,11 @@ namespace {
     constexpr auto kSkyUINavPanelAddButtonPath = "_root.Menu_mc.navPanel.addButton";
     constexpr auto kVanillaSelectedEntryPath = "_root.Menu_mc.InventoryLists_mc.ItemsList.selectedEntry";
     constexpr auto kVanillaUpdateBottomBarPath = "_root.Menu_mc.UpdateBottomBarButtons";
+    constexpr auto kVanillaAltButtonArt = "AltButtonArt";
+    constexpr auto kVanillaEquipButtonArt = "EquipButtonArt";
     constexpr auto kSkyUIInvalidateListDataPath = "_root.Menu_mc.inventoryLists.InvalidateListData";
+    constexpr auto kVanillaInvalidateListDataPath = "_root.Menu_mc.InventoryLists_mc.InvalidateListData";
+    constexpr auto kSkseExtendDataPath = "_global.skse.ExtendData";
     constexpr auto kSkyUIItemMenuContext = 3;
     constexpr auto kInventoryFingerHintKey = "$LHRS_Inventory_FingerHint";
 
@@ -54,6 +58,27 @@ namespace {
     [[nodiscard]] bool IsSelectedFingerSelectHintRow(const RE::GFxMovie& a_movie) {
         const auto selectedEntry = GetSelectedEntry(a_movie, kSkyUISelectedEntryPath);
         return selectedEntry && RingItemRows::CanShowFingerSelectHint(*selectedEntry);
+    }
+
+    [[nodiscard]] bool EnableVanillaExtendedInventoryData(RE::InventoryMenu& a_inventoryMenu) {
+        auto* movie = a_inventoryMenu.uiMovie.get();
+        if (!movie
+            || movie->IsAvailable(kSkyUIUpdateBottomBarPath)
+            || !movie->IsAvailable(kVanillaUpdateBottomBarPath)) {
+            return false;
+        }
+
+        std::array<RE::GFxValue, 1> args;
+        args[0].SetBoolean(true);
+        return movie->Invoke(kSkseExtendDataPath, nullptr, args.data(), static_cast<std::uint32_t>(args.size()));
+    }
+
+    void RebuildInventoryList(RE::InventoryMenu& a_inventoryMenu) {
+        auto* itemList = a_inventoryMenu.GetRuntimeData().itemList;
+        auto* player = RE::PlayerCharacter::GetSingleton();
+        if (itemList && player) {
+            itemList->Update(player);
+        }
     }
 
     void SetSkyUIEquipControl(RE::GFxMovie& a_movie, RE::GFxValue& a_control, const char* a_name) {
@@ -114,25 +139,6 @@ namespace {
         RE::GFxValue controls;
         SetSkyUIFingerSelectHintControl(a_movie, controls, a_inventoryMenu);
         a_result.SetMember("controls", controls);
-    }
-
-    void SetVanillaRingEquipButtonArt(RE::GFxValue& a_inventoryMenu) {
-        RE::GFxValue bottomBar;
-        if (!a_inventoryMenu.GetMember("BottomBar_mc", std::addressof(bottomBar))
-            || !Scaleform::CanReadMembers(bottomBar)) {
-            return;
-        }
-
-        RE::GFxValue equipButtonArt;
-        if (!a_inventoryMenu.GetMember("EquipButtonArt", std::addressof(equipButtonArt))
-            || !equipButtonArt.IsObject()) {
-            return;
-        }
-
-        std::array<RE::GFxValue, 2> args;
-        args[0] = equipButtonArt;
-        args[1].SetNumber(0.0);
-        static_cast<void>(bottomBar.Invoke("SetButtonArt", args));
     }
 
     class SkyUIEquipButtonDataHandler final : public RE::GFxFunctionHandler {
@@ -246,6 +252,21 @@ namespace {
             : originalFunction_(a_originalFunction) {}
 
         void Call(Params& a_params) override {
+            const auto useRingEquipArt = IsSelectedRingEquipHintRow(*a_params.movie, kVanillaSelectedEntryPath);
+
+            RE::GFxValue originalAltButtonArt;
+            auto restoreAltButtonArt = false;
+
+            if (useRingEquipArt && a_params.thisPtr && Scaleform::CanReadMembers(*a_params.thisPtr)) {
+                RE::GFxValue equipButtonArt;
+                if (a_params.thisPtr->GetMember(kVanillaAltButtonArt, std::addressof(originalAltButtonArt))
+                    && originalAltButtonArt.IsObject()
+                    && a_params.thisPtr->GetMember(kVanillaEquipButtonArt, std::addressof(equipButtonArt))
+                    && equipButtonArt.IsObject()) {
+                    restoreAltButtonArt = a_params.thisPtr->SetMember(kVanillaAltButtonArt, equipButtonArt);
+                }
+            }
+
             originalFunction_.Invoke(
                 "call",
                 a_params.retVal,
@@ -253,8 +274,8 @@ namespace {
                 static_cast<std::size_t>(a_params.argCount) + 1
             );
 
-            if (IsSelectedRingEquipHintRow(*a_params.movie, kVanillaSelectedEntryPath)) {
-                SetVanillaRingEquipButtonArt(*a_params.thisPtr);
+            if (restoreAltButtonArt) {
+                static_cast<void>(a_params.thisPtr->SetMember(kVanillaAltButtonArt, originalAltButtonArt));
             }
         }
 
@@ -355,17 +376,20 @@ namespace {
         }
     }
 
-    void InvalidateSkyUIInventoryListData(RE::InventoryMenu& a_menu) {
+    void InvalidateInventoryListData(RE::InventoryMenu& a_menu) {
         auto* movie = a_menu.uiMovie.get();
         if (!movie) {
             return;
         }
 
-        if (!movie->IsAvailable(kSkyUIInvalidateListDataPath)) {
+        if (movie->IsAvailable(kSkyUIInvalidateListDataPath)) {
+            static_cast<void>(movie->Invoke(kSkyUIInvalidateListDataPath, nullptr, nullptr, 0));
             return;
         }
 
-        static_cast<void>(movie->Invoke(kSkyUIInvalidateListDataPath, nullptr, nullptr, 0));
+        if (movie->IsAvailable(kVanillaInvalidateListDataPath)) {
+            static_cast<void>(movie->Invoke(kVanillaInvalidateListDataPath, nullptr, nullptr, 0));
+        }
     }
 
     void DeselectItem(RE::InventoryMenu& a_menu) {
@@ -384,6 +408,11 @@ namespace {
         auto* inventoryMenu = GetOpenInventoryMenu();
         if (!inventoryMenu) {
             return;
+        }
+
+        const auto vanillaExtendedDataPrepared = EnableVanillaExtendedInventoryData(*inventoryMenu);
+        if (vanillaExtendedDataPrepared) {
+            RebuildInventoryList(*inventoryMenu);
         }
 
         const auto buttonHintsInstalled = InstallInventoryMenuButtonHints(*inventoryMenu);
@@ -410,11 +439,12 @@ namespace {
             static_cast<void>(itemList->entryList.SetElement(index, entryObject));
         }
 
-        if (changedEntryRows > 0) {
-            InvalidateSkyUIInventoryListData(*inventoryMenu);
+        const auto rowsChanged = changedEntryRows > 0;
+        if (rowsChanged || vanillaExtendedDataPrepared) {
+            InvalidateInventoryListData(*inventoryMenu);
         }
 
-        if (buttonHintsInstalled) {
+        if (buttonHintsInstalled || rowsChanged || vanillaExtendedDataPrepared) {
             RefreshInventoryMenuButtonHints(*inventoryMenu);
         }
     }
@@ -425,17 +455,9 @@ namespace {
             return;
         }
 
-        auto* itemList = inventoryMenu->GetRuntimeData().itemList;
-        if (!itemList) {
-            return;
-        }
-
-        auto* player = RE::PlayerCharacter::GetSingleton();
-        if (!player) {
-            return;
-        }
-
-        itemList->Update(player);
+        static_cast<void>(EnableVanillaExtendedInventoryData(*inventoryMenu));
+        RebuildInventoryList(*inventoryMenu);
+        RefreshInventoryMenuButtonHints(*inventoryMenu);
     }
 
     void RefreshAfterVanillaRingSlotMoveOnUIThread() {
@@ -445,13 +467,10 @@ namespace {
         }
 
         DeselectItem(*inventoryMenu);
-        if (auto* itemList = inventoryMenu->GetRuntimeData().itemList) {
-            if (auto* player = RE::PlayerCharacter::GetSingleton()) {
-                itemList->Update(player);
-            }
-        }
+        static_cast<void>(EnableVanillaExtendedInventoryData(*inventoryMenu));
+        RebuildInventoryList(*inventoryMenu);
         DeselectItem(*inventoryMenu);
-        InvalidateSkyUIInventoryListData(*inventoryMenu);
+        InvalidateInventoryListData(*inventoryMenu);
         FavoritesMenu::QueueRingRowRefresh();
     }
 }
