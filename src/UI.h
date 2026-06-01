@@ -17,6 +17,7 @@ enum class ItemMenuHost : std::uint8_t {
 void RegisterItemMenuDataCallback();
 void HandleMenuOpenCloseEvent(const RE::MenuOpenCloseEvent& a_event);
 void RefreshRingItemRows();
+[[nodiscard]] bool ShouldWarnUnsupportedVanillaInventoryHint(std::uint32_t a_controllerButton);
 void RefreshItemRowsAfterEquipmentAction(
     ItemMenuHost a_hostMenu,
     Core::ActorKey a_actor,

@@ -8,7 +8,9 @@
 
 namespace UI::FingerSelectMenu {
 namespace {
-    constexpr auto kMovieFile = "pv_fingerselect.swf";
+    constexpr auto kVanillaMovieFile = "lhrs_fingerselect.swf";
+    constexpr auto kSkyUIMovieFile = "lhrs_fingerselect_skyui.swf";
+    constexpr auto kSkyUIRuntimePath = "_global.skyui";
     constexpr auto kClipName = "LHRSFingerSelect_mc";
     constexpr auto kClipPath = "_root.LHRSFingerSelect_mc";
     constexpr auto kClipDepth = 1000000;
@@ -35,6 +37,10 @@ namespace {
     bool g_cancelInputSuppressed = false;
     RE::INPUT_DEVICE g_cancelInputDevice {};
     std::uint32_t g_cancelInputCode = 0;
+
+    [[nodiscard]] constexpr const char* HostName(const ItemMenuHost a_hostMenu) {
+        return a_hostMenu == ItemMenuHost::kFavorites ? "Favorites" : "Inventory";
+    }
 
     [[nodiscard]] bool StopAfterSuppressedCancelInput(const RE::ButtonEvent& a_button) {
         const auto device = a_button.GetDevice();
@@ -209,6 +215,16 @@ namespace {
                 static_cast<void>(SetBool(a_movie, "_root.Menu_mc.inventoryLists.searchWidget.isDisabled", disabled));
                 static_cast<void>(
                     SetBool(a_movie, "_root.Menu_mc.inventoryLists.columnSelectButton.disabled", disabled)
+                );
+                static_cast<void>(SetBool(a_movie, "_root.Menu_mc.InventoryLists_mc.ItemsList.disableInput", disabled));
+                static_cast<void>(
+                    SetBool(a_movie, "_root.Menu_mc.InventoryLists_mc.ItemsList.disableSelection", disabled)
+                );
+                static_cast<void>(
+                    SetBool(a_movie, "_root.Menu_mc.InventoryLists_mc.CategoriesList.disableInput", disabled)
+                );
+                static_cast<void>(
+                    SetBool(a_movie, "_root.Menu_mc.InventoryLists_mc.CategoriesList.disableSelection", disabled)
                 );
                 break;
             case ItemMenuHost::kFavorites:
@@ -467,10 +483,10 @@ namespace {
                 return;
             }
 
-            a_processor->Process("PVFingerSelect_LoadMenu", LoadMenuCallback);
-            a_processor->Process("PVFingerSelect_SelectionChange", SelectionChangedCallback);
-            a_processor->Process("PVFingerSelect_Equip", EquipCallback);
-            a_processor->Process("PVFingerSelect_Cancel", CancelCallback);
+            a_processor->Process("LHRSFingerSelect_LoadMenu", LoadMenuCallback);
+            a_processor->Process("LHRSFingerSelect_SelectionChange", SelectionChangedCallback);
+            a_processor->Process("LHRSFingerSelect_Equip", EquipCallback);
+            a_processor->Process("LHRSFingerSelect_Cancel", CancelCallback);
         }
 
     private:
@@ -534,8 +550,12 @@ namespace {
         static_cast<void>(SetBool(a_movie, std::format("{}._lockroot", kClipPath).c_str(), true));
         CenterClip(a_movie);
 
+        const auto usesSkyUI = a_movie.IsAvailable(kSkyUIRuntimePath);
+        const auto* movieFile = usesSkyUI ? kSkyUIMovieFile : kVanillaMovieFile;
+        logger::debug("UI: finger selector load requested | movie={} | skyui={}", movieFile, usesSkyUI);
+
         std::array<RE::GFxValue, 1> loadArgs;
-        loadArgs[0].SetString(kMovieFile);
+        loadArgs[0].SetString(movieFile);
         if (!Invoke(
                 a_movie,
                 std::format("{}.loadMovie", kClipPath).c_str(),

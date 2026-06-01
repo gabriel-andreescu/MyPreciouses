@@ -130,7 +130,7 @@
           "help": "Hold this button while equipping a ring to choose a finger.",
           "valueOptions": {
             "sourceType": "ModSettingInt",
-            "defaultValue": 274
+            "defaultValue": 275
           }
         }
       ]

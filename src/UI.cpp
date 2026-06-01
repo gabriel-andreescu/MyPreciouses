@@ -6,6 +6,7 @@
 #include "UI/FingerSelectMenu.h"
 #include "UI/InventoryMenu.h"
 #include "UI/RingItemRows.h"
+#include "UI/VanillaItemMenuControls.h"
 
 #include <RE/S/SendUIMessage.h>
 
@@ -70,6 +71,11 @@ void HandleMenuOpenCloseEvent(const RE::MenuOpenCloseEvent& a_event) {
 void RefreshRingItemRows() {
     InventoryMenu::QueueRingRowRefresh();
     FavoritesMenu::QueueRingRowRefresh();
+}
+
+bool ShouldWarnUnsupportedVanillaInventoryHint(const std::uint32_t a_controllerButton) {
+    return InventoryMenu::LastOpenedMenuUsesVanillaBottomBar()
+           && !VanillaItemMenuControls::SupportsControllerButtonArt(a_controllerButton);
 }
 
 void RefreshItemRowsAfterEquipmentAction(

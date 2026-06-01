@@ -40,6 +40,23 @@ endif ()
 set(DEPLOY_DIR "" CACHE PATH "Deployment directory for base mod assets")
 set(DEPLOY_DIR_OPTIONAL "" CACHE PATH "Deployment directory for optional mod assets")
 set(ASSET_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Skyrim/Data")
+set(GENERATED_ASSET_SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated-assets")
+
+find_program(FFDEC_CLI
+        NAMES ffdec-cli ffdec-cli.exe
+        PATHS "${CMAKE_CURRENT_SOURCE_DIR}/tools/FFDec"
+        NO_DEFAULT_PATH
+)
+
+if (NOT FFDEC_CLI)
+    find_program(FFDEC_CLI NAMES ffdec-cli ffdec-cli.exe)
+endif ()
+
+if (FFDEC_CLI)
+    message(STATUS "FFDec CLI: ${FFDEC_CLI}")
+else ()
+    message(FATAL_ERROR "FFDec CLI not found")
+endif ()
 
 add_subdirectory(extern/CLibUtil)
 add_subdirectory(extern/CommonLibSSE-NG)
@@ -104,6 +121,8 @@ set(SOURCES
         src/UI/RingItemRows.cpp
         src/UI/RingItemRows.h
         src/UI/Scaleform.h
+        src/UI/VanillaItemMenuControls.cpp
+        src/UI/VanillaItemMenuControls.h
         src/VirtualSlots.cpp
         src/VirtualSlots.h
         src/ModelPaths.h
@@ -115,6 +134,9 @@ add_commonlibsse_plugin(
         SOURCES ${SOURCES}
         AUTHOR "${PLUGIN_AUTHOR}"
 )
+
+include(cmake/fingerselect_assets.cmake)
+lhrs_add_fingerselect_assets(${PROJECT_NAME})
 
 target_compile_features(
         ${PROJECT_NAME}
@@ -204,6 +226,7 @@ if (DEPLOY_DIR)
             POST_BUILD
             COMMAND "${CMAKE_COMMAND}"
             "-DASSET_SOURCE_DIR=${ASSET_SOURCE_DIR}"
+            "-DGENERATED_ASSET_SOURCE_DIR=${GENERATED_ASSET_SOURCE_DIR}"
             "-DDEPLOY_DIR=${DEPLOY_DIR}"
             "-DDEPLOY_DIR_OPTIONAL=${DEPLOY_DIR_OPTIONAL}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/deploy_assets.cmake"
@@ -222,6 +245,7 @@ add_custom_target(
         "-DPLUGIN_DLL=$<TARGET_FILE:${PROJECT_NAME}>"
         "-DPLUGIN_PDB=$<TARGET_PDB_FILE:${PROJECT_NAME}>"
         "-DASSET_SOURCE_DIR=${ASSET_SOURCE_DIR}"
+        "-DGENERATED_ASSET_SOURCE_DIR=${GENERATED_ASSET_SOURCE_DIR}"
         "-DOUTPUT_DIR=${DIST_OUTPUT_DIR}"
         "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/dist/$<CONFIG>"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/package_mod.cmake"

@@ -1,0 +1,878 @@
+stop();
+
+var PLATFORM_PC = 0;
+var ROW_COUNT = 5;
+var ROW_X = 343.4;
+var ROW_Y = 304.9;
+var ROW_WIDTH = 593;
+var ROW_HEIGHT = 33;
+var ROW_STEP = 33.5;
+var SELECTED_ROW_ARROW_LEFT = ROW_X + 18;
+var SELECTED_ROW_ARROW_SCALE = 85;
+var BUTTON_LEFT_VISUAL_X = 385.0;
+var BUTTON_RIGHT_VISUAL_X = 892.7;
+var BUTTON_BAND_TOP_FALLBACK = 478.5;
+var BUTTON_BAND_BOTTOM_FALLBACK = 535.4;
+var BUTTON_CENTER_Y_OFFSET = -3.7;
+var EQUIP_BUTTON_DEPTH = 150;
+var CANCEL_BUTTON_DEPTH = 151;
+var EQUIP_BUTTON_CLICK_DEPTH = 152;
+var CANCEL_BUTTON_CLICK_DEPTH = 153;
+var BUTTON_CLICK_PADDING = 8;
+var LHRS_USE_SKYUI_BUTTON_ART = @LHRS_USE_SKYUI_BUTTON_ART@;
+var SKYUI_KEY_E = 18;
+var SKYUI_KEY_TAB = 15;
+var SKYUI_KEY_A = 276;
+var SKYUI_KEY_B = 277;
+
+var fingerRows = [];
+var selectedRowIndex = 0;
+var currentPlatform = PLATFORM_PC;
+var swapPS3Buttons = false;
+var equipActionLabel = "";
+var cancelActionLabel = "";
+var buttonConfigureRetries = 0;
+var selectedRingName = "";
+var previewSourceTargetBits = 0;
+var previewEmptyRingLabel = "-";
+var previewRowIndex = -1;
+var hoverRowIndex = -1;
+var previousFocus = undefined;
+var focusRestored = false;
+
+_listeners = {};
+
+addEventListener = function(eventName, scope, callback)
+{
+    if (this._listeners[eventName] == undefined) {
+        this._listeners[eventName] = [];
+    }
+    this._listeners[eventName].push({scope:scope, callback:callback});
+};
+
+removeEventListener = function(eventName, scope, callback)
+{
+    var listeners = this._listeners[eventName];
+    if (listeners == undefined) {
+        return;
+    }
+
+    for (var i = listeners.length - 1; i >= 0; i--) {
+        if (listeners[i].scope == scope && listeners[i].callback == callback) {
+            listeners.splice(i, 1);
+        }
+    }
+};
+
+dispatchEvent = function(event)
+{
+    if (event.target == undefined) {
+        event.target = this;
+    }
+
+    var listeners = this._listeners[event.type];
+    if (listeners == undefined) {
+        return;
+    }
+
+    for (var i = 0; i < listeners.length; i++) {
+        var listener = listeners[i];
+        if (listener.callback != undefined) {
+            listener.scope[listener.callback](event);
+        } else if (listener.scope.handleEvent != undefined) {
+            listener.scope.handleEvent(event);
+        } else {
+            listener.scope[event.type](event);
+        }
+    }
+};
+
+notifyHost = function(name, args)
+{
+    if (gfx != undefined && gfx.io != undefined && gfx.io.GameDelegate != undefined) {
+        gfx.io.GameDelegate.call(name, args);
+        return true;
+    }
+    return false;
+};
+
+CapturePreviousFocus = function()
+{
+    previousFocus = gfx.managers.FocusHandler.instance.getFocus(0);
+    focusRestored = false;
+};
+
+RestoreFocus = function()
+{
+    if (focusRestored) {
+        return;
+    }
+
+    focusRestored = true;
+
+    if (previousFocus != undefined && previousFocus != null && previousFocus != this) {
+        gfx.managers.FocusHandler.instance.setFocus(previousFocus, 0);
+    }
+};
+
+writeText = function(field, value)
+{
+    if (field == undefined) {
+        return;
+    }
+
+    var textValue = value == undefined ? "" : String(value);
+    if (field.SetText != undefined) {
+        field.SetText(textValue, true);
+    } else {
+        field.text = textValue;
+    }
+};
+
+makeEmptyRow = function()
+{
+    return {
+        targetIndex:-1,
+        finger:"",
+        equippedRing:"",
+        baseEquippedRing:"",
+        actionLabel:"",
+        previewTargetBits:-1,
+        enabled:true
+    };
+};
+
+resetRows = function()
+{
+    fingerRows = [];
+    for (var i = 0; i < ROW_COUNT; i++) {
+        fingerRows.push(makeEmptyRow());
+    }
+};
+
+refreshRows = function()
+{
+    var fingerFields = [Finger0Text, Finger1Text, Finger2Text, Finger3Text, Finger4Text];
+    var ringFields = [Ring0Text, Ring1Text, Ring2Text, Ring3Text, Ring4Text];
+
+    for (var i = 0; i < ROW_COUNT; i++) {
+        writeText(fingerFields[i], fingerRows[i].finger);
+        writeText(ringFields[i], fingerRows[i].equippedRing);
+    }
+};
+
+updateSelectedRowArrow = function()
+{
+    if (selectedRowArrow == undefined) {
+        return;
+    }
+
+    selectedRowArrow._xscale = -SELECTED_ROW_ARROW_SCALE;
+    selectedRowArrow._yscale = SELECTED_ROW_ARROW_SCALE;
+    selectedRowArrow._x = SELECTED_ROW_ARROW_LEFT + selectedRowArrow._width;
+    selectedRowArrow._y = ROW_Y + selectedRowIndex * ROW_STEP + (ROW_HEIGHT - selectedRowArrow._height) / 2;
+    selectedRowArrow._visible = true;
+};
+
+configureRowIndicators = function()
+{
+    if (hoverHighlight != undefined) {
+        hoverHighlight._visible = false;
+        hoverHighlight.useHandCursor = false;
+        hoverHighlight.tabEnabled = false;
+        hoverHighlight.focusEnabled = false;
+    }
+
+    if (selectedRowArrow != undefined) {
+        selectedRowArrow.useHandCursor = false;
+        selectedRowArrow.tabEnabled = false;
+        selectedRowArrow.focusEnabled = false;
+        updateSelectedRowArrow();
+    }
+};
+
+showHoverHighlight = function(index)
+{
+    index = Number(index);
+    if (hoverHighlight == undefined || isNaN(index) || index < 0 || index >= ROW_COUNT) {
+        return;
+    }
+    if (fingerRows[index] == undefined || fingerRows[index].enabled == false) {
+        return;
+    }
+
+    hoverRowIndex = index;
+    hoverHighlight._y = ROW_Y + hoverRowIndex * ROW_STEP;
+    hoverHighlight._visible = true;
+};
+
+clearHoverHighlight = function(index)
+{
+    if (index != undefined && Number(index) != hoverRowIndex) {
+        return;
+    }
+
+    hoverRowIndex = -1;
+    if (hoverHighlight != undefined) {
+        hoverHighlight._visible = false;
+    }
+};
+
+setSelectedIndexInternal = function(index, shouldDispatch)
+{
+    if (isNaN(index)) {
+        index = 0;
+    }
+    if (index < 0) {
+        index = 0;
+    }
+    if (index > fingerRows.length - 1) {
+        index = fingerRows.length - 1;
+    }
+
+    var changed = selectedRowIndex != index;
+    selectedRowIndex = index;
+    updateSelectedRowArrow();
+
+    configureButtons();
+
+    if (shouldDispatch && changed) {
+        var row = fingerRows[selectedRowIndex];
+        dispatchEvent({type:"selectionChange", index:selectedRowIndex, row:row});
+        notifyHost("LHRSFingerSelect_SelectionChange", [selectedRowIndex, row.targetIndex]);
+    }
+};
+
+clearPreview = function()
+{
+    for (var i = 0; i < ROW_COUNT; i++) {
+        if (fingerRows[i] != undefined) {
+            fingerRows[i].equippedRing = fingerRows[i].baseEquippedRing;
+        }
+    }
+    previewRowIndex = -1;
+};
+
+rowMatchesPreviewBits = function(row, previewTargetBits)
+{
+    if (row == undefined || row.targetIndex == undefined || Number(row.targetIndex) < 0) {
+        return false;
+    }
+
+    return (Number(previewTargetBits) & (1 << Number(row.targetIndex))) != 0;
+};
+
+clearPreviewSource = function(previewTargetBits)
+{
+    previewTargetBits = Number(previewTargetBits);
+    if (isNaN(previewTargetBits) || previewTargetBits <= 0) {
+        return;
+    }
+
+    var sourceTargetBits = Number(previewSourceTargetBits);
+    if (isNaN(sourceTargetBits) || sourceTargetBits <= 0) {
+        return;
+    }
+
+    for (var sourceIndex = 0; sourceIndex < ROW_COUNT; sourceIndex++) {
+        if (rowMatchesPreviewBits(fingerRows[sourceIndex], sourceTargetBits)) {
+            fingerRows[sourceIndex].equippedRing = previewEmptyRingLabel;
+        }
+    }
+};
+
+previewRow = function(index, shouldDispatch)
+{
+    index = Number(index);
+    if (isNaN(index)) {
+        index = 0;
+    }
+    if (index < 0) {
+        index = 0;
+    }
+    if (index > fingerRows.length - 1) {
+        index = fingerRows.length - 1;
+    }
+
+    var row = fingerRows[index];
+    if (row == undefined || row.enabled == false) {
+        return false;
+    }
+
+    setSelectedIndexInternal(index, shouldDispatch);
+    clearPreview();
+    previewRowIndex = index;
+    var previewTargetBits = Number(row.previewTargetBits);
+    if (isNaN(previewTargetBits) || previewTargetBits < 0) {
+        previewTargetBits = 1 << Number(row.targetIndex);
+    }
+    clearPreviewSource(previewTargetBits);
+    for (var previewIndex = 0; previewIndex < ROW_COUNT; previewIndex++) {
+        if (rowMatchesPreviewBits(fingerRows[previewIndex], previewTargetBits)) {
+            fingerRows[previewIndex].equippedRing = selectedRingName;
+        }
+    }
+    refreshRows();
+    return true;
+};
+
+SetLabels = function(title, ringName, fingerHeader, equippedHeader, equipLabel, cancelLabel)
+{
+    writeText(TitleText, title);
+    writeText(SelectedRingText, ringName);
+    writeText(FingerHeaderText, fingerHeader);
+    writeText(CurrentRingHeaderText, equippedHeader);
+
+    selectedRingName = ringName == undefined ? "" : String(ringName);
+    equipActionLabel = equipLabel == undefined ? "" : String(equipLabel);
+    cancelActionLabel = cancelLabel == undefined ? "" : String(cancelLabel);
+    configureButtons();
+};
+
+setLabels = SetLabels;
+
+SetPreviewSource = function(sourceTargetBits, emptyRingLabel)
+{
+    sourceTargetBits = Number(sourceTargetBits);
+    previewSourceTargetBits = isNaN(sourceTargetBits) ? 0 : sourceTargetBits;
+    previewEmptyRingLabel = emptyRingLabel == undefined ? "-" : String(emptyRingLabel);
+};
+
+setPreviewSource = SetPreviewSource;
+
+SetRow = function(index, targetIndex, fingerLabel, equippedRingLabel, enabled, actionLabel, previewTargetBits)
+{
+    index = Number(index);
+    if (isNaN(index) || index < 0 || index >= ROW_COUNT) {
+        return false;
+    }
+
+    fingerRows[index] = {
+        targetIndex:Number(targetIndex),
+        finger:fingerLabel == undefined ? "" : String(fingerLabel),
+        equippedRing:equippedRingLabel == undefined ? "" : String(equippedRingLabel),
+        baseEquippedRing:equippedRingLabel == undefined ? "" : String(equippedRingLabel),
+        actionLabel:actionLabel == undefined ? "" : String(actionLabel),
+        previewTargetBits:previewTargetBits == undefined ? -1 : Number(previewTargetBits),
+        enabled:enabled != false
+    };
+    refreshRows();
+    return true;
+};
+
+setRow = SetRow;
+
+CommitData = function(selectedIndex)
+{
+    var index = selectedIndex != undefined ? Number(selectedIndex) : 0;
+    if (!previewRow(index, false)) {
+        clearPreview();
+        refreshRows();
+        setSelectedIndexInternal(index, false);
+    }
+    createRowHitAreas();
+    configureButtons();
+};
+
+commitData = CommitData;
+
+SetSelectedIndex = function(index)
+{
+    setSelectedIndexInternal(Number(index), true);
+};
+
+setSelectedIndex = SetSelectedIndex;
+
+GetSelectedIndex = function()
+{
+    return selectedRowIndex;
+};
+
+getSelectedIndex = GetSelectedIndex;
+
+MoveSelection = function(delta)
+{
+    return previewRow(selectedRowIndex + Number(delta), true);
+};
+
+moveSelection = MoveSelection;
+
+MoveSelectionUp = function()
+{
+    return MoveSelection(-1);
+};
+
+moveSelectionUp = MoveSelectionUp;
+
+MoveSelectionDown = function()
+{
+    return MoveSelection(1);
+};
+
+moveSelectionDown = MoveSelectionDown;
+
+EquipSelection = function()
+{
+    var row = fingerRows[selectedRowIndex];
+    if (row == undefined || row.enabled == false) {
+        return false;
+    }
+
+    dispatchEvent({type:"equip", index:selectedRowIndex, row:row});
+    return notifyHost("LHRSFingerSelect_Equip", [selectedRowIndex, row.targetIndex]);
+};
+
+equipSelection = EquipSelection;
+
+CancelSelection = function()
+{
+    dispatchEvent({type:"cancel"});
+    RestoreFocus();
+    return notifyHost("LHRSFingerSelect_Cancel", []);
+};
+
+cancelSelection = CancelSelection;
+
+onCancelButtonClick = function(event)
+{
+    CancelSelection();
+};
+
+onEquipButtonClick = function(event)
+{
+    EquipSelection();
+};
+
+handleInput = function(details, pathToFocus)
+{
+    if (details == undefined) {
+        return false;
+    }
+
+    var value = String(details.value);
+    if (value != "keyDown" && value != "keyHold") {
+        return false;
+    }
+
+    var nav = String(details.navEquivalent);
+    var code = Number(details.code);
+
+    if (nav == "up" || code == 38) {
+        return MoveSelectionUp();
+    }
+    if (nav == "down" || code == 40) {
+        return MoveSelectionDown();
+    }
+    if (nav == "enter-gamepad_A" || code == 69 || code == 13) {
+        return EquipSelection();
+    }
+    if (nav == "escape-gamepad_B" || nav == "tab" || code == 9 || code == 27) {
+        return CancelSelection();
+    }
+
+    return false;
+};
+
+SetPlatform = function(aPlatform, aSwapPS3)
+{
+    currentPlatform = aPlatform != undefined ? Number(aPlatform) : PLATFORM_PC;
+    swapPS3Buttons = aSwapPS3 == true;
+    configureButtons();
+};
+
+setPlatform = SetPlatform;
+
+getClipBounds = function(clip, fallbackWidth, fallbackHeight)
+{
+    if (clip != undefined && clip.getBounds != undefined) {
+        var bounds = clip.getBounds(clip);
+        if (bounds != undefined && !isNaN(bounds.xMin) && !isNaN(bounds.xMax) && !isNaN(bounds.yMin) && !isNaN(bounds.yMax)) {
+            return bounds;
+        }
+    }
+
+    return {xMin:0, xMax:fallbackWidth, yMin:0, yMax:fallbackHeight};
+};
+
+addBounds = function(bounds, xMin, yMin, xMax, yMax)
+{
+    if (isNaN(xMin) || isNaN(yMin) || isNaN(xMax) || isNaN(yMax)) {
+        return bounds;
+    }
+
+    if (bounds == undefined) {
+        return {xMin:xMin, yMin:yMin, xMax:xMax, yMax:yMax};
+    }
+
+    bounds.xMin = Math.min(bounds.xMin, xMin);
+    bounds.yMin = Math.min(bounds.yMin, yMin);
+    bounds.xMax = Math.max(bounds.xMax, xMax);
+    bounds.yMax = Math.max(bounds.yMax, yMax);
+    return bounds;
+};
+
+addMovieBounds = function(button, bounds, clip)
+{
+    if (clip == undefined || clip._visible == false) {
+        return bounds;
+    }
+
+    if (clip.getBounds != undefined) {
+        var clipBounds = clip.getBounds(button);
+        if (clipBounds != undefined) {
+            return addBounds(bounds, clipBounds.xMin, clipBounds.yMin, clipBounds.xMax, clipBounds.yMax);
+        }
+    }
+
+    return addBounds(bounds, clip._x, clip._y, clip._x + clip._width, clip._y + clip._height);
+};
+
+getButtonVisualBounds = function(button)
+{
+    var bounds = undefined;
+    bounds = addMovieBounds(button, bounds, button.ButtonArt_mc);
+    bounds = addMovieBounds(button, bounds, button.ButtonArtSecondary_mc);
+    bounds = addMovieBounds(button, bounds, button.buttonArt0);
+    bounds = addMovieBounds(button, bounds, button.buttonArt1);
+
+    if (button.textField != undefined) {
+        var textWidth = button.textField.textWidth;
+        if (button.textField.getLineMetrics != undefined && button.textField.length > 0) {
+            textWidth = button.textField.getLineMetrics(0).width;
+        }
+        bounds = addBounds(
+            bounds,
+            button.textField._x,
+            button.textField._y,
+            button.textField._x + textWidth,
+            button.textField._y + button.textField._height);
+    }
+
+    if (bounds == undefined) {
+        bounds = getClipBounds(button, button._width, button._height);
+    }
+
+    return bounds;
+};
+
+getStageYMax = function(clip, fallbackValue)
+{
+    if (clip != undefined && clip.getBounds != undefined) {
+        var bounds = clip.getBounds(this);
+        if (bounds != undefined && !isNaN(bounds.yMax)) {
+            return bounds.yMax;
+        }
+    }
+
+    return fallbackValue;
+};
+
+layoutButtonLeft = function(button, visualLeft, visualCenterY)
+{
+    if (button == undefined) {
+        return;
+    }
+
+    var bounds = getButtonVisualBounds(button);
+    button._x = visualLeft - bounds.xMin;
+    button._y = visualCenterY - (bounds.yMin + bounds.yMax) / 2;
+};
+
+layoutButtonRight = function(button, visualRight, visualCenterY)
+{
+    if (button == undefined) {
+        return;
+    }
+
+    var bounds = getButtonVisualBounds(button);
+    button._x = visualRight - bounds.xMax;
+    button._y = visualCenterY - (bounds.yMin + bounds.yMax) / 2;
+};
+
+layoutButtons = function()
+{
+    var bandTop = getStageYMax(BottomSeparator_mc, BUTTON_BAND_TOP_FALLBACK);
+    var bandBottom = getStageYMax(Frame_mc, BUTTON_BAND_BOTTOM_FALLBACK);
+    var buttonCenterY = (bandTop + bandBottom) / 2 + BUTTON_CENTER_Y_OFFSET;
+
+    if (EquipButton != undefined && EquipButton._visible != false) {
+        layoutButtonLeft(EquipButton, BUTTON_LEFT_VISUAL_X, buttonCenterY);
+    }
+    layoutButtonRight(CancelButton, BUTTON_RIGHT_VISUAL_X, buttonCenterY);
+};
+
+drawRowHitArea = function(hit)
+{
+    hit.clear();
+    hit.beginFill(0x000000, 100);
+    hit.moveTo(0, 0);
+    hit.lineTo(ROW_WIDTH, 0);
+    hit.lineTo(ROW_WIDTH, ROW_STEP);
+    hit.lineTo(0, ROW_STEP);
+    hit.lineTo(0, 0);
+    hit.endFill();
+    hit._alpha = 0;
+    hit.useHandCursor = false;
+};
+
+createRowHitAreas = function()
+{
+    if (rowHitAreas != undefined) {
+        rowHitAreas.removeMovieClip();
+    }
+
+    rowHitAreas = this.createEmptyMovieClip("rowHitAreas", this.getNextHighestDepth());
+    for (var i = 0; i < ROW_COUNT; i++) {
+        var hit = rowHitAreas.createEmptyMovieClip("rowHit" + i, i);
+        hit.index = i;
+        hit._x = ROW_X;
+        hit._y = ROW_Y + i * ROW_STEP;
+        drawRowHitArea(hit);
+        hit.onRollOver = function()
+        {
+            _root.showHoverHighlight(this.index);
+        };
+        hit.onRollOut = function()
+        {
+            _root.clearHoverHighlight(this.index);
+        };
+        hit.onPress = function()
+        {
+            if (_root.fingerRows[this.index] == undefined || _root.fingerRows[this.index].enabled == false) {
+                return;
+            }
+
+            _root.previewRow(this.index, true);
+        };
+    }
+};
+
+getSkyUIButtonKeyCode = function(pcKey, xboxKey, ps3Key)
+{
+    if (currentPlatform == PLATFORM_PC) {
+        return pcKey;
+    }
+
+    if (currentPlatform == 3) {
+        return ps3Key;
+    }
+
+    return xboxKey;
+};
+
+createSkyUIButton = function(name, depth)
+{
+    var button = this.attachMovie("MappedButton", name, depth, {
+        disableConstraints:false,
+        disabled:true,
+        disableFocus:true,
+        hiddenBackground:true
+    });
+    if (button == undefined) {
+        return undefined;
+    }
+
+    button.lhrsSkyUIButton = true;
+    button.useHandCursor = false;
+    button.focusEnabled = false;
+    button.tabEnabled = false;
+
+    return button;
+};
+
+syncButtonClip = function(name, depth)
+{
+    var button = this[name];
+    if (LHRS_USE_SKYUI_BUTTON_ART) {
+        if (button != undefined && button.lhrsSkyUIButton != true) {
+            button.removeMovieClip();
+            button = undefined;
+        }
+        if (button == undefined) {
+            button = createSkyUIButton(name, depth);
+        }
+    } else if (button == undefined) {
+        button = this.attachMovie("Button", name, depth);
+    }
+
+    this[name] = button;
+    if (button == undefined) {
+        return false;
+    }
+
+    button._visible = true;
+    return true;
+};
+
+configureSkyUIButton = function(button, label, keyCode)
+{
+    if (button.setPlatform == undefined || button.setButtonData == undefined) {
+        return false;
+    }
+
+    button.setPlatform(currentPlatform, swapPS3Buttons);
+    button.setButtonData({text:label, controls:{keyCode:keyCode}});
+    if (button.update != undefined) {
+        button.update();
+    }
+    button.disabled = true;
+    button.disableFocus = true;
+    button.useHandCursor = false;
+    button.focusEnabled = false;
+    button.tabEnabled = false;
+    button.hiddenBackground = true;
+    layoutButtons();
+    return true;
+};
+
+configureButton = function(button, label, pcArt, xboxArt, ps3Art, pcKey, xboxKey, ps3Key)
+{
+    if (button == undefined) {
+        return false;
+    }
+
+    if (LHRS_USE_SKYUI_BUTTON_ART) {
+        return configureSkyUIButton(button, label, getSkyUIButtonKeyCode(pcKey, xboxKey, ps3Key));
+    }
+
+    if (button.SetArt == undefined || button.SetPlatform == undefined) {
+        return false;
+    }
+
+    button.label = label;
+    if (button.textField != undefined) {
+        button.textField.text = label;
+    }
+    button.OnTextFieldChanged = function()
+    {
+        _root.layoutButtons();
+    };
+    button.SetArt({PCArt:pcArt, XBoxArt:xboxArt, PS3Art:ps3Art});
+    button.SetPlatform(currentPlatform, swapPS3Buttons);
+    layoutButtons();
+    return true;
+};
+
+wireButtonEvent = function(button, eventName, handlerName)
+{
+    if (button == undefined || button.addEventListener == undefined) {
+        return false;
+    }
+
+    if (button.lhrsClickHandlerName == handlerName && button.lhrsClickEventName == eventName) {
+        return true;
+    }
+
+    if (button.lhrsClickHandlerName != undefined && button.removeEventListener != undefined) {
+        button.removeEventListener(button.lhrsClickEventName, _root, button.lhrsClickHandlerName);
+    }
+
+    button.addEventListener(eventName, _root, handlerName);
+    button.lhrsClickEventName = eventName;
+    button.lhrsClickHandlerName = handlerName;
+    return true;
+};
+
+drawButtonClickArea = function(hit, button)
+{
+    var width = Math.max(1, button._width + BUTTON_CLICK_PADDING * 2);
+    var height = Math.max(1, button._height + BUTTON_CLICK_PADDING * 2);
+
+    hit.clear();
+    hit.beginFill(0x000000, 100);
+    hit.moveTo(0, 0);
+    hit.lineTo(width, 0);
+    hit.lineTo(width, height);
+    hit.lineTo(0, height);
+    hit.lineTo(0, 0);
+    hit.endFill();
+    hit._alpha = 0;
+    hit._x = button._x - BUTTON_CLICK_PADDING;
+    hit._y = button._y - BUTTON_CLICK_PADDING;
+    hit.useHandCursor = true;
+    hit.focusEnabled = false;
+    hit.tabEnabled = false;
+};
+
+syncSkyUIButtonClickArea = function(name, depth, button, handlerName)
+{
+    if (button == undefined) {
+        return false;
+    }
+
+    var hit = this[name];
+    if (hit == undefined) {
+        hit = this.createEmptyMovieClip(name, depth);
+        this[name] = hit;
+    }
+
+    drawButtonClickArea(hit, button);
+    hit._visible = true;
+    hit.lhrsClickHandlerName = handlerName;
+    hit.onPress = function()
+    {
+        _root[this.lhrsClickHandlerName]({target:this});
+    };
+    return true;
+};
+
+syncEquipButton = function()
+{
+    return syncButtonClip("EquipButton", EQUIP_BUTTON_DEPTH);
+};
+
+syncCancelButton = function()
+{
+    return syncButtonClip("CancelButton", CANCEL_BUTTON_DEPTH);
+};
+
+getSelectedActionLabel = function()
+{
+    var row = fingerRows[selectedRowIndex];
+    if (row != undefined && row.actionLabel != undefined && String(row.actionLabel).length > 0) {
+        return String(row.actionLabel);
+    }
+
+    return equipActionLabel;
+};
+
+configureButtons = function()
+{
+    var equipReady = syncEquipButton();
+    equipReady = equipReady && configureButton(EquipButton, getSelectedActionLabel(), "E", "360_A", "PS3_A", SKYUI_KEY_E, SKYUI_KEY_A, SKYUI_KEY_A);
+
+    var cancelReady = syncCancelButton();
+    cancelReady = cancelReady && configureButton(CancelButton, cancelActionLabel, "Tab", "360_B", "PS3_B", SKYUI_KEY_TAB, SKYUI_KEY_B, SKYUI_KEY_B);
+
+    layoutButtons();
+    if (LHRS_USE_SKYUI_BUTTON_ART) {
+        equipReady = equipReady && syncSkyUIButtonClickArea("EquipButtonClickArea", EQUIP_BUTTON_CLICK_DEPTH, EquipButton, "onEquipButtonClick");
+        cancelReady = cancelReady && syncSkyUIButtonClickArea("CancelButtonClickArea", CANCEL_BUTTON_CLICK_DEPTH, CancelButton, "onCancelButtonClick");
+    } else {
+        equipReady = equipReady && wireButtonEvent(EquipButton, "click", "onEquipButtonClick");
+        cancelReady = cancelReady && wireButtonEvent(CancelButton, "click", "onCancelButtonClick");
+    }
+    return equipReady && cancelReady;
+};
+
+onButtonLoad = function(button)
+{
+    configureButtons();
+};
+
+resetRows();
+refreshRows();
+configureRowIndicators();
+createRowHitAreas();
+SetPlatform(PLATFORM_PC, false);
+CapturePreviousFocus();
+gfx.managers.FocusHandler.instance.setFocus(this, 0);
+notifyHost("LHRSFingerSelect_LoadMenu", []);
+
+onEnterFrame = function()
+{
+    if (configureButtons() || buttonConfigureRetries > 30) {
+        delete this.onEnterFrame;
+    }
+    buttonConfigureRetries++;
+};

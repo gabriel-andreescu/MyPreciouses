@@ -31,6 +31,10 @@ if (DEFINED ASSET_SOURCE_DIR)
     copy_base_skyrim_assets("${ASSET_SOURCE_DIR}" "${main_stage}")
 endif ()
 
+if (DEFINED GENERATED_ASSET_SOURCE_DIR AND EXISTS "${GENERATED_ASSET_SOURCE_DIR}")
+    copy_base_skyrim_assets("${GENERATED_ASSET_SOURCE_DIR}" "${main_stage}")
+endif ()
+
 file(GLOB main_entries RELATIVE "${main_stage}" "${main_stage}/*")
 write_zip("${main_zip}" "${main_stage}" "${main_entries}")
 message(STATUS "Created ${main_zip}")

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 - Unreleased
+
+- feat: support vanilla UI
+
 ## 0.3.5 - 2026-05-30
 
 - feat: improve finger selector menu previews, action labels, and multi-finger ring handling

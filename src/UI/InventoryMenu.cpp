@@ -5,16 +5,25 @@
 #include "UI/FavoritesMenu.h"
 #include "UI/RingItemRows.h"
 #include "UI/Scaleform.h"
+#include "UI/VanillaItemMenuControls.h"
 
 #include <RE/G/GFxFunctionHandler.h>
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <initializer_list>
 #include <optional>
+#include <vector>
 
 namespace UI::InventoryMenu {
 namespace {
+    enum class InventoryMenuFlavor : std::uint8_t {
+        kUnknown,
+        kSkyUI,
+        kVanilla,
+    };
+
     constexpr auto kScaleformInventoryEquipHintPatched = "lhrsInventoryEquipHintPatched";
     constexpr auto kScaleformInventoryFingerSelectHintPatched = "lhrsInventoryFingerSelectHintPatched";
     constexpr auto kInventoryMenuClipPath = "_root.Menu_mc";
@@ -30,6 +39,11 @@ namespace {
     constexpr auto kSkseExtendDataPath = "_global.skse.ExtendData";
     constexpr auto kSkyUIItemMenuContext = 3;
     constexpr auto kInventoryFingerHintKey = "$LHRS_Inventory_FingerHint";
+    constexpr auto kVanillaInventoryShiftedButtonCount = 3U;
+    constexpr auto kVanillaInventoryPreservedButtonArtFirstIndex = 1U;
+    constexpr auto kVanillaInventoryPreservedButtonArtCount = 3U;
+
+    std::atomic<InventoryMenuFlavor> lastOpenedMenuFlavor {InventoryMenuFlavor::kUnknown};
 
     [[nodiscard]] RE::InventoryMenu* GetOpenInventoryMenu() {
         auto* ui = RE::UI::GetSingleton();
@@ -55,9 +69,46 @@ namespace {
         return selectedEntry && RingItemRows::CanUseRingEquipHint(*selectedEntry);
     }
 
-    [[nodiscard]] bool IsSelectedFingerSelectHintRow(const RE::GFxMovie& a_movie) {
-        const auto selectedEntry = GetSelectedEntry(a_movie, kSkyUISelectedEntryPath);
+    [[nodiscard]] bool IsSelectedFingerSelectHintRow(const RE::GFxMovie& a_movie, const char* a_path) {
+        const auto selectedEntry = GetSelectedEntry(a_movie, a_path);
         return selectedEntry && RingItemRows::CanShowFingerSelectHint(*selectedEntry);
+    }
+
+    [[nodiscard]] std::optional<VanillaItemMenuControls::ButtonArt> GetVisibleVanillaFingerSelectHintArt(
+        const RE::GFxMovie& a_movie,
+        const RE::GFxValue& a_inventoryMenu
+    ) {
+        if (Settings::GetSingleton()->AlwaysChooseFinger()
+            || !IsSelectedFingerSelectHintRow(a_movie, kVanillaSelectedEntryPath)) {
+            return std::nullopt;
+        }
+
+        return VanillaItemMenuControls::ResolveModifierArt(
+            a_inventoryMenu,
+            Settings::GetSingleton()->GetFingerSelectModifierKey(),
+            Settings::GetSingleton()->GetFingerSelectModifierButton()
+        );
+    }
+
+    [[nodiscard]] std::optional<std::vector<VanillaItemMenuControls::ButtonArt>> BuildVanillaInventoryShiftedButtonArt(
+        const RE::GFxValue& a_inventoryMenu,
+        const std::vector<VanillaItemMenuControls::ButtonArt>& a_preservedButtonArt
+    ) {
+        if (a_preservedButtonArt.size() < kVanillaInventoryShiftedButtonCount - 1) {
+            return std::nullopt;
+        }
+
+        auto currentEquipArt = VanillaItemMenuControls::ReadFixedSlotButtonArt(a_inventoryMenu, 0, 1);
+        if (!currentEquipArt || currentEquipArt->empty()) {
+            return std::nullopt;
+        }
+
+        std::vector<VanillaItemMenuControls::ButtonArt> result;
+        result.reserve(kVanillaInventoryShiftedButtonCount);
+        result.push_back(currentEquipArt->front());
+        result.push_back(a_preservedButtonArt[0]);
+        result.push_back(a_preservedButtonArt[1]);
+        return result;
     }
 
     [[nodiscard]] bool EnableVanillaExtendedInventoryData(RE::InventoryMenu& a_inventoryMenu) {
@@ -215,7 +266,7 @@ namespace {
 
             if (selected
                 && !Settings::GetSingleton()->AlwaysChooseFinger()
-                && IsSelectedFingerSelectHintRow(*a_params.movie)
+                && IsSelectedFingerSelectHintRow(*a_params.movie, kSkyUISelectedEntryPath)
                 && a_params.thisPtr->GetMember("navPanel", std::addressof(navPanel))
                 && Scaleform::CanReadMembers(navPanel)
                 && navPanel.GetMember("addButton", std::addressof(originalAddButton))
@@ -267,6 +318,15 @@ namespace {
                 }
             }
 
+            if (a_params.thisPtr && preservedButtonArt_) {
+                static_cast<void>(VanillaItemMenuControls::TrySetFixedSlotButtonArt(
+                    *a_params.movie,
+                    *a_params.thisPtr,
+                    kVanillaInventoryPreservedButtonArtFirstIndex,
+                    *preservedButtonArt_
+                ));
+            }
+
             originalFunction_.Invoke(
                 "call",
                 a_params.retVal,
@@ -277,10 +337,45 @@ namespace {
             if (restoreAltButtonArt) {
                 static_cast<void>(a_params.thisPtr->SetMember(kVanillaAltButtonArt, originalAltButtonArt));
             }
+
+            if (a_params.thisPtr) {
+                if (!preservedButtonArt_) {
+                    preservedButtonArt_ = VanillaItemMenuControls::ReadFixedSlotButtonArt(
+                        *a_params.thisPtr,
+                        kVanillaInventoryPreservedButtonArtFirstIndex,
+                        kVanillaInventoryPreservedButtonArtCount
+                    );
+                }
+
+                if (!preservedButtonArt_) {
+                    return;
+                }
+
+                const auto fingerArt = GetVisibleVanillaFingerSelectHintArt(*a_params.movie, *a_params.thisPtr);
+                if (fingerArt) {
+                    const auto shiftedButtonArt = BuildVanillaInventoryShiftedButtonArt(
+                        *a_params.thisPtr,
+                        *preservedButtonArt_
+                    );
+                    if (!shiftedButtonArt) {
+                        return;
+                    }
+
+                    const auto label = Localization::Translate(kInventoryFingerHintKey, "Finger");
+                    static_cast<void>(VanillaItemMenuControls::TryPrependFixedSlotButton(
+                        *a_params.movie,
+                        *a_params.thisPtr,
+                        *fingerArt,
+                        label,
+                        *shiftedButtonArt
+                    ));
+                }
+            }
         }
 
     private:
         RE::GFxValue originalFunction_;
+        std::optional<std::vector<VanillaItemMenuControls::ButtonArt>> preservedButtonArt_;
     };
 
     template <class Handler>
@@ -336,6 +431,10 @@ namespace {
             "getEquipButtonData",
             {kSkyUIUpdateBottomBarPath}
         );
+        if (movie->IsAvailable(kSkyUIUpdateBottomBarPath)) {
+            lastOpenedMenuFlavor.store(InventoryMenuFlavor::kSkyUI);
+        }
+
         installed = InstallScaleformFunctionPatch<SkyUIBottomBarUpdateHandler>(
                         *movie,
                         inventoryMenu,
@@ -352,6 +451,10 @@ namespace {
                         {kVanillaUpdateBottomBarPath}
                     )
                     || installed;
+        if (!movie->IsAvailable(kSkyUIUpdateBottomBarPath) && movie->IsAvailable(kVanillaUpdateBottomBarPath)) {
+            lastOpenedMenuFlavor.store(InventoryMenuFlavor::kVanilla);
+        }
+
         return installed;
     }
 
@@ -473,6 +576,10 @@ namespace {
         InvalidateInventoryListData(*inventoryMenu);
         FavoritesMenu::QueueRingRowRefresh();
     }
+}
+
+bool LastOpenedMenuUsesVanillaBottomBar() {
+    return lastOpenedMenuFlavor.load() == InventoryMenuFlavor::kVanilla;
 }
 
 void QueueOpenMenuRingRowRefresh() {

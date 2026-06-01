@@ -76,6 +76,11 @@ cmake-build-*/
 extern/PluginTemplateNG/
 debug/
 
+# Vendored UI build tool
+!tools/
+!tools/FFDec/
+!tools/FFDec/**
+
 # Windows
 Thumbs.db
 [Dd]esktop.ini

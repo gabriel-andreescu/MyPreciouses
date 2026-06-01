@@ -76,7 +76,7 @@ namespace {
         return favoritesMenu.get();
     }
 
-    void RestampOpenFavoritesRows() {
+    void RestampOpenFavoritesRows(const RowRefreshMode a_mode) {
         auto* favoritesMenu = GetOpenFavoritesMenu();
         if (!favoritesMenu) {
             return;
@@ -126,7 +126,7 @@ namespace {
             return;
         }
 
-        if (changedEntryRows == 0 && changedSelectedRows == 0) {
+        if (a_mode != RowRefreshMode::kForceRedraw && changedEntryRows == 0 && changedSelectedRows == 0) {
             return;
         }
 
@@ -134,9 +134,9 @@ namespace {
     }
 }
 
-void QueueRingRowRefresh() {
-    stl::add_ui_task([] {
-        RestampOpenFavoritesRows();
+void QueueRingRowRefresh(const RowRefreshMode a_mode) {
+    stl::add_ui_task([a_mode] {
+        RestampOpenFavoritesRows(a_mode);
     });
 }
 }

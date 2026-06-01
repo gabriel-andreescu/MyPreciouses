@@ -132,7 +132,7 @@ void ReadSettings(CSimpleIniA& a_ini, RawSettings& a_settings) {
         a_settings.fingerSelectModifierButton,
         kSettingsSection,
         kFingerSelectGamepadModifierSettingKey,
-        "; Finger selection modifier for controller input.\n; Default: 274"
+        "; Finger selection modifier for controller input.\n; Vanilla UI inventory hints only support RB. The finger selector still works, but the inventory hint will not be shown for other controller buttons.\n; Default: 275"
     );
 }
 

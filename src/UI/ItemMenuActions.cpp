@@ -6,6 +6,7 @@
 #include "Localization.h"
 #include "Settings.h"
 #include "SourceModelFootprints.h"
+#include "UI/FavoritesMenu.h"
 #include "UI/FingerSelectMenu.h"
 #include "UI/RingItemRows.h"
 
@@ -60,6 +61,23 @@ namespace {
         bool requested {false};
         RE::INPUT_DEVICE inputDevice {RE::INPUT_DEVICE::kKeyboard};
     };
+
+    [[nodiscard]] constexpr const char* HostName(const ItemMenuHost a_hostMenu) {
+        return a_hostMenu == ItemMenuHost::kFavorites ? "Favorites" : "Inventory";
+    }
+
+    [[nodiscard]] constexpr const char* HandName(const Core::Hand a_hand) {
+        return a_hand == Core::Hand::kLeft ? "Left" : "Right";
+    }
+
+    [[nodiscard]] constexpr const char* InputDeviceName(const RE::INPUT_DEVICE a_inputDevice) {
+        switch (a_inputDevice) {
+            case RE::INPUT_DEVICE::kMouse:    return "Mouse";
+            case RE::INPUT_DEVICE::kKeyboard: return "Keyboard";
+            case RE::INPUT_DEVICE::kGamepad:  return "Gamepad";
+            default:                          return "Unknown";
+        }
+    }
 
     [[nodiscard]] FingerSelectMenu::Labels GetFingerSelectLabels() {
         return FingerSelectMenu::Labels {
@@ -604,7 +622,7 @@ namespace {
         const auto startIndex = GetRowIndex(rows, startTarget);
         const auto storedSource = StoreMenuRingSource(a_source, selectedTarget);
 
-        return FingerSelectMenu::Show(
+        const auto opened = FingerSelectMenu::Show(
             FingerSelectMenu::Data {
                 .labels = std::move(labels),
                 .ringName = GetMenuSourceRingLabel(a_source),
@@ -641,6 +659,10 @@ namespace {
                 },
             }
         );
+        if (opened && a_source.hostMenu == ItemMenuHost::kFavorites) {
+            FavoritesMenu::QueueRingRowRefresh(FavoritesMenu::RowRefreshMode::kForceRedraw);
+        }
+        return opened;
     }
 
     [[nodiscard]] RE::BSWin32KeyboardDevice* GetKeyboard(RE::BSInputDeviceManager& a_input) {
@@ -759,12 +781,31 @@ bool HandleRingUseFromMenuEntry(
 
     const auto trigger = GetFingerSelectTrigger();
     if (trigger.requested) {
-        ShowFingerSelector(*source, a_hand, trigger.inputDevice);
+        const auto opened = ShowFingerSelector(*source, a_hand, trigger.inputDevice);
+        logger::debug(
+            "UI: item menu finger selector {} | host={} | hand={} | actor={:08X} | source={:08X} | reason=modifier | input={}",
+            opened ? "opened" : "failed",
+            HostName(a_hostMenu),
+            HandName(a_hand),
+            a_itemActor.referenceFormID,
+            source->itemSource.sourceFormID,
+            InputDeviceName(trigger.inputDevice)
+        );
         return true;
     }
 
     if (ShouldOpenFingerSelectorForHand(*source, a_hand)) {
-        ShowFingerSelector(*source, a_hand, GetPreferredInputDevice());
+        const auto inputDevice = GetPreferredInputDevice();
+        const auto opened = ShowFingerSelector(*source, a_hand, inputDevice);
+        logger::debug(
+            "UI: item menu finger selector {} | host={} | hand={} | actor={:08X} | source={:08X} | reason=nonDefaultSelection | input={}",
+            opened ? "opened" : "failed",
+            HostName(a_hostMenu),
+            HandName(a_hand),
+            a_itemActor.referenceFormID,
+            source->itemSource.sourceFormID,
+            InputDeviceName(inputDevice)
+        );
         return true;
     }
 

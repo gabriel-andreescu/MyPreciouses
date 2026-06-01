@@ -22,7 +22,8 @@ public:
     static constexpr std::uint32_t kMinimumEnchantmentStrengthPercent {5};
     static constexpr std::uint32_t kDefaultFixedEnchantmentStrengthPercent {50};
     static constexpr std::uint32_t kDefaultFingerSelectModifierKey {42};
-    static constexpr std::uint32_t kDefaultFingerSelectModifierButton {274};
+    static constexpr std::uint32_t kVanillaInventoryHintModifierButton {275};
+    static constexpr std::uint32_t kDefaultFingerSelectModifierButton {kVanillaInventoryHintModifierButton};
 
     struct ReloadResult {
         bool extraRingModeChanged {false};
