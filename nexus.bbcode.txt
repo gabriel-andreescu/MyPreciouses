@@ -65,9 +65,6 @@ The mod was designed to avoid conflicts. If you find any compatibility issues, p
 [/list]
 
 [list]
-[*]As of v0.3.5, compatible with [url=https://www.nexusmods.com/skyrimspecialedition/mods/123204]Alternate Forms Keep Utility[/url].[/*]
-[*]As of v0.3.5, compatible with [url=https://www.nexusmods.com/skyrimspecialedition/mods/68942]Bond of Matrimony[/url].[/*]
-[*]As of v0.3.5, compatible with [url=https://www.nexusmods.com/skyrimspecialedition/mods/42599]Ahzidal's Rings by Ave[/url].[/*]
 [*]Compatible with [url=https://www.nexusmods.com/skyrimspecialedition/mods/104215]The New Gentleman[/url] 4.1.0+. Older versions can crash with this mod.[/*]
 [*]If you use [url=https://www.nexusmods.com/skyrimspecialedition/mods/33414]VR Menu Mouse Fix[/url], the Favorites menu in VR does not currently allow left-equipping rings. The inventory menu works fine though.[/*]
 [*]Not compatible with [url=https://www.nexusmods.com/skyrimspecialedition/mods/93039]SkyUI Vanilla Menus[/url]. If more users request compatibility with this, I'll look into it.[/*]

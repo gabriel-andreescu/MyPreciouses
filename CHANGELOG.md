@@ -1,11 +1,17 @@
 # Changelog
 
+## 0.3.6 - 2026-06-01
+
+- fix: place mod-added rings correctly when equipped on the vanilla right index finger
+- fix: prevent some mod-added rings from stacking on the vanilla right index finger instead of replacing each other
+- fix: prevent VR crashes when checking which fingers a ring model uses
+
 ## 0.3.5 - 2026-05-30
 
 - feat: improve finger selector menu previews, action labels, and multi-finger ring handling
 - feat: support mod-added rings with the ClothingRing keyword regardless of body slot
 - fix: ignore alternate-form body addons when checking ring finger coverage (eg: Alternate Forms Keep Utility)
-- fix: ignore negligible incidental skin weights when checking ring finger coverage (eg: Ahzidal's Rings by Ave)
+- fix: ignore negligible incidental skin weights when checking ring finger coverage
 - fix: allow multi-finger rings to start from valid fingers in the finger selector
 - fix: allow single-copy virtual rings to be moved between fingers in the finger selector
 
