@@ -15,15 +15,6 @@
 namespace {
 constexpr auto kTrampolineSize = 1024;
 
-void QueueDelayedVirtualRingRefresh() {
-    stl::add_thread_task(
-        [] {
-            VirtualRings::RequestRefresh();
-        },
-        250ms
-    );
-}
-
 void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
     switch (a_msg->type) {
         case SKSE::MessagingInterface::kPreLoadGame:
@@ -37,14 +28,10 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
             FirstPerson::ApplyRaceFlags();
             Hooks::Install();
             EventListener::Register();
-            QueueDelayedVirtualRingRefresh();
             break;
         case SKSE::MessagingInterface::kNewGame:
-        case SKSE::MessagingInterface::kPostLoadGame:
-            FirstPerson::ApplyRaceFlags();
-            QueueDelayedVirtualRingRefresh();
-            break;
-        default: break;
+        case SKSE::MessagingInterface::kPostLoadGame: FirstPerson::ApplyRaceFlags(); break;
+        default:                                      break;
     }
 }
 

@@ -3,6 +3,7 @@
 #include "Forms.h"
 #include "RingFootprints.h"
 #include "RingSounds.h"
+#include "RingVisuals.h"
 #include "UI.h"
 #include "VirtualRings.h"
 
@@ -331,13 +332,6 @@ namespace {
             }
         }
 
-        const auto selection = Get(a_target);
-        if ((!a_customKey && selection.MatchesForm(a_sourceFormID))
-            || (a_customKey && selection.MatchesCustomEnchantment(a_sourceFormID, *a_customKey, a_customIdentity))) {
-            Clear(a_target);
-            VirtualRings::Clear(a_target);
-        }
-
         auto* equipManager = RE::ActorEquipManager::GetSingleton();
         if (!equipManager) {
             UI::RefreshItemRowsForRing(*player, ring);
@@ -351,9 +345,24 @@ namespace {
             return;
         }
 
+        switch (Inventory::UnequipRightWornRing(*player)) {
+            case Inventory::RightWornRingUnequipResult::kNone:
+            case Inventory::RightWornRingUnequipResult::kUnequipped: break;
+            case Inventory::RightWornRingUnequipResult::kProtected:
+            case Inventory::RightWornRingUnequipResult::kFailed:     UI::RefreshItemRowsForRing(*player, ring); return;
+        }
+
+        const auto selection = Get(a_target);
+        if ((!a_customKey && selection.MatchesForm(a_sourceFormID))
+            || (a_customKey && selection.MatchesCustomEnchantment(a_sourceFormID, *a_customKey, a_customIdentity))) {
+            Clear(a_target);
+            VirtualRings::Clear(a_target);
+        }
+
         equipManager->EquipObject(player, ring, equipExtraList, 1, equipSlot, true, a_forceEquip, false, true);
         if (IsInVanillaRingSlot(*player, *ring, a_customKey, a_customIdentity)) {
             RingSounds::Play(*player, *ring, RingSounds::Event::kEquip);
+            RingVisuals::Refresh();
         }
         UI::QueueInventoryMenuRefreshAfterVanillaRingSlotMove();
     }
@@ -468,6 +477,17 @@ namespace {
         }
 
         const auto target = FindVirtualTargetForVanillaRingSlotEquip(*player, *ring, a_customKey, a_customIdentity);
+        if (RingFootprints::GetOccupiedTargets(*ring, kVanillaRingTarget).Empty()) {
+            return result;
+        }
+
+        switch (Inventory::UnequipRightWornRing(*player)) {
+            case Inventory::RightWornRingUnequipResult::kNone:       break;
+            case Inventory::RightWornRingUnequipResult::kUnequipped: result.inventoryChanged = true; break;
+            case Inventory::RightWornRingUnequipResult::kProtected:
+            case Inventory::RightWornRingUnequipResult::kFailed:     return result;
+        }
+
         if (!EquipVanillaRingSlot(*player, *ring, equipExtraList)) {
             return result;
         }
@@ -476,6 +496,7 @@ namespace {
         result.inventoryChanged = true;
         if (IsInVanillaRingSlot(*player, *ring, a_customKey, a_customIdentity)) {
             RingSounds::Play(*player, *ring, RingSounds::Event::kEquip);
+            RingVisuals::Refresh();
         }
         return result;
     }

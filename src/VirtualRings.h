@@ -35,7 +35,6 @@ struct VisualEntry {
     RingTarget target {kDefaultLeftEquipTarget};
     RingFootprints::RingFootprint footprint;
     RE::FormID sourceFormID {0};
-    RE::TESObjectARMO* sourceArmor {nullptr};
     std::vector<SourceAddonVisual> addonVisuals;
 };
 

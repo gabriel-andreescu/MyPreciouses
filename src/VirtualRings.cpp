@@ -170,7 +170,8 @@ namespace {
         RE::TESRace& a_actorRace
     ) {
         std::vector<SourceAddonVisual> visuals;
-        const auto customRingSlots = !a_source.HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing);
+        const auto customRingSlots = !a_source.HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing)
+                                     || Inventory::HasClothingRingKeyword(std::addressof(a_source));
 
         for (auto* addon : a_source.armorAddons) {
             if (!addon) {
@@ -835,7 +836,6 @@ std::vector<VisualEntry> GetVisualEntries() {
                 .target = target,
                 .footprint = state.footprint,
                 .sourceFormID = state.sourceFormID,
-                .sourceArmor = sourceArmor,
                 .addonVisuals = state.addonVisuals,
             }
         );

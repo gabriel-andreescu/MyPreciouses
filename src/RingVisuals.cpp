@@ -1,5 +1,6 @@
 #include "RingVisuals.h"
 
+#include "Inventory.h"
 #include "RingFootprints.h"
 #include "RingTargets.h"
 #include "VirtualRings.h"
@@ -7,14 +8,16 @@
 #include <RE/M/MemoryManager.h>
 
 #include <algorithm>
-#include <atomic>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <limits>
 #include <mutex>
 #include <optional>
+#include <ranges>
 #include <string>
+#include <vector>
 
 namespace RingVisuals {
 namespace {
@@ -22,9 +25,15 @@ namespace {
     constexpr auto kLeftHandNode = "NPC L Hand [LHnd]"sv;
     constexpr auto kRightHandNode = "NPC R Hand [RHnd]"sv;
     constexpr auto kRingBodyPart = std::uint16_t {36};
+    constexpr std::array kFingerOrder {
+        RingFinger::kThumb,
+        RingFinger::kIndex,
+        RingFinger::kMiddle,
+        RingFinger::kRing,
+        RingFinger::kPinky,
+    };
 
     std::mutex g_lock;
-    std::atomic_bool g_firstPersonRetryQueued {false};
 
     struct ModelVariantSelection {
         const VirtualRings::SourceAddonVisual::ModelVariant* model {nullptr};
@@ -259,6 +268,57 @@ namespace {
         return ScanDismemberPartitions(a_root) != DismemberModelScan::kNonRingPartitions;
     }
 
+    [[nodiscard]] std::optional<RingFinger> FirstOccupiedFinger(const RingFootprints::RingFootprint& a_footprint) {
+        for (const auto finger : kFingerOrder) {
+            if (a_footprint.Occupies(finger)) {
+                return finger;
+            }
+        }
+
+        return std::nullopt;
+    }
+
+    [[nodiscard]] bool HasNonRingSlotAddon(const RE::TESObjectARMO& a_ring) {
+        return std::ranges::any_of(a_ring.armorAddons, [](const auto* a_addon) {
+            return a_addon && !a_addon->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing);
+        });
+    }
+
+    [[nodiscard]] bool NeedsVanillaBoneRetarget(
+        const RE::TESObjectARMO& a_ring,
+        const RingFootprints::RingFootprint& a_footprint
+    ) {
+        if (!a_footprint.IsKnown() || RingFootprints::GetOccupiedTargets(a_footprint, kVanillaRingTarget).Empty()) {
+            return false;
+        }
+
+        if (Inventory::HasClothingRingKeyword(std::addressof(a_ring)) && HasNonRingSlotAddon(a_ring)) {
+            return true;
+        }
+
+        const auto firstOccupiedFinger = FirstOccupiedFinger(a_footprint);
+        return firstOccupiedFinger && *firstOccupiedFinger != RingFinger::kIndex;
+    }
+
+    [[nodiscard]] RE::TESObjectARMO* GetEquippedRingForSlot(RE::BipedAnim& a_biped, const std::int32_t a_slot) {
+        if (a_slot < 0) {
+            return nullptr;
+        }
+
+        const auto slot = static_cast<std::uint32_t>(a_slot);
+        if (slot >= std::to_underlying(RE::BIPED_OBJECTS::kEditorTotal)) {
+            return nullptr;
+        }
+
+        const auto actorRef = a_biped.actorRef.get();
+        auto* actor = AsActor(actorRef.get());
+        if (!actor || !actor->IsPlayerRef()) {
+            return nullptr;
+        }
+
+        return Inventory::AsRing(a_biped.objects[slot].item);
+    }
+
     [[nodiscard]] bool PatchSkinInstance(
         RE::BipedAnim& a_biped,
         const RingTarget a_target,
@@ -331,6 +391,35 @@ namespace {
         const auto skinPatch = PatchSkinBindings(a_biped, a_target, a_footprint, a_root);
         const auto nodeNamesPatched = RenameRetargetedNodes(a_root, a_target, a_footprint);
         return skinPatch.foundSkin ? skinPatch.retargetedSkin : nodeNamesPatched;
+    }
+
+    [[nodiscard]] bool RetargetVanillaRingCloneImpl(
+        RE::BipedAnim& a_biped,
+        RE::NiAVObject& a_clone,
+        const std::int32_t a_slot
+    ) {
+        auto* ring = GetEquippedRingForSlot(a_biped, a_slot);
+        if (!ring) {
+            return false;
+        }
+
+        const auto footprint = RingFootprints::GetSourceRingFootprint(*ring);
+        if (!NeedsVanillaBoneRetarget(*ring, footprint)) {
+            return false;
+        }
+
+        if (!PatchScenegraph(a_biped, a_clone, kVanillaRingTarget, footprint)) {
+            logger::warn(
+                "RingVisuals: worn ring retarget failed | source={:08X} | slot={} | target={} | footprint={:02X} | reason=noEditableRingData",
+                ring->GetFormID(),
+                a_slot,
+                TargetLabel(kVanillaRingTarget),
+                footprint.Mask()
+            );
+            return false;
+        }
+
+        return true;
     }
 
     void ApplyTextureSwap(const VirtualRings::SourceAddonVisual::ModelVariant& a_model, RE::NiAVObject& a_root) {
@@ -507,20 +596,6 @@ namespace {
         UpdateAttachedNode(*root, a_biped.root);
     }
 
-    void QueueFirstPersonRetry() {
-        if (g_firstPersonRetryQueued.exchange(true)) {
-            return;
-        }
-
-        stl::add_thread_task(
-            [] {
-                g_firstPersonRetryQueued.store(false);
-                RequestRefresh();
-            },
-            500ms
-        );
-    }
-
     void RefreshPlayer() {
         auto* player = RE::PlayerCharacter::GetSingleton();
         if (!player) {
@@ -536,8 +611,6 @@ namespace {
         const auto& firstPersonBiped = player->GetBiped(true);
         if (firstPersonBiped) {
             RefreshBiped(*player, *firstPersonBiped, true, entries);
-        } else if (!entries.empty()) {
-            QueueFirstPersonRetry();
         }
     }
 }
@@ -553,8 +626,18 @@ void Refresh() {
     RefreshPlayer();
 }
 
+void RetargetVanillaRingClone(RE::BipedAnim* a_biped, RE::NiAVObject* a_clone, const std::int32_t a_slot) {
+    if (!a_biped || !a_clone) {
+        return;
+    }
+
+    std::scoped_lock lock(g_lock);
+    (void)RetargetVanillaRingCloneImpl(*a_biped, *a_clone, a_slot);
+}
+
 void Revert() {
     std::scoped_lock lock(g_lock);
+
     auto* player = RE::PlayerCharacter::GetSingleton();
     if (!player) {
         return;

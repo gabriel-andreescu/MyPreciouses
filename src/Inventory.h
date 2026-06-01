@@ -123,6 +123,7 @@ struct SourceRingState {
 [[nodiscard]] EntryCustomSelection ResolveEntryCustomSelection(RE::InventoryEntryData& a_entry);
 [[nodiscard]] RE::TESObjectARMO* AsRing(RE::TESBoundObject* a_object);
 [[nodiscard]] RE::TESObjectARMO* AsRing(RE::TESForm* a_form);
+[[nodiscard]] bool HasClothingRingKeyword(const RE::TESObjectARMO* a_armor);
 [[nodiscard]] bool IsRing(const RE::TESObjectARMO* a_armor);
 [[nodiscard]] SourceRingState GetSourceState(RE::Actor& a_actor, const RE::TESObjectARMO& a_ring);
 [[nodiscard]] bool UnequipRightWornSource(RE::Actor& a_actor, RE::TESObjectARMO& a_ring);

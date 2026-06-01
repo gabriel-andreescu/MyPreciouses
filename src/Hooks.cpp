@@ -10,7 +10,7 @@
 #include "UI.h"
 #include "VirtualRings.h"
 
-#include <cstring>
+#include <cstdint>
 #include <optional>
 #include <string_view>
 
@@ -59,6 +59,23 @@ namespace {
             }
 
             a_effect->magnitude *= scale;
+        }
+
+        static inline REL::Relocation<decltype(thunk)> func;
+    };
+
+    struct BipedAnimBuildObjectHook {
+        static RE::NiAVObject* thunk(
+            RE::BipedAnim* a_biped,
+            RE::NiAVObject* a_object,
+            RE::NiAVObject* a_parent,
+            const std::int32_t a_slot,
+            const bool a_arg5,
+            const bool a_arg6,
+            RE::NiAVObject* a_arg7
+        ) {
+            RingVisuals::RetargetVanillaRingClone(a_biped, a_object, a_slot);
+            return func(a_biped, a_object, a_parent, a_slot, a_arg5, a_arg6, a_arg7);
         }
 
         static inline REL::Relocation<decltype(thunk)> func;
@@ -119,7 +136,23 @@ namespace {
                 return;
             }
 
+            const auto rightRingEquip = ring && GetHandEquipSlot(a_params.equipSlot) != HandEquipSlot::kLeft;
+            if (rightRingEquip && !Inventory::GetSourceState(*a_actor, *ring).rightWorn) {
+                switch (Inventory::UnequipRightWornRing(*a_actor)) {
+                    case Inventory::RightWornRingUnequipResult::kNone:
+                    case Inventory::RightWornRingUnequipResult::kUnequipped: break;
+                    case Inventory::RightWornRingUnequipResult::kProtected:
+                    case Inventory::RightWornRingUnequipResult::kFailed:
+                        UI::RefreshItemRowsForRing(*a_actor, ring);
+                        Selection::QueueCheck();
+                        return;
+                }
+            }
+
             func(a_equipManager, a_actor, a_object, a_params);
+            if (rightRingEquip) {
+                RingVisuals::Refresh();
+            }
             Selection::QueueCheck();
         }
 
@@ -274,10 +307,21 @@ namespace {
         logger::info("UI: FavoritesMenu quickslot hook installed");
     }
 
-    struct CharacterLoad3DHook {
-        static RE::NiAVObject* thunk(RE::Character* a_actor, bool a_backgroundLoading) {
-            auto* result = func(a_actor, a_backgroundLoading);
-            if (result && a_actor && a_actor->IsPlayerRef()) {
+    void InstallVanillaRingCloneHook() {
+        constexpr auto buildObjectCaller = REL::VariantID(15534, 15711, 0x1DB680);
+        stl::write_thunk_call<BipedAnimBuildObjectHook>(
+            REL::Relocation {buildObjectCaller, REL::Relocate(0x1E4, 0x1F5, 0x1E4)}
+        );
+        stl::write_thunk_call<BipedAnimBuildObjectHook>(
+            REL::Relocation {buildObjectCaller, REL::Relocate(0x23E, 0x24B, 0x23E)}
+        );
+        logger::info("RingVisuals: BipedAnim object build hook installed");
+    }
+
+    struct PlayerLoad3DHook {
+        static RE::NiAVObject* thunk(RE::PlayerCharacter* a_player, bool a_backgroundLoading) {
+            auto* result = func(a_player, a_backgroundLoading);
+            if (a_player) {
                 RingVisuals::RequestRefresh();
             }
             return result;
@@ -288,10 +332,10 @@ namespace {
 
     void InstallLoad3DHook() {
 #ifndef __clang_analyzer__
-        REL::Relocation<std::uintptr_t> vTable {RE::Character::VTABLE[0]};
-        CharacterLoad3DHook::func = vTable.write_vfunc(0x6A, CharacterLoad3DHook::thunk);
+        REL::Relocation<std::uintptr_t> vTable {RE::PlayerCharacter::VTABLE[0]};
+        PlayerLoad3DHook::func = vTable.write_vfunc(0x6A, PlayerLoad3DHook::thunk);
 #endif
-        logger::info("RingVisuals: Character Load3D hook installed");
+        logger::info("RingVisuals: PlayerCharacter Load3D hook installed");
     }
 }
 
@@ -301,6 +345,7 @@ void Install() {
     InstallGetEquippedConditionHook();
     InstallEnchantmentStrengthHook();
     InstallPapyrusEventMirrorHook();
+    InstallVanillaRingCloneHook();
     InstallLoad3DHook();
 }
 }
