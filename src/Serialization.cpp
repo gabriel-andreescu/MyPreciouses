@@ -1,6 +1,7 @@
 #include "Serialization.h"
 
 #include "Compatibility/Vanilla.h"
+#include "Equipment/AssignmentActions.h"
 #include "Equipment/AssignmentStore.h"
 #include "Papyrus/ScriptEventMirror.h"
 #include "VirtualSlots.h"
@@ -594,6 +595,7 @@ namespace {
             }
 
             Equipment::AssignmentStore::ReplaceAll(ResolveLoadedAssignments(*snapshots, *a_intfc));
+            static_cast<void>(Equipment::ClearDisabledVirtualSlotAssignments(Equipment::RefreshMode::kNone));
         }
 
         QueueAssignmentRefresh();

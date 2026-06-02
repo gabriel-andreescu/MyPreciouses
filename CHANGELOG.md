@@ -3,6 +3,7 @@
 ## 0.4.0 - Unreleased
 
 - feat: support vanilla UI
+- feat: add MCM controls for choosing enabled virtual ring slots
 
 ## 0.3.5 - 2026-05-30
 

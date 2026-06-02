@@ -3,6 +3,7 @@
 #include "Equipment/AssignmentStore.h"
 #include "Inventory.h"
 #include "Localization.h"
+#include "Settings.h"
 #include "SourceModelFootprints.h"
 #include "UI/Scaleform.h"
 
@@ -128,6 +129,27 @@ namespace {
 
     [[nodiscard]] bool ShouldShowRingFingerSuffix(const std::vector<Core::Target>& a_targets) {
         return a_targets.size() > 1 || HasNonIndexTarget(a_targets);
+    }
+
+    [[nodiscard]] bool IsSelectableTarget(const Core::FingerMask& a_sourceFingerMask, const Core::Target a_target) {
+        const auto projectedTargets = SourceModelFootprints::GetProjectedTargets(a_sourceFingerMask, a_target);
+        return !projectedTargets.Empty() && Settings::GetSingleton()->AreTargetsEnabled(projectedTargets);
+    }
+
+    [[nodiscard]] bool HasMultipleSelectableTargetsOnHand(
+        const Core::FingerMask& a_sourceFingerMask,
+        const Core::Hand a_hand
+    ) {
+        auto count = std::uint32_t {0};
+        for (const auto finger : Core::kFingers) {
+            if (IsSelectableTarget(a_sourceFingerMask, Core::Target {.hand = a_hand, .finger = finger})
+                && ++count
+                > 1) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     [[nodiscard]] std::string FormatRingRowTargetLabel(const Core::Target a_target) {
@@ -409,6 +431,13 @@ bool CanShowFingerSelectHint(const RE::GFxValue& a_entryObject) {
 
     const auto formID = Scaleform::ReadUInt32Member(a_entryObject, kScaleformItemFormID);
     auto* ring = formID ? Inventory::AsRing(RE::TESForm::LookupByID<RE::TESObjectARMO>(*formID)) : nullptr;
-    return ring && !SourceModelFootprints::GetSourceFingerMask(*ring).IsMultiFinger();
+    if (!ring) {
+        return false;
+    }
+
+    const auto sourceFingerMask = SourceModelFootprints::GetSourceFingerMask(*ring);
+    return !sourceFingerMask.IsMultiFinger()
+           && (HasMultipleSelectableTargetsOnHand(sourceFingerMask, Core::Hand::kLeft)
+               || HasMultipleSelectableTargetsOnHand(sourceFingerMask, Core::Hand::kRight));
 }
 }

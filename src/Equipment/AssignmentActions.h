@@ -43,6 +43,11 @@ enum class QueueMode : std::uint8_t {
     kQueued,
 };
 
+enum class RefreshMode : std::uint8_t {
+    kNone = 0,
+    kAffectedActors,
+};
+
 [[nodiscard]] bool IsSelected(const SourceSelection& a_selection, Core::Target a_target);
 [[nodiscard]] bool IsInVanillaRingSlot(const SourceSelection& a_selection);
 [[nodiscard]] bool IsProtectedInVanillaRingSlot(const SourceSelection& a_selection);
@@ -65,6 +70,9 @@ enum class QueueMode : std::uint8_t {
     CompletionCallback a_onQueuedComplete = {}
 );
 void QueueAssignmentReconciliation(Core::ActorKey a_actor, CompletionCallback a_onComplete = {});
+[[nodiscard]] ActionResult ClearDisabledVirtualSlotAssignments(
+    RefreshMode a_refreshMode = RefreshMode::kAffectedActors
+);
 void HandleContainerChangedForAssignments(
     Core::ActorKey a_actor,
     const RE::TESContainerChangedEvent& a_event,

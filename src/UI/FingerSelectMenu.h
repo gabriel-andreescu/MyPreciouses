@@ -51,6 +51,7 @@ struct Labels {
         std::string a_unequipAction,
         std::string a_replaceAction,
         std::string a_wontFitAction,
+        std::string a_disabledAction,
         std::string a_cancelAction
     )
         : title(std::move(a_title))
@@ -60,6 +61,7 @@ struct Labels {
         , unequipAction(std::move(a_unequipAction))
         , replaceAction(std::move(a_replaceAction))
         , wontFitAction(std::move(a_wontFitAction))
+        , disabledAction(std::move(a_disabledAction))
         , cancelAction(std::move(a_cancelAction)) {}
 
     std::string title;
@@ -69,6 +71,7 @@ struct Labels {
     std::string unequipAction;
     std::string replaceAction;
     std::string wontFitAction;
+    std::string disabledAction;
     std::string cancelAction;
 };
 

@@ -3,6 +3,7 @@
 #include "Audio/EquipSounds.h"
 #include "Equipment/AssignmentStore.h"
 #include "Inventory.h"
+#include "Settings.h"
 #include "SourceModelFootprints.h"
 #include "VirtualSlots.h"
 
@@ -29,6 +30,25 @@ namespace {
             "Equipment: virtual target rejected | action={} | target={}",
             a_action,
             Core::TargetName(a_target)
+        );
+        return false;
+    }
+
+    [[nodiscard]] bool CanUseEnabledTargets(
+        const Core::TargetMask& a_occupiedTargets,
+        const Core::Target a_target,
+        const RE::TESObjectARMO& a_ring,
+        const std::string_view a_action
+    ) {
+        if (Settings::GetSingleton()->AreTargetsEnabled(a_occupiedTargets)) {
+            return true;
+        }
+
+        logger::warn(
+            "Equipment: virtual target rejected | action={} | target={} | source={:08X} | reason=disabledSlot",
+            a_action,
+            Core::TargetName(a_target),
+            a_ring.GetFormID()
         );
         return false;
     }
@@ -522,6 +542,10 @@ namespace {
             return ClearVirtualAssignment(a_actor, a_target);
         }
 
+        if (!Settings::GetSingleton()->AreTargetsEnabled(occupiedTargets)) {
+            return ClearVirtualAssignment(a_actor, a_target);
+        }
+
         if (occupiedTargets.Contains(Core::kVanillaRingSlotTarget) && Inventory::HasRightWornRing(a_actor)) {
             return ClearVirtualAssignment(a_actor, a_target);
         }
@@ -620,6 +644,11 @@ namespace {
             return result;
         }
 
+        const auto occupiedTargets = SourceModelFootprints::GetProjectedTargets(*ring, a_target);
+        if (!CanUseEnabledTargets(occupiedTargets, a_target, *ring, "moveVanillaRingSlotToVirtual"sv)) {
+            return result;
+        }
+
         const auto selectedCopies = CountSelectedVirtualCopies(a_actor, a_source, a_target);
         if (RightSlotConsumesNeededCopy(sourceMatches, selectedCopies)) {
             if (sourceMatches.rightWornProtected) {
@@ -639,10 +668,7 @@ namespace {
             }
         }
 
-        const auto prepareResult = PrepareVanillaRingSlotForVirtualTarget(
-            *actor,
-            SourceModelFootprints::GetProjectedTargets(*ring, a_target)
-        );
+        const auto prepareResult = PrepareVanillaRingSlotForVirtualTarget(*actor, occupiedTargets);
         if (prepareResult.blockReason != ActionBlockReason::kNone) {
             return prepareResult;
         }
@@ -787,10 +813,12 @@ namespace {
             return result;
         }
 
-        const auto prepareResult = PrepareVanillaRingSlotForVirtualTarget(
-            *actor,
-            SourceModelFootprints::GetProjectedTargets(a_ring, a_target)
-        );
+        const auto occupiedTargets = SourceModelFootprints::GetProjectedTargets(a_ring, a_target);
+        if (!CanUseEnabledTargets(occupiedTargets, a_target, a_ring, "assignCustomTarget"sv)) {
+            return result;
+        }
+
+        const auto prepareResult = PrepareVanillaRingSlotForVirtualTarget(*actor, occupiedTargets);
         if (prepareResult.blockReason != ActionBlockReason::kNone) {
             return prepareResult;
         }
@@ -854,10 +882,12 @@ namespace {
             return result;
         }
 
-        const auto prepareResult = PrepareVanillaRingSlotForVirtualTarget(
-            *actor,
-            SourceModelFootprints::GetProjectedTargets(a_ring, a_target)
-        );
+        const auto occupiedTargets = SourceModelFootprints::GetProjectedTargets(a_ring, a_target);
+        if (!CanUseEnabledTargets(occupiedTargets, a_target, a_ring, "assignFormTarget"sv)) {
+            return result;
+        }
+
+        const auto prepareResult = PrepareVanillaRingSlotForVirtualTarget(*actor, occupiedTargets);
         if (prepareResult.blockReason != ActionBlockReason::kNone) {
             return prepareResult;
         }
@@ -923,6 +953,41 @@ ActionResult ToggleTarget(
         a_queueMode,
         std::move(a_onQueuedComplete)
     );
+}
+
+ActionResult ClearDisabledVirtualSlotAssignments(const RefreshMode a_refreshMode) {
+    ActionResult result;
+    for (const auto& actorSnapshot : AssignmentStore::GetAllSnapshots()) {
+        auto actorChanged = false;
+        for (const auto target : Core::kVirtualTargets) {
+            const auto& assignment = actorSnapshot.assignments.byTarget[Core::ToIndex(target)];
+            if (!assignment.IsAssigned()) {
+                continue;
+            }
+
+            auto occupiedTargets = Core::TargetMask {};
+            if (auto* ring = LookupSourceRing(assignment.source.sourceFormID)) {
+                occupiedTargets = SourceModelFootprints::GetProjectedTargets(*ring, target);
+            }
+            if (occupiedTargets.Empty()) {
+                occupiedTargets.Add(target);
+            }
+
+            if (Settings::GetSingleton()->AreTargetsEnabled(occupiedTargets)) {
+                continue;
+            }
+
+            AssignmentStore::Clear(actorSnapshot.actor, target);
+            actorChanged = true;
+            result.selectionChanged = true;
+        }
+
+        if (actorChanged && a_refreshMode == RefreshMode::kAffectedActors) {
+            VirtualSlots::RequestRefresh(actorSnapshot.actor);
+        }
+    }
+
+    return result;
 }
 
 bool InterceptRightEquip(

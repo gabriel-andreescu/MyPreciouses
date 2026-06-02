@@ -1,6 +1,7 @@
 #include "Equipment/AssignmentStore.h"
 
 #include "Inventory.h"
+#include "Settings.h"
 #include "SourceModelFootprints.h"
 
 #include <algorithm>
@@ -112,6 +113,25 @@ namespace {
         return false;
     }
 
+    [[nodiscard]] bool CanUseEnabledTargets(
+        const Core::TargetMask& a_occupiedTargets,
+        const Core::Target a_target,
+        const RE::TESObjectARMO& a_ring,
+        const std::string_view a_action
+    ) {
+        if (Settings::GetSingleton()->AreTargetsEnabled(a_occupiedTargets)) {
+            return true;
+        }
+
+        logger::warn(
+            "Equipment: virtual target rejected | action={} | target={} | source={:08X} | reason=disabledSlot",
+            a_action,
+            Core::TargetName(a_target),
+            a_ring.GetFormID()
+        );
+        return false;
+    }
+
     void ClearConflictingAssignments(
         Core::TargetAssignments& a_snapshot,
         const std::vector<Core::Target>& a_conflicts
@@ -167,7 +187,8 @@ namespace {
         }
 
         const auto occupiedTargets = SourceModelFootprints::GetProjectedTargets(a_ring, a_target);
-        if (!CanOccupyTargets(occupiedTargets, a_target, a_ring, a_action)) {
+        if (!CanOccupyTargets(occupiedTargets, a_target, a_ring, a_action)
+            || !CanUseEnabledTargets(occupiedTargets, a_target, a_ring, a_action)) {
             return false;
         }
 

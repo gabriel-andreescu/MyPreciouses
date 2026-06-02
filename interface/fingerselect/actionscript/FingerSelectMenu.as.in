@@ -167,6 +167,11 @@ updateSelectedRowArrow = function()
         return;
     }
 
+    if (fingerRows[selectedRowIndex] == undefined || fingerRows[selectedRowIndex].enabled == false) {
+        selectedRowArrow._visible = false;
+        return;
+    }
+
     selectedRowArrow._xscale = -SELECTED_ROW_ARROW_SCALE;
     selectedRowArrow._yscale = SELECTED_ROW_ARROW_SCALE;
     selectedRowArrow._x = SELECTED_ROW_ARROW_LEFT + selectedRowArrow._width;
@@ -316,6 +321,31 @@ previewRow = function(index, shouldDispatch)
     return true;
 };
 
+findEnabledRowIndex = function(startIndex, delta)
+{
+    startIndex = Number(startIndex);
+    delta = Number(delta);
+    if (isNaN(startIndex)) {
+        startIndex = selectedRowIndex;
+    }
+    if (isNaN(delta) || delta == 0) {
+        delta = 1;
+    }
+
+    for (var offset = 0; offset < ROW_COUNT; offset++) {
+        var index = startIndex + delta * offset;
+        if (index < 0 || index >= ROW_COUNT) {
+            continue;
+        }
+
+        if (fingerRows[index] != undefined && fingerRows[index].enabled != false) {
+            return index;
+        }
+    }
+
+    return -1;
+};
+
 SetLabels = function(title, ringName, fingerHeader, equippedHeader, equipLabel, cancelLabel)
 {
     writeText(TitleText, title);
@@ -366,9 +396,18 @@ CommitData = function(selectedIndex)
 {
     var index = selectedIndex != undefined ? Number(selectedIndex) : 0;
     if (!previewRow(index, false)) {
-        clearPreview();
-        refreshRows();
-        setSelectedIndexInternal(index, false);
+        var nextEnabledIndex = findEnabledRowIndex(index, 1);
+        if (nextEnabledIndex < 0) {
+            nextEnabledIndex = findEnabledRowIndex(index, -1);
+        }
+
+        if (nextEnabledIndex >= 0) {
+            previewRow(nextEnabledIndex, false);
+        } else {
+            clearPreview();
+            refreshRows();
+            setSelectedIndexInternal(index, false);
+        }
     }
     createRowHitAreas();
     configureButtons();
@@ -392,7 +431,12 @@ getSelectedIndex = GetSelectedIndex;
 
 MoveSelection = function(delta)
 {
-    return previewRow(selectedRowIndex + Number(delta), true);
+    var nextEnabledIndex = findEnabledRowIndex(selectedRowIndex + Number(delta), Number(delta));
+    if (nextEnabledIndex < 0) {
+        return false;
+    }
+
+    return previewRow(nextEnabledIndex, true);
 };
 
 moveSelection = MoveSelection;

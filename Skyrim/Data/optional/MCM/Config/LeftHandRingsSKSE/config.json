@@ -134,6 +134,170 @@
           }
         }
       ]
+    },
+    {
+      "pageDisplayName": "Virtual Slots",
+      "cursorFillMode": "topToBottom",
+      "content": [
+        {
+          "type": "hiddenToggle",
+          "text": "Right index configurable",
+          "groupControl": 4,
+          "valueOptions": {
+            "sourceType": "PropertyValueBool",
+            "propertyName": "bRightIndexSlotConfigurable"
+          }
+        },
+        {
+          "position": 0,
+          "text": "Preset",
+          "type": "enum",
+          "help": "All enables every virtual slot. Left index only keeps one extra left-hand ring slot. Custom uses the individual slot toggles below.",
+          "valueOptions": {
+            "sourceType": "PropertyValueInt",
+            "propertyName": "VirtualSlotPreset",
+            "defaultValue": 0,
+            "options": [
+              "All",
+              "Left index only",
+              "Custom"
+            ]
+          },
+          "action": {
+            "type": "CallFunction",
+            "function": "ApplyVirtualSlotPreset",
+            "params": [
+              "{value}"
+            ]
+          }
+        },
+        {
+          "position": 1,
+          "type": "empty"
+        },
+        {
+          "position": 2,
+          "text": "Left hand",
+          "type": "header"
+        },
+        {
+          "position": 3,
+          "text": "Right hand",
+          "type": "header"
+        },
+        {
+          "position": 4,
+          "id": "bEnableLeftThumb:VirtualSlots",
+          "text": "Left thumb",
+          "type": "toggle",
+          "help": "Enable the left thumb virtual ring slot.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        },
+        {
+          "position": 6,
+          "id": "bEnableLeftIndex:VirtualSlots",
+          "text": "Left index",
+          "type": "toggle",
+          "help": "Enable the left index virtual ring slot.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        },
+        {
+          "position": 8,
+          "id": "bEnableLeftMiddle:VirtualSlots",
+          "text": "Left middle",
+          "type": "toggle",
+          "help": "Enable the left middle virtual ring slot.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        },
+        {
+          "position": 10,
+          "id": "bEnableLeftRing:VirtualSlots",
+          "text": "Left ring",
+          "type": "toggle",
+          "help": "Enable the left ring virtual ring slot.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        },
+        {
+          "position": 12,
+          "id": "bEnableLeftPinky:VirtualSlots",
+          "text": "Left pinky",
+          "type": "toggle",
+          "help": "Enable the left pinky virtual ring slot.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        },
+        {
+          "position": 5,
+          "id": "bEnableRightThumb:VirtualSlots",
+          "text": "Right thumb",
+          "type": "toggle",
+          "help": "Enable the right thumb virtual ring slot.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        },
+        {
+          "position": 7,
+          "text": "Right index",
+          "type": "toggle",
+          "groupCondition": 4,
+          "groupBehavior": "disable",
+          "help": "The vanilla right-hand index finger is always available and cannot be disabled.",
+          "valueOptions": {
+            "sourceType": "PropertyValueBool",
+            "propertyName": "bRightIndexSlotDisplayed",
+            "defaultValue": true
+          }
+        },
+        {
+          "position": 9,
+          "id": "bEnableRightMiddle:VirtualSlots",
+          "text": "Right middle",
+          "type": "toggle",
+          "help": "Enable the right middle virtual ring slot.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        },
+        {
+          "position": 11,
+          "id": "bEnableRightRing:VirtualSlots",
+          "text": "Right ring",
+          "type": "toggle",
+          "help": "Enable the right ring virtual ring slot.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        },
+        {
+          "position": 13,
+          "id": "bEnableRightPinky:VirtualSlots",
+          "text": "Right pinky",
+          "type": "toggle",
+          "help": "Enable the right pinky virtual ring slot.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        }
+      ]
     }
   ]
 }

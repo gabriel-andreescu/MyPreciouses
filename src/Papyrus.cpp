@@ -1,6 +1,7 @@
 #include "Papyrus.h"
 
 #include "Core/ActorKey.h"
+#include "Equipment/AssignmentActions.h"
 #include "Settings.h"
 #include "UI.h"
 #include "VirtualSlots.h"
@@ -22,15 +23,22 @@ namespace {
         UI::RefreshRingItemRows();
     }
 
+    void RefreshRingsAfterVirtualSlotsChanged() {
+        static_cast<void>(Equipment::ClearDisabledVirtualSlotAssignments());
+        RefreshRingsAfterSettingsChanged();
+    }
+
     void OnMcmConfigClose([[maybe_unused]] RE::TESQuest* a_quest) {
         const auto reload = Settings::GetSingleton()->Reload();
         if (!reload.Changed()) {
             return;
         }
 
-        if (reload.extraRingModeChanged || reload.enchantmentStrengthChanged) {
+        if (reload.extraRingModeChanged || reload.enchantmentStrengthChanged || reload.virtualSlotsChanged) {
             logger::info("Papyrus: MCM ring settings changed | action=refreshRings");
-            stl::add_task(RefreshRingsAfterSettingsChanged);
+            stl::add_task(
+                reload.virtualSlotsChanged ? RefreshRingsAfterVirtualSlotsChanged : RefreshRingsAfterSettingsChanged
+            );
             return;
         }
 

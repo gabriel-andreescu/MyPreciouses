@@ -3,6 +3,7 @@
 #include <CLIBUtil/simpleINI.hpp>
 
 #include <algorithm>
+#include <array>
 #include <filesystem>
 #include <format>
 #include <string_view>
@@ -15,6 +16,7 @@ constexpr auto kModName = "LeftHandRingsSKSE"sv;
 constexpr auto kConfigRoot = "Data/MCM/Config"sv;
 constexpr auto kSettingsRoot = "Data/MCM/Settings"sv;
 constexpr auto kSettingsSection = "General";
+constexpr auto kVirtualSlotsSection = "VirtualSlots";
 constexpr auto kExtraRingModeSettingKey = "iExtraRingMode";
 constexpr auto kEnchantmentStrengthModeSettingKey = "iEnchantmentStrengthMode";
 constexpr auto kFixedEnchantmentStrengthSettingKey = "iFixedEnchantmentStrengthPercent";
@@ -23,6 +25,78 @@ constexpr auto kFingerSelectKeyboardModifierSettingKey = "iFingerSelectModifierK
 constexpr auto kFingerSelectGamepadModifierSettingKey = "iFingerSelectModifierButton";
 constexpr auto kDebugLoggingSettingKey = "bEnableDebugLogging";
 
+struct VirtualSlotSetting {
+    Core::Target target;
+    const char* key;
+    const char* comment;
+};
+
+constexpr std::array kVirtualSlotSettings {
+    VirtualSlotSetting {
+        .target = Core::Target {.hand = Core::Hand::kLeft, .finger = Core::Finger::kThumb},
+        .key = "bEnableLeftThumb",
+        .comment = "; Enable the left thumb virtual ring slot.\n; Default: true",
+    },
+    VirtualSlotSetting {
+        .target = Core::Target {.hand = Core::Hand::kLeft, .finger = Core::Finger::kIndex},
+        .key = "bEnableLeftIndex",
+        .comment = "; Enable the left index virtual ring slot.\n; Default: true",
+    },
+    VirtualSlotSetting {
+        .target = Core::Target {.hand = Core::Hand::kLeft, .finger = Core::Finger::kMiddle},
+        .key = "bEnableLeftMiddle",
+        .comment = "; Enable the left middle virtual ring slot.\n; Default: true",
+    },
+    VirtualSlotSetting {
+        .target = Core::Target {.hand = Core::Hand::kLeft, .finger = Core::Finger::kRing},
+        .key = "bEnableLeftRing",
+        .comment = "; Enable the left ring virtual ring slot.\n; Default: true",
+    },
+    VirtualSlotSetting {
+        .target = Core::Target {.hand = Core::Hand::kLeft, .finger = Core::Finger::kPinky},
+        .key = "bEnableLeftPinky",
+        .comment = "; Enable the left pinky virtual ring slot.\n; Default: true",
+    },
+    VirtualSlotSetting {
+        .target = Core::Target {.hand = Core::Hand::kRight, .finger = Core::Finger::kThumb},
+        .key = "bEnableRightThumb",
+        .comment = "; Enable the right thumb virtual ring slot.\n; Default: true",
+    },
+    VirtualSlotSetting {
+        .target = Core::Target {.hand = Core::Hand::kRight, .finger = Core::Finger::kMiddle},
+        .key = "bEnableRightMiddle",
+        .comment = "; Enable the right middle virtual ring slot.\n; Default: true",
+    },
+    VirtualSlotSetting {
+        .target = Core::Target {.hand = Core::Hand::kRight, .finger = Core::Finger::kRing},
+        .key = "bEnableRightRing",
+        .comment = "; Enable the right ring virtual ring slot.\n; Default: true",
+    },
+    VirtualSlotSetting {
+        .target = Core::Target {.hand = Core::Hand::kRight, .finger = Core::Finger::kPinky},
+        .key = "bEnableRightPinky",
+        .comment = "; Enable the right pinky virtual ring slot.\n; Default: true",
+    },
+};
+
+constexpr std::array kDefaultLeftTargetPriority {
+    Core::Target {.hand = Core::Hand::kLeft, .finger = Core::Finger::kIndex},
+    Core::Target {.hand = Core::Hand::kLeft, .finger = Core::Finger::kMiddle},
+    Core::Target {.hand = Core::Hand::kLeft, .finger = Core::Finger::kRing},
+    Core::Target {.hand = Core::Hand::kLeft, .finger = Core::Finger::kPinky},
+    Core::Target {.hand = Core::Hand::kLeft, .finger = Core::Finger::kThumb},
+};
+
+using VirtualSlotStates = std::array<bool, Core::kAllTargets.size()>;
+
+[[nodiscard]] constexpr VirtualSlotStates AllVirtualSlots() {
+    VirtualSlotStates slots {};
+    for (const auto target : Core::kVirtualTargets) {
+        slots[Core::ToIndex(target)] = true;
+    }
+    return slots;
+}
+
 struct RawSettings {
     int extraRingMode {static_cast<int>(std::to_underlying(ExtraRingMode::kFunctional))};
     int enchantmentStrengthMode {static_cast<int>(std::to_underlying(EnchantmentStrengthMode::kFullStrength))};
@@ -30,6 +104,7 @@ struct RawSettings {
     bool alwaysChooseFinger {false};
     int fingerSelectModifierKey {static_cast<int>(Settings::kDefaultFingerSelectModifierKey)};
     int fingerSelectModifierButton {static_cast<int>(Settings::kDefaultFingerSelectModifierButton)};
+    VirtualSlotStates virtualSlots = AllVirtualSlots();
 };
 
 struct LoadedSettings {
@@ -39,6 +114,7 @@ struct LoadedSettings {
     bool alwaysChooseFinger {false};
     std::uint32_t fingerSelectModifierKey {Settings::kDefaultFingerSelectModifierKey};
     std::uint32_t fingerSelectModifierButton {Settings::kDefaultFingerSelectModifierButton};
+    std::uint16_t enabledVirtualTargetBits {Settings::kDefaultEnabledVirtualTargetBits};
 };
 
 [[nodiscard]] std::filesystem::path DefaultSettingsPath() {
@@ -91,6 +167,24 @@ struct LoadedSettings {
     return Settings::kDefaultFingerSelectModifierButton;
 }
 
+[[nodiscard]] std::uint16_t ToTargetBits(const VirtualSlotStates& a_slots) {
+    auto bits = std::uint16_t {0};
+    for (const auto target : Core::kVirtualTargets) {
+        if (a_slots[Core::ToIndex(target)]) {
+            bits |= static_cast<std::uint16_t>(1u << Core::ToIndex(target));
+        }
+    }
+    return bits;
+}
+
+[[nodiscard]] bool IsTargetEnabled(const std::uint16_t a_enabledVirtualTargetBits, const Core::Target a_target) {
+    if (!Core::IsVirtualTarget(a_target)) {
+        return true;
+    }
+
+    return (a_enabledVirtualTargetBits & static_cast<std::uint16_t>(1u << Core::ToIndex(a_target))) != 0;
+}
+
 void ReadSettings(CSimpleIniA& a_ini, RawSettings& a_settings) {
     clib_util::ini::get_value(
         a_ini,
@@ -134,6 +228,15 @@ void ReadSettings(CSimpleIniA& a_ini, RawSettings& a_settings) {
         kFingerSelectGamepadModifierSettingKey,
         "; Finger selection modifier for controller input.\n; Vanilla UI inventory hints only support RB. The finger selector still works, but the inventory hint will not be shown for other controller buttons.\n; Default: 275"
     );
+    for (const auto& setting : kVirtualSlotSettings) {
+        clib_util::ini::get_value(
+            a_ini,
+            a_settings.virtualSlots[Core::ToIndex(setting.target)],
+            kVirtualSlotsSection,
+            setting.key,
+            setting.comment
+        );
+    }
 }
 
 [[nodiscard]] RawSettings ReadSettingsFiles(CSimpleIniA& a_user, const std::filesystem::path& a_userPath) {
@@ -164,6 +267,7 @@ void ReadSettings(CSimpleIniA& a_ini, RawSettings& a_settings) {
         .alwaysChooseFinger = a_raw.alwaysChooseFinger,
         .fingerSelectModifierKey = ClampFingerSelectModifierKey(a_raw.fingerSelectModifierKey),
         .fingerSelectModifierButton = ClampFingerSelectModifierButton(a_raw.fingerSelectModifierButton),
+        .enabledVirtualTargetBits = ToTargetBits(a_raw.virtualSlots),
     };
 }
 
@@ -203,6 +307,13 @@ void RepairUserSettings(CSimpleIniA& a_user, const RawSettings& a_raw, const Loa
             static_cast<long>(a_loaded.fingerSelectModifierButton)
         );
     }
+    for (const auto& setting : kVirtualSlotSettings) {
+        const auto targetIndex = Core::ToIndex(setting.target);
+        const auto loaded = ::IsTargetEnabled(a_loaded.enabledVirtualTargetBits, setting.target);
+        if (a_raw.virtualSlots[targetIndex] != loaded) {
+            a_user.SetBoolValue(kVirtualSlotsSection, setting.key, loaded);
+        }
+    }
 }
 }
 
@@ -213,6 +324,7 @@ void Settings::Load() {
     alwaysChooseFinger_.store(false);
     fingerSelectModifierKey_.store(kDefaultFingerSelectModifierKey);
     fingerSelectModifierButton_.store(kDefaultFingerSelectModifierButton);
+    enabledVirtualTargetBits_.store(kDefaultEnabledVirtualTargetBits);
 
     (void)Reload();
 }
@@ -252,24 +364,28 @@ Settings::ReloadResult Settings::Reload() {
                                     != loaded.fingerSelectModifierKey;
     const auto modifierButtonChanged = fingerSelectModifierButton_.exchange(loaded.fingerSelectModifierButton)
                                        != loaded.fingerSelectModifierButton;
+    const auto virtualSlotsChanged = enabledVirtualTargetBits_.exchange(loaded.enabledVirtualTargetBits)
+                                     != loaded.enabledVirtualTargetBits;
 
     (void)user.SaveFile(userPath.string().c_str());
 
     logger::info(
-        "Settings: loaded | path={} | extraRingMode={} | enchantmentStrengthMode={} | fixedStrength={} | alwaysChooseFinger={} | fingerSelectModifierKey={} | fingerSelectModifierButton={}",
+        "Settings: loaded | path={} | extraRingMode={} | enchantmentStrengthMode={} | fixedStrength={} | alwaysChooseFinger={} | fingerSelectModifierKey={} | fingerSelectModifierButton={} | enabledVirtualTargets={:04X}",
         userPath.string(),
         std::to_underlying(loaded.extraRingMode),
         std::to_underlying(loaded.enchantmentStrengthMode),
         loaded.fixedStrengthPercent,
         loaded.alwaysChooseFinger,
         loaded.fingerSelectModifierKey,
-        loaded.fingerSelectModifierButton
+        loaded.fingerSelectModifierButton,
+        loaded.enabledVirtualTargetBits
     );
 
     return ReloadResult {
         .extraRingModeChanged = extraRingModeChanged,
         .enchantmentStrengthChanged = enchantmentStrengthModeChanged || fixedStrengthChanged,
         .fingerSelectionChanged = alwaysChooseFingerChanged || modifierKeyChanged || modifierButtonChanged,
+        .virtualSlotsChanged = virtualSlotsChanged,
     };
 }
 
@@ -287,6 +403,28 @@ std::uint32_t Settings::GetFingerSelectModifierKey() const {
 
 std::uint32_t Settings::GetFingerSelectModifierButton() const {
     return fingerSelectModifierButton_.load();
+}
+
+bool Settings::IsTargetEnabled(const Core::Target a_target) const {
+    return ::IsTargetEnabled(enabledVirtualTargetBits_.load(), a_target);
+}
+
+bool Settings::AreTargetsEnabled(const Core::TargetMask& a_targets) const {
+    const auto enabledVirtualTargetBits = enabledVirtualTargetBits_.load();
+    return std::ranges::all_of(Core::kVirtualTargets, [&](const auto target) {
+        return !a_targets.Contains(target) || ::IsTargetEnabled(enabledVirtualTargetBits, target);
+    });
+}
+
+std::optional<Core::Target> Settings::GetDefaultLeftTarget() const {
+    const auto enabledVirtualTargetBits = enabledVirtualTargetBits_.load();
+    for (const auto target : kDefaultLeftTargetPriority) {
+        if (::IsTargetEnabled(enabledVirtualTargetBits, target)) {
+            return target;
+        }
+    }
+
+    return std::nullopt;
 }
 
 float Settings::GetRingEnchantmentScale(const std::uint32_t a_enchantedRingCount) const {
