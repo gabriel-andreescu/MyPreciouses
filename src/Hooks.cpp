@@ -3,6 +3,7 @@
 #include "Equipment/AssignmentActions.h"
 #include "Inventory.h"
 #include "UI.h"
+#include "UI/InventoryMenu.h"
 #include "UI/ItemMenuActions.h"
 #include "VirtualSlots.h"
 
@@ -189,6 +190,35 @@ namespace {
         logger::info("Hooks: InventoryMenu ItemSelect hook installed");
     }
 
+    struct InventoryMenuProcessMessageHook {
+        static RE::UI_MESSAGE_RESULTS thunk(RE::InventoryMenu* a_menu, RE::UIMessage& a_message) {
+            const auto result = func(a_menu, a_message);
+
+            if (a_menu) {
+                switch (a_message.type.get()) {
+                    case RE::UI_MESSAGE_TYPE::kShow: UI::InventoryMenu::OnShown(*a_menu); break;
+                    case RE::UI_MESSAGE_TYPE::kInventoryUpdate:
+                        UI::InventoryMenu::OnInventoryUpdateProcessed(*a_menu);
+                        break;
+                    default: break;
+                }
+            }
+
+            return result;
+        }
+
+        static inline REL::Relocation<decltype(thunk)> func;
+    };
+
+    void InstallInventoryMenuProcessMessageHook() {
+#ifndef __clang_analyzer__
+        REL::Relocation<std::uintptr_t> vTable {RE::InventoryMenu::VTABLE[0]};
+        // InventoryMenu::ProcessMessage // 04
+        InventoryMenuProcessMessageHook::func = vTable.write_vfunc(0x4, InventoryMenuProcessMessageHook::thunk);
+#endif
+        logger::info("Hooks: InventoryMenu ProcessMessage hook installed");
+    }
+
     struct FavoritesUseQuickslotItemHook {
         static void thunk(
             RE::ActorEquipManager* a_equipManager,
@@ -218,6 +248,7 @@ namespace {
 
     void InstallItemMenuHooks() {
         InstallInventoryItemSelectHook();
+        InstallInventoryMenuProcessMessageHook();
         UI::RegisterItemMenuDataCallback();
 
         stl::write_thunk_call<FavoritesUseQuickslotItemHook>(

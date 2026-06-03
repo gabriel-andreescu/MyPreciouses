@@ -40,6 +40,7 @@ namespace {
     }
 
     void RefreshRingItemRowsForRing(RE::Actor& a_actor, const RE::TESObjectARMO* a_ring) {
+        InventoryMenu::RefreshAfterNextInventoryUpdate();
         RE::SendUIMessage::SendInventoryUpdateMessage(std::addressof(a_actor), a_ring);
         FavoritesMenu::QueueRingRowRefresh();
     }
@@ -56,20 +57,22 @@ void RegisterItemMenuDataCallback() {
 
 void HandleMenuOpenCloseEvent(const RE::MenuOpenCloseEvent& a_event) {
     if (a_event.opening) {
-        if (a_event.menuName == RE::InventoryMenu::MENU_NAME.data()) {
-            InventoryMenu::QueueOpenMenuRingRowRefresh();
-        } else if (a_event.menuName == RE::FavoritesMenu::MENU_NAME.data()) {
+        if (a_event.menuName == RE::FavoritesMenu::MENU_NAME.data()) {
             FavoritesMenu::QueueRingRowRefresh();
         }
 
         return;
     }
 
+    if (a_event.menuName == RE::InventoryMenu::MENU_NAME.data()) {
+        InventoryMenu::OnClosed();
+    }
+
     FingerSelectMenu::OnMenuClose(a_event.menuName);
 }
 
 void RefreshRingItemRows() {
-    InventoryMenu::QueueRingRowRefresh();
+    InventoryMenu::QueueInventoryListRefresh();
     FavoritesMenu::QueueRingRowRefresh();
 }
 
@@ -89,7 +92,8 @@ void RefreshItemRowsAfterEquipmentAction(
 
     if (a_result.inventoryChanged) {
         if (a_hostMenu == ItemMenuHost::kInventory) {
-            InventoryMenu::QueueRefreshAfterVanillaRingSlotMove();
+            InventoryMenu::QueueInventoryListRefresh();
+            FavoritesMenu::QueueRingRowRefresh();
         } else if (actor && ring) {
             RefreshRingItemRowsForRing(*actor, ring);
         }

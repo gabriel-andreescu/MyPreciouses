@@ -2,7 +2,6 @@
 
 #include "Localization.h"
 #include "Settings.h"
-#include "UI/FavoritesMenu.h"
 #include "UI/RingItemRows.h"
 #include "UI/Scaleform.h"
 #include "UI/VanillaItemMenuControls.h"
@@ -42,8 +41,11 @@ namespace {
     constexpr auto kVanillaInventoryShiftedButtonCount = 3U;
     constexpr auto kVanillaInventoryPreservedButtonArtFirstIndex = 1U;
     constexpr auto kVanillaInventoryPreservedButtonArtCount = 3U;
+    constexpr auto kPendingRestampRingRows = 1U << 0;
+    constexpr auto kPendingRefreshButtonHints = 1U << 1;
 
     std::atomic<InventoryMenuFlavor> lastOpenedMenuFlavor {InventoryMenuFlavor::kUnknown};
+    std::atomic_uint32_t pendingInventoryUpdateRefresh {0};
 
     [[nodiscard]] RE::InventoryMenu* GetOpenInventoryMenu() {
         auto* ui = RE::UI::GetSingleton();
@@ -111,7 +113,7 @@ namespace {
         return result;
     }
 
-    [[nodiscard]] bool EnableVanillaExtendedInventoryData(RE::InventoryMenu& a_inventoryMenu) {
+    [[nodiscard]] bool TryEnableVanillaExtendedInventoryData(RE::InventoryMenu& a_inventoryMenu) {
         auto* movie = a_inventoryMenu.uiMovie.get();
         if (!movie
             || movie->IsAvailable(kSkyUIUpdateBottomBarPath)
@@ -124,12 +126,24 @@ namespace {
         return movie->Invoke(kSkseExtendDataPath, nullptr, args.data(), static_cast<std::uint32_t>(args.size()));
     }
 
-    void RebuildInventoryList(RE::InventoryMenu& a_inventoryMenu) {
+    void AddPendingInventoryUpdateRefresh(const std::uint32_t a_work) {
+        pendingInventoryUpdateRefresh.fetch_or(a_work);
+    }
+
+    [[nodiscard]] bool RequestInventoryListUpdate(
+        RE::InventoryMenu& a_inventoryMenu,
+        const std::uint32_t a_postUpdateWork
+    ) {
         auto* itemList = a_inventoryMenu.GetRuntimeData().itemList;
         auto* player = RE::PlayerCharacter::GetSingleton();
         if (itemList && player) {
+            AddPendingInventoryUpdateRefresh(a_postUpdateWork);
+            // ItemList::Update queues kInventoryUpdate on SE/AE/VR, so the rows are not ready here.
             itemList->Update(player);
+            return true;
         }
+
+        return false;
     }
 
     void SetSkyUIEquipControl(RE::GFxMovie& a_movie, RE::GFxValue& a_control, const char* a_name) {
@@ -412,7 +426,7 @@ namespace {
         return true;
     }
 
-    [[nodiscard]] bool InstallInventoryMenuButtonHints(RE::InventoryMenu& a_inventoryMenu) {
+    [[nodiscard]] bool InstallButtonHintFunctionPatches(RE::InventoryMenu& a_inventoryMenu) {
         auto* movie = a_inventoryMenu.uiMovie.get();
         if (!movie) {
             return false;
@@ -458,7 +472,7 @@ namespace {
         return installed;
     }
 
-    void RefreshInventoryMenuButtonHints(RE::InventoryMenu& a_inventoryMenu) {
+    void RefreshButtonHints(RE::InventoryMenu& a_inventoryMenu) {
         auto* movie = a_inventoryMenu.uiMovie.get();
         if (!movie) {
             return;
@@ -495,34 +509,10 @@ namespace {
         }
     }
 
-    void DeselectItem(RE::InventoryMenu& a_menu) {
-        auto* itemList = a_menu.GetRuntimeData().itemList;
-        if (!itemList) {
-            return;
-        }
-        if (!Scaleform::CanReadMembers(itemList->root)) {
-            return;
-        }
-
-        static_cast<void>(itemList->root.SetMember("selectedIndex", RE::GFxValue {-1.0}));
-    }
-
-    void RefreshOpenInventoryRingRows() {
-        auto* inventoryMenu = GetOpenInventoryMenu();
-        if (!inventoryMenu) {
-            return;
-        }
-
-        const auto vanillaExtendedDataPrepared = EnableVanillaExtendedInventoryData(*inventoryMenu);
-        if (vanillaExtendedDataPrepared) {
-            RebuildInventoryList(*inventoryMenu);
-        }
-
-        const auto buttonHintsInstalled = InstallInventoryMenuButtonHints(*inventoryMenu);
-
-        auto* itemList = inventoryMenu->GetRuntimeData().itemList;
+    [[nodiscard]] std::optional<bool> RestampInventoryRingRows(RE::InventoryMenu& a_inventoryMenu) {
+        auto* itemList = a_inventoryMenu.GetRuntimeData().itemList;
         if (!itemList || !itemList->entryList.IsArray()) {
-            return;
+            return std::nullopt;
         }
 
         std::uint32_t changedEntryRows = 0;
@@ -542,39 +532,50 @@ namespace {
             static_cast<void>(itemList->entryList.SetElement(index, entryObject));
         }
 
-        const auto rowsChanged = changedEntryRows > 0;
-        if (rowsChanged || vanillaExtendedDataPrepared) {
-            InvalidateInventoryListData(*inventoryMenu);
+        return changedEntryRows > 0;
+    }
+
+    void ApplyImmediateInventoryRowRefresh(
+        RE::InventoryMenu& a_inventoryMenu,
+        const bool a_buttonHintPatchesInstalled
+    ) {
+        const auto rowsChanged = RestampInventoryRingRows(a_inventoryMenu);
+        if (!rowsChanged) {
+            if (a_buttonHintPatchesInstalled) {
+                RefreshButtonHints(a_inventoryMenu);
+            }
+            return;
         }
 
-        if (buttonHintsInstalled || rowsChanged || vanillaExtendedDataPrepared) {
-            RefreshInventoryMenuButtonHints(*inventoryMenu);
+        if (*rowsChanged) {
+            InvalidateInventoryListData(a_inventoryMenu);
+        }
+
+        if (a_buttonHintPatchesInstalled || *rowsChanged) {
+            RefreshButtonHints(a_inventoryMenu);
         }
     }
 
-    void RefreshOpenInventoryRowsFromRuntime() {
+    void InitializeOpenInventoryMenu(RE::InventoryMenu& a_inventoryMenu) {
+        const auto buttonHintPatchesInstalled = InstallButtonHintFunctionPatches(a_inventoryMenu);
+        if (TryEnableVanillaExtendedInventoryData(a_inventoryMenu)
+            && RequestInventoryListUpdate(a_inventoryMenu, kPendingRestampRingRows | kPendingRefreshButtonHints)) {
+            return;
+        }
+
+        ApplyImmediateInventoryRowRefresh(a_inventoryMenu, buttonHintPatchesInstalled);
+    }
+
+    void RequestOpenInventoryListRefresh() {
         auto* inventoryMenu = GetOpenInventoryMenu();
         if (!inventoryMenu) {
             return;
         }
 
-        static_cast<void>(EnableVanillaExtendedInventoryData(*inventoryMenu));
-        RebuildInventoryList(*inventoryMenu);
-        RefreshInventoryMenuButtonHints(*inventoryMenu);
-    }
-
-    void RefreshAfterVanillaRingSlotMoveOnUIThread() {
-        auto* inventoryMenu = GetOpenInventoryMenu();
-        if (!inventoryMenu) {
-            return;
-        }
-
-        DeselectItem(*inventoryMenu);
-        static_cast<void>(EnableVanillaExtendedInventoryData(*inventoryMenu));
-        RebuildInventoryList(*inventoryMenu);
-        DeselectItem(*inventoryMenu);
-        InvalidateInventoryListData(*inventoryMenu);
-        FavoritesMenu::QueueRingRowRefresh();
+        static_cast<void>(TryEnableVanillaExtendedInventoryData(*inventoryMenu));
+        static_cast<void>(
+            RequestInventoryListUpdate(*inventoryMenu, kPendingRestampRingRows | kPendingRefreshButtonHints)
+        );
     }
 }
 
@@ -582,21 +583,46 @@ bool LastOpenedMenuUsesVanillaBottomBar() {
     return lastOpenedMenuFlavor.load() == InventoryMenuFlavor::kVanilla;
 }
 
-void QueueOpenMenuRingRowRefresh() {
-    stl::add_ui_task([] {
-        RefreshOpenInventoryRingRows();
-    });
+void OnClosed() {
+    pendingInventoryUpdateRefresh.store(0);
 }
 
-void QueueRingRowRefresh() {
-    stl::add_ui_task([] {
-        RefreshOpenInventoryRowsFromRuntime();
-    });
+void OnShown(RE::InventoryMenu& a_inventoryMenu) {
+    InitializeOpenInventoryMenu(a_inventoryMenu);
 }
 
-void QueueRefreshAfterVanillaRingSlotMove() {
+void OnInventoryUpdateProcessed(RE::InventoryMenu& a_inventoryMenu) {
+    const auto work = pendingInventoryUpdateRefresh.exchange(0);
+    if (work == 0) {
+        return;
+    }
+
+    bool rowsChanged = false;
+    if ((work & kPendingRestampRingRows) != 0) {
+        rowsChanged = RestampInventoryRingRows(a_inventoryMenu).value_or(false);
+    }
+
+    if (rowsChanged) {
+        InvalidateInventoryListData(a_inventoryMenu);
+    }
+
+    if (rowsChanged || (work & kPendingRefreshButtonHints) != 0) {
+        RefreshButtonHints(a_inventoryMenu);
+    }
+}
+
+void RefreshAfterNextInventoryUpdate() {
+    auto* ui = RE::UI::GetSingleton();
+    if (!ui || !ui->IsMenuOpen(RE::InventoryMenu::MENU_NAME)) {
+        return;
+    }
+
+    AddPendingInventoryUpdateRefresh(kPendingRestampRingRows | kPendingRefreshButtonHints);
+}
+
+void QueueInventoryListRefresh() {
     stl::add_ui_task([] {
-        RefreshAfterVanillaRingSlotMoveOnUIThread();
+        RequestOpenInventoryListRefresh();
     });
 }
 }

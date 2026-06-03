@@ -4,6 +4,7 @@
 
 - feat: support vanilla UI
 - feat: add MCM controls for choosing enabled virtual ring slots
+- fix: refresh inventory ring rows after vanilla slot swaps
 
 ## 0.3.5 - 2026-05-30
 
