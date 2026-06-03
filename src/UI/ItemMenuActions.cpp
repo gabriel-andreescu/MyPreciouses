@@ -574,10 +574,13 @@ namespace {
 
                 return a_labels.wontFitAction;
             }();
+            const auto equippedRingLabel = targetAvailability == TargetAvailability::kDisabled
+                                               ? a_labels.disabledAction
+                                               : GetEquippedRingLabel(a_source.itemActor, target);
             rows[index] = FingerSelectMenu::Row {
                 .target = target,
                 .fingerLabel = Localization::TranslateFingerLabel(finger),
-                .equippedRingLabel = GetEquippedRingLabel(a_source.itemActor, target),
+                .equippedRingLabel = equippedRingLabel,
                 .actionLabel = actionLabel,
                 .previewTargetBits = occupiedTargets.Bits(),
                 .enabled = selectableTarget.has_value(),

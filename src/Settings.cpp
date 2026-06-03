@@ -25,6 +25,30 @@ constexpr auto kFingerSelectKeyboardModifierSettingKey = "iFingerSelectModifierK
 constexpr auto kFingerSelectGamepadModifierSettingKey = "iFingerSelectModifierButton";
 constexpr auto kDebugLoggingSettingKey = "bEnableDebugLogging";
 
+void SetMcmHelperBoolValue(
+    CSimpleIniA& a_ini,
+    const char* a_section,
+    const char* a_key,
+    const bool a_value,
+    const char* a_comment = nullptr
+) {
+    a_ini.SetLongValue(a_section, a_key, a_value ? 1L : 0L, a_comment);
+}
+
+void ReadMcmHelperBoolValue(
+    CSimpleIniA& a_ini,
+    bool& a_value,
+    const char* a_section,
+    const char* a_key,
+    const char* a_comment
+) {
+    const auto* existing = a_ini.GetValue(a_section, a_key, nullptr);
+    a_value = a_ini.GetBoolValue(a_section, a_key, a_value);
+    if (!existing) {
+        SetMcmHelperBoolValue(a_ini, a_section, a_key, a_value, a_comment);
+    }
+}
+
 struct VirtualSlotSetting {
     Core::Target target;
     const char* key;
@@ -35,47 +59,47 @@ constexpr std::array kVirtualSlotSettings {
     VirtualSlotSetting {
         .target = Core::Target {.hand = Core::Hand::kLeft, .finger = Core::Finger::kThumb},
         .key = "bEnableLeftThumb",
-        .comment = "; Enable the left thumb virtual ring slot.\n; Default: true",
+        .comment = "; Enable the left thumb virtual ring slot.\n; Default: 1",
     },
     VirtualSlotSetting {
         .target = Core::Target {.hand = Core::Hand::kLeft, .finger = Core::Finger::kIndex},
         .key = "bEnableLeftIndex",
-        .comment = "; Enable the left index virtual ring slot.\n; Default: true",
+        .comment = "; Enable the left index virtual ring slot.\n; Default: 1",
     },
     VirtualSlotSetting {
         .target = Core::Target {.hand = Core::Hand::kLeft, .finger = Core::Finger::kMiddle},
         .key = "bEnableLeftMiddle",
-        .comment = "; Enable the left middle virtual ring slot.\n; Default: true",
+        .comment = "; Enable the left middle virtual ring slot.\n; Default: 1",
     },
     VirtualSlotSetting {
         .target = Core::Target {.hand = Core::Hand::kLeft, .finger = Core::Finger::kRing},
         .key = "bEnableLeftRing",
-        .comment = "; Enable the left ring virtual ring slot.\n; Default: true",
+        .comment = "; Enable the left ring virtual ring slot.\n; Default: 1",
     },
     VirtualSlotSetting {
         .target = Core::Target {.hand = Core::Hand::kLeft, .finger = Core::Finger::kPinky},
         .key = "bEnableLeftPinky",
-        .comment = "; Enable the left pinky virtual ring slot.\n; Default: true",
+        .comment = "; Enable the left pinky virtual ring slot.\n; Default: 1",
     },
     VirtualSlotSetting {
         .target = Core::Target {.hand = Core::Hand::kRight, .finger = Core::Finger::kThumb},
         .key = "bEnableRightThumb",
-        .comment = "; Enable the right thumb virtual ring slot.\n; Default: true",
+        .comment = "; Enable the right thumb virtual ring slot.\n; Default: 1",
     },
     VirtualSlotSetting {
         .target = Core::Target {.hand = Core::Hand::kRight, .finger = Core::Finger::kMiddle},
         .key = "bEnableRightMiddle",
-        .comment = "; Enable the right middle virtual ring slot.\n; Default: true",
+        .comment = "; Enable the right middle virtual ring slot.\n; Default: 1",
     },
     VirtualSlotSetting {
         .target = Core::Target {.hand = Core::Hand::kRight, .finger = Core::Finger::kRing},
         .key = "bEnableRightRing",
-        .comment = "; Enable the right ring virtual ring slot.\n; Default: true",
+        .comment = "; Enable the right ring virtual ring slot.\n; Default: 1",
     },
     VirtualSlotSetting {
         .target = Core::Target {.hand = Core::Hand::kRight, .finger = Core::Finger::kPinky},
         .key = "bEnableRightPinky",
-        .comment = "; Enable the right pinky virtual ring slot.\n; Default: true",
+        .comment = "; Enable the right pinky virtual ring slot.\n; Default: 1",
     },
 };
 
@@ -207,12 +231,12 @@ void ReadSettings(CSimpleIniA& a_ini, RawSettings& a_settings) {
         kFixedEnchantmentStrengthSettingKey,
         "; Fixed ring enchantment strength.\n; Used by Fixed strength mode. Only equipped rings with at least one non-zero-magnitude enchantment effect are counted, including the vanilla right-hand index finger.\n; Valid range: 5-100.\n; Default: 50"
     );
-    clib_util::ini::get_value(
+    ReadMcmHelperBoolValue(
         a_ini,
         a_settings.alwaysChooseFinger,
         kSettingsSection,
         kAlwaysChooseFingerSettingKey,
-        "; Always show the finger selection menu whenever you use Equip or Left Equip on a ring without pressing a modifier key.\n; Default: false"
+        "; Always show the finger selection menu whenever you use Equip or Left Equip on a ring without pressing a modifier key.\n; Default: 0"
     );
     clib_util::ini::get_value(
         a_ini,
@@ -229,7 +253,7 @@ void ReadSettings(CSimpleIniA& a_ini, RawSettings& a_settings) {
         "; Finger selection modifier for controller input.\n; Vanilla UI inventory hints only support RB. The finger selector still works, but the inventory hint will not be shown for other controller buttons.\n; Default: 275"
     );
     for (const auto& setting : kVirtualSlotSettings) {
-        clib_util::ini::get_value(
+        ReadMcmHelperBoolValue(
             a_ini,
             a_settings.virtualSlots[Core::ToIndex(setting.target)],
             kVirtualSlotsSection,
@@ -311,7 +335,7 @@ void RepairUserSettings(CSimpleIniA& a_user, const RawSettings& a_raw, const Loa
         const auto targetIndex = Core::ToIndex(setting.target);
         const auto loaded = ::IsTargetEnabled(a_loaded.enabledVirtualTargetBits, setting.target);
         if (a_raw.virtualSlots[targetIndex] != loaded) {
-            a_user.SetBoolValue(kVirtualSlotsSection, setting.key, loaded);
+            SetMcmHelperBoolValue(a_user, kVirtualSlotsSection, setting.key, loaded);
         }
     }
 }

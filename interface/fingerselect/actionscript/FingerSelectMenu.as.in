@@ -24,6 +24,8 @@ var SKYUI_KEY_E = 18;
 var SKYUI_KEY_TAB = 15;
 var SKYUI_KEY_A = 276;
 var SKYUI_KEY_B = 277;
+var ROW_TEXT_COLOR = 0xFFFFFF;
+var ROW_DISABLED_TEXT_COLOR = 0x606060;
 
 var fingerRows = [];
 var selectedRowIndex = 0;
@@ -129,6 +131,15 @@ writeText = function(field, value)
     }
 };
 
+setTextColor = function(field, color)
+{
+    if (field == undefined) {
+        return;
+    }
+
+    field.textColor = color;
+};
+
 makeEmptyRow = function()
 {
     return {
@@ -156,8 +167,12 @@ refreshRows = function()
     var ringFields = [Ring0Text, Ring1Text, Ring2Text, Ring3Text, Ring4Text];
 
     for (var i = 0; i < ROW_COUNT; i++) {
-        writeText(fingerFields[i], fingerRows[i].finger);
-        writeText(ringFields[i], fingerRows[i].equippedRing);
+        var row = fingerRows[i];
+        var rowTextColor = row != undefined && row.enabled == false ? ROW_DISABLED_TEXT_COLOR : ROW_TEXT_COLOR;
+        writeText(fingerFields[i], row == undefined ? "" : row.finger);
+        writeText(ringFields[i], row == undefined ? "" : row.equippedRing);
+        setTextColor(fingerFields[i], rowTextColor);
+        setTextColor(ringFields[i], rowTextColor);
     }
 };
 

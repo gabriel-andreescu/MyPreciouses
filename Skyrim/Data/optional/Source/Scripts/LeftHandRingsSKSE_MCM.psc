@@ -113,11 +113,11 @@ Bool Function ApplyVirtualSlotPreset(Int aiPreset)
 
     If aiPreset == 0
         SetVirtualSlots(True, True, True, True, True, True, True, True, True)
-        ForcePageReset()
+        RefreshMenu()
         Return True
     ElseIf aiPreset == 1
         SetVirtualSlots(False, True, False, False, False, False, False, False, False)
-        ForcePageReset()
+        RefreshMenu()
         Return True
     EndIf
 
@@ -137,7 +137,7 @@ Event OnConfigOpen()
 EndEvent
 
 Event OnSettingChange(String a_ID)
-    Bool pageNeedsReset = False
+    Bool menuNeedsRefresh = False
 
     If a_ID == "iFingerSelectModifierButton:General" && Game.UsingGamepad()
         Int button = GetModSettingInt("iFingerSelectModifierButton:General")
@@ -147,11 +147,13 @@ Event OnSettingChange(String a_ID)
     EndIf
 
     If IsVirtualSlotSetting(a_ID)
-        pageNeedsReset = SyncVirtualSlotPreset()
+        menuNeedsRefresh = SyncVirtualSlotPreset()
     EndIf
 
-    If SyncSettings() || pageNeedsReset
+    If SyncSettings()
         ForcePageReset()
+    ElseIf menuNeedsRefresh
+        RefreshMenu()
     EndIf
 EndEvent
 

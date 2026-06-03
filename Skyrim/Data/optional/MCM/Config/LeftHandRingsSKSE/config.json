@@ -150,7 +150,7 @@
         },
         {
           "position": 0,
-          "text": "Preset",
+          "text": "Virtual Rings Preset",
           "type": "enum",
           "help": "All enables every virtual slot. Left index only keeps one extra left-hand ring slot. Custom uses the individual slot toggles below.",
           "valueOptions": {
