@@ -15,8 +15,6 @@ project(
 
 set(OPTIONAL_ASSETS_VERSION 0.2.2)
 
-option(LHRS_ENABLE_PRECOMPILED_HEADERS "Enable CMake precompiled headers" ON)
-
 find_program(CLANG_TIDY_EXECUTABLE NAMES clang-tidy)
 find_program(RUN_CLANG_TIDY_EXECUTABLE NAMES run-clang-tidy run-clang-tidy.py)
 find_package(Python3 COMPONENTS Interpreter QUIET)
@@ -161,19 +159,11 @@ target_link_libraries(
         CLibUtil::CLibUtil
 )
 
-if (LHRS_ENABLE_PRECOMPILED_HEADERS)
-    target_precompile_headers(
-            ${PROJECT_NAME}
-            PRIVATE
-            "${CMAKE_CURRENT_SOURCE_DIR}/src/PCH.h"
-    )
-else ()
-    target_compile_options(
-            ${PROJECT_NAME}
-            PRIVATE
-            $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/FI${CMAKE_CURRENT_SOURCE_DIR}/src/PCH.h>
-    )
-endif ()
+target_precompile_headers(
+        ${PROJECT_NAME}
+        PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/PCH.h"
+)
 
 if (MSVC)
     target_compile_options(
@@ -181,7 +171,8 @@ if (MSVC)
             PRIVATE
             /EHsc
             /W4
-            /WX
+            $<$<CXX_COMPILER_ID:MSVC>:/WX>
+            $<$<COMPILE_LANG_AND_ID:CXX,Clang>:-Wno-unused-command-line-argument>
             /utf-8
             /permissive-
             $<$<CONFIG:RelWithDebInfo>:/Ox>
@@ -254,17 +245,12 @@ add_custom_target(
         VERBATIM
 )
 
-if (LHRS_ENABLE_PRECOMPILED_HEADERS)
-    add_custom_target(
-            ${PROJECT_NAME}_clang_tidy
-            COMMAND "${CMAKE_COMMAND}" -E echo "clang-tidy is disabled in this PCH-enabled build tree."
-            COMMAND "${CMAKE_COMMAND}" -E echo "Use: cmake --preset ninja-lint"
-            COMMAND "${CMAKE_COMMAND}" -E echo "Then: cmake --build --preset clang-tidy"
-            COMMAND "${CMAKE_COMMAND}" -E false
-            COMMENT "clang-tidy requires the ninja-lint preset"
-            VERBATIM
-    )
-elseif (CLANG_TIDY_EXECUTABLE)
+if (CLANG_TIDY_EXECUTABLE AND
+        CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND
+        CMAKE_GENERATOR STREQUAL "Ninja" AND
+        NOT CMAKE_CONFIGURATION_TYPES)
+    set(PROJECT_PCH_FILE "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${PROJECT_NAME}.dir/cmake_pch.cxx.pch")
+
     add_custom_target(
             ${PROJECT_NAME}_clang_tidy
             COMMAND "${CMAKE_COMMAND}"
@@ -276,7 +262,16 @@ elseif (CLANG_TIDY_EXECUTABLE)
             "-DBUILD_DIR=${CMAKE_BINARY_DIR}"
             "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}/src"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run_clang_tidy.cmake"
+            DEPENDS "${PROJECT_PCH_FILE}"
             COMMENT "Running clang-tidy on ${PROJECT_NAME} source files"
+            VERBATIM
+    )
+elseif (CLANG_TIDY_EXECUTABLE)
+    add_custom_target(
+            ${PROJECT_NAME}_clang_tidy
+            COMMAND "${CMAKE_COMMAND}" -E echo "clang-tidy requires the ninja-lint preset because it uses clang-cl-compatible precompiled headers."
+            COMMAND "${CMAKE_COMMAND}" -E false
+            COMMENT "clang-tidy requires the ninja-lint preset"
             VERBATIM
     )
 else ()
