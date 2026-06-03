@@ -76,67 +76,69 @@ namespace {
         return favoritesMenu.get();
     }
 
-    void RestampOpenFavoritesRows(const RowRefreshMode a_mode) {
-        auto* favoritesMenu = GetOpenFavoritesMenu();
-        if (!favoritesMenu) {
-            return;
-        }
-
-        RE::GFxValue itemList;
-        if (!GetFavoritesItemList(*favoritesMenu, itemList)) {
-            return;
-        }
-
-        RE::GFxValue entryList;
-        if (!itemList.GetMember("entryList", std::addressof(entryList)) || !entryList.IsArray()) {
-            return;
-        }
-
-        std::uint32_t ringRows = 0;
-        std::uint32_t changedEntryRows = 0;
-        std::uint32_t changedSelectedRows = 0;
-
-        for (std::uint32_t index = 0; index < entryList.GetArraySize(); ++index) {
-            RE::GFxValue entryObject;
-            if (!entryList.GetElement(index, std::addressof(entryObject)) || !Scaleform::CanReadMembers(entryObject)) {
-                continue;
-            }
-
-            const auto result = StampFavoriteRingEntry(*favoritesMenu, entryObject);
-            if (result == RingItemRows::RowStampResult::kIgnored) {
-                continue;
-            }
-
-            ++ringRows;
-            changedEntryRows += result == RingItemRows::RowStampResult::kChanged ? 1 : 0;
-            static_cast<void>(entryList.SetElement(index, entryObject));
-        }
-
-        RE::GFxValue selectedEntry;
-        if (itemList.GetMember("selectedEntry", std::addressof(selectedEntry))
-            && Scaleform::CanReadMembers(selectedEntry)) {
-            const auto result = StampFavoriteRingEntry(*favoritesMenu, selectedEntry);
-            if (result != RingItemRows::RowStampResult::kIgnored) {
-                changedSelectedRows += result == RingItemRows::RowStampResult::kChanged ? 1 : 0;
-                static_cast<void>(itemList.SetMember("selectedEntry", selectedEntry));
-            }
-        }
-
-        if (ringRows == 0) {
-            return;
-        }
-
-        if (a_mode != RowRefreshMode::kForceRedraw && changedEntryRows == 0 && changedSelectedRows == 0) {
-            return;
-        }
-
-        static_cast<void>(RedrawFavoritesRows(itemList));
-    }
 }
 
 void QueueRingRowRefresh(const RowRefreshMode a_mode) {
     stl::add_ui_task([a_mode] {
-        RestampOpenFavoritesRows(a_mode);
+        static_cast<void>(TryRefreshOpenMenuRows(a_mode));
     });
+}
+
+bool TryRefreshOpenMenuRows(const RowRefreshMode a_mode) {
+    auto* favoritesMenu = GetOpenFavoritesMenu();
+    if (!favoritesMenu) {
+        return false;
+    }
+
+    RE::GFxValue itemList;
+    if (!GetFavoritesItemList(*favoritesMenu, itemList)) {
+        return true;
+    }
+
+    RE::GFxValue entryList;
+    if (!itemList.GetMember("entryList", std::addressof(entryList)) || !entryList.IsArray()) {
+        return true;
+    }
+
+    std::uint32_t ringRows = 0;
+    std::uint32_t changedEntryRows = 0;
+    std::uint32_t changedSelectedRows = 0;
+
+    for (std::uint32_t index = 0; index < entryList.GetArraySize(); ++index) {
+        RE::GFxValue entryObject;
+        if (!entryList.GetElement(index, std::addressof(entryObject)) || !Scaleform::CanReadMembers(entryObject)) {
+            continue;
+        }
+
+        const auto result = StampFavoriteRingEntry(*favoritesMenu, entryObject);
+        if (result == RingItemRows::RowStampResult::kIgnored) {
+            continue;
+        }
+
+        ++ringRows;
+        changedEntryRows += result == RingItemRows::RowStampResult::kChanged ? 1 : 0;
+        static_cast<void>(entryList.SetElement(index, entryObject));
+    }
+
+    RE::GFxValue selectedEntry;
+    if (itemList.GetMember("selectedEntry", std::addressof(selectedEntry))
+        && Scaleform::CanReadMembers(selectedEntry)) {
+        const auto result = StampFavoriteRingEntry(*favoritesMenu, selectedEntry);
+        if (result != RingItemRows::RowStampResult::kIgnored) {
+            changedSelectedRows += result == RingItemRows::RowStampResult::kChanged ? 1 : 0;
+            static_cast<void>(itemList.SetMember("selectedEntry", selectedEntry));
+        }
+    }
+
+    if (ringRows == 0) {
+        return true;
+    }
+
+    if (a_mode != RowRefreshMode::kForceRedraw && changedEntryRows == 0 && changedSelectedRows == 0) {
+        return true;
+    }
+
+    static_cast<void>(RedrawFavoritesRows(itemList));
+    return true;
 }
 }

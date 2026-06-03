@@ -7,6 +7,7 @@
 #include "UI/VanillaItemMenuControls.h"
 
 #include <RE/G/GFxFunctionHandler.h>
+#include <RE/S/SendUIMessage.h>
 
 #include <array>
 #include <atomic>
@@ -566,17 +567,6 @@ namespace {
         ApplyImmediateInventoryRowRefresh(a_inventoryMenu, buttonHintPatchesInstalled);
     }
 
-    void RequestOpenInventoryListRefresh() {
-        auto* inventoryMenu = GetOpenInventoryMenu();
-        if (!inventoryMenu) {
-            return;
-        }
-
-        static_cast<void>(TryEnableVanillaExtendedInventoryData(*inventoryMenu));
-        static_cast<void>(
-            RequestInventoryListUpdate(*inventoryMenu, kPendingRestampRingRows | kPendingRefreshButtonHints)
-        );
-    }
 }
 
 bool LastOpenedMenuUsesVanillaBottomBar() {
@@ -611,18 +601,24 @@ void OnInventoryUpdateProcessed(RE::InventoryMenu& a_inventoryMenu) {
     }
 }
 
-void RefreshAfterNextInventoryUpdate() {
-    auto* ui = RE::UI::GetSingleton();
-    if (!ui || !ui->IsMenuOpen(RE::InventoryMenu::MENU_NAME)) {
-        return;
+bool TryRefreshOpenMenuRows() {
+    auto* inventoryMenu = GetOpenInventoryMenu();
+    if (!inventoryMenu) {
+        return false;
+    }
+
+    static_cast<void>(TryEnableVanillaExtendedInventoryData(*inventoryMenu));
+    static_cast<void>(RequestInventoryListUpdate(*inventoryMenu, kPendingRestampRingRows | kPendingRefreshButtonHints));
+    return true;
+}
+
+bool TryRefreshOpenMenuRowsForRing(RE::Actor& a_actor, const RE::TESObjectARMO& a_ring) {
+    if (!GetOpenInventoryMenu()) {
+        return false;
     }
 
     AddPendingInventoryUpdateRefresh(kPendingRestampRingRows | kPendingRefreshButtonHints);
-}
-
-void QueueInventoryListRefresh() {
-    stl::add_ui_task([] {
-        RequestOpenInventoryListRefresh();
-    });
+    RE::SendUIMessage::SendInventoryUpdateMessage(std::addressof(a_actor), std::addressof(a_ring));
+    return true;
 }
 }

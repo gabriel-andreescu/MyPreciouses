@@ -8,8 +8,6 @@
 #include "UI/RingItemRows.h"
 #include "UI/VanillaItemMenuControls.h"
 
-#include <RE/S/SendUIMessage.h>
-
 namespace UI {
 namespace {
     [[nodiscard]] bool IsOpenInventoryMenuMovie(const RE::GFxMovieView* a_view) {
@@ -39,10 +37,23 @@ namespace {
         ));
     }
 
-    void RefreshRingItemRowsForRing(RE::Actor& a_actor, const RE::TESObjectARMO* a_ring) {
-        InventoryMenu::RefreshAfterNextInventoryUpdate();
-        RE::SendUIMessage::SendInventoryUpdateMessage(std::addressof(a_actor), a_ring);
-        FavoritesMenu::QueueRingRowRefresh();
+    void RefreshCurrentItemMenuRows() {
+        if (InventoryMenu::TryRefreshOpenMenuRows()) {
+            return;
+        }
+
+        static_cast<void>(FavoritesMenu::TryRefreshOpenMenuRows());
+    }
+
+    void RefreshCurrentItemMenuRowsForRing(const Core::ActorKey a_actor, const RE::FormID a_sourceFormID) {
+        auto* actor = Core::ResolveActor(a_actor);
+        auto* ring = Inventory::AsRing(RE::TESForm::LookupByID<RE::TESObjectARMO>(a_sourceFormID));
+
+        if (actor && ring && InventoryMenu::TryRefreshOpenMenuRowsForRing(*actor, *ring)) {
+            return;
+        }
+
+        RefreshCurrentItemMenuRows();
     }
 }
 
@@ -72,8 +83,9 @@ void HandleMenuOpenCloseEvent(const RE::MenuOpenCloseEvent& a_event) {
 }
 
 void RefreshRingItemRows() {
-    InventoryMenu::QueueInventoryListRefresh();
-    FavoritesMenu::QueueRingRowRefresh();
+    stl::add_ui_task([] {
+        RefreshCurrentItemMenuRows();
+    });
 }
 
 bool ShouldWarnUnsupportedVanillaInventoryHint(const std::uint32_t a_controllerButton) {
@@ -87,29 +99,29 @@ void RefreshItemRowsAfterEquipmentAction(
     const RE::FormID a_sourceFormID,
     const Equipment::ActionResult a_result
 ) {
-    auto* actor = Core::ResolveActor(a_actor);
-    auto* ring = Inventory::AsRing(RE::TESForm::LookupByID<RE::TESObjectARMO>(a_sourceFormID));
-
-    if (a_result.inventoryChanged) {
-        if (a_hostMenu == ItemMenuHost::kInventory) {
-            InventoryMenu::QueueInventoryListRefresh();
-            FavoritesMenu::QueueRingRowRefresh();
-        } else if (actor && ring) {
-            RefreshRingItemRowsForRing(*actor, ring);
-        }
+    if (!a_result.inventoryChanged && !a_result.sourceUnavailable && !a_result.selectionChanged) {
         return;
     }
 
-    if (a_result.sourceUnavailable) {
-        if (actor && ring) {
-            RefreshRingItemRowsForRing(*actor, ring);
+    stl::add_ui_task([a_hostMenu, a_actor, a_sourceFormID, a_result] {
+        if (a_result.inventoryChanged) {
+            if (a_hostMenu == ItemMenuHost::kInventory) {
+                static_cast<void>(InventoryMenu::TryRefreshOpenMenuRows());
+            } else {
+                RefreshCurrentItemMenuRowsForRing(a_actor, a_sourceFormID);
+            }
+            return;
         }
-        return;
-    }
 
-    if (a_result.selectionChanged) {
-        RefreshRingItemRows();
-    }
+        if (a_result.sourceUnavailable) {
+            RefreshCurrentItemMenuRowsForRing(a_actor, a_sourceFormID);
+            return;
+        }
+
+        if (a_result.selectionChanged) {
+            RefreshCurrentItemMenuRows();
+        }
+    });
 }
 
 void QueueFavoritesRefreshAfterRingEquip() {

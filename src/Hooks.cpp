@@ -33,16 +33,6 @@ namespace {
         }
     }
 
-    void QueueInventoryRefreshAfterEquipmentAction(
-        const Core::ActorKey a_actor,
-        const RE::FormID a_sourceFormID,
-        const Equipment::ActionResult a_result
-    ) {
-        stl::add_ui_task([a_actor, a_sourceFormID, a_result] {
-            UI::RefreshItemRowsAfterEquipmentAction(UI::ItemMenuHost::kInventory, a_actor, a_sourceFormID, a_result);
-        });
-    }
-
     struct ActiveEffectSetEffectivenessHook {
         static void thunk(RE::ActiveEffect* a_effect, float a_power, bool a_onlyHostile) {
             func(a_effect, a_power, a_onlyHostile);
@@ -123,7 +113,12 @@ namespace {
                     *ring,
                     a_params,
                     [actorKey, sourceFormID = ring->GetFormID()](const auto result) {
-                        QueueInventoryRefreshAfterEquipmentAction(actorKey, sourceFormID, result);
+                        UI::RefreshItemRowsAfterEquipmentAction(
+                            UI::ItemMenuHost::kInventory,
+                            actorKey,
+                            sourceFormID,
+                            result
+                        );
                     }
                 )) {
                 return;

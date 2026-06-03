@@ -9,4 +9,5 @@ enum class RowRefreshMode : std::uint8_t {
 };
 
 void QueueRingRowRefresh(RowRefreshMode a_mode = RowRefreshMode::kChangedRowsOnly);
+[[nodiscard]] bool TryRefreshOpenMenuRows(RowRefreshMode a_mode = RowRefreshMode::kChangedRowsOnly);
 }

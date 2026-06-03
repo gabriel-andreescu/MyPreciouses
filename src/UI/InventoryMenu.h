@@ -1,7 +1,9 @@
 #pragma once
 
 namespace RE {
+class Actor;
 class InventoryMenu;
+class TESObjectARMO;
 }
 
 namespace UI::InventoryMenu {
@@ -9,6 +11,6 @@ namespace UI::InventoryMenu {
 void OnClosed();
 void OnShown(RE::InventoryMenu& a_inventoryMenu);
 void OnInventoryUpdateProcessed(RE::InventoryMenu& a_inventoryMenu);
-void RefreshAfterNextInventoryUpdate();
-void QueueInventoryListRefresh();
+[[nodiscard]] bool TryRefreshOpenMenuRows();
+[[nodiscard]] bool TryRefreshOpenMenuRowsForRing(RE::Actor& a_actor, const RE::TESObjectARMO& a_ring);
 }
