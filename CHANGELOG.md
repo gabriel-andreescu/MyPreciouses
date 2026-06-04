@@ -10,6 +10,7 @@
 - fix: refresh inventory ring rows after vanilla slot swaps
 - fix: account for both hands when placing, replacing, and rendering multi-finger rings
 - fix: keep existing ring labels visible in finger selector replacement previews and use negative coloring for occupied slots
+- fix: clear extra rings when UnequipAll runs on an actor, such as when transforming into werewolf or vampire lord form
 
 ## 0.3.6 - 2026-06-01
 

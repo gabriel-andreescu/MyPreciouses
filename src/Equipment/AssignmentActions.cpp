@@ -1033,6 +1033,14 @@ ActionResult ClearDisabledVirtualSlotAssignments(const RefreshMode a_refreshMode
     return result;
 }
 
+ActionResult ClearVirtualAssignments(RE::Actor& a_actor) {
+    ActionResult result;
+    for (const auto target : Core::kVirtualTargets) {
+        result.selectionChanged = ClearVirtualAssignment(a_actor, target) || result.selectionChanged;
+    }
+    return result;
+}
+
 bool InterceptRightEquip(
     RE::Actor& a_actor,
     const RE::TESObjectARMO& a_ring,

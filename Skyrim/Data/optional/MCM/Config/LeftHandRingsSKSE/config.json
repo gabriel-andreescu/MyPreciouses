@@ -85,6 +85,16 @@
             "step": 5,
             "formatString": "{0}%"
           }
+        },
+        {
+          "id": "bUnequipAllClearsExtraRings:General",
+          "text": "UnequipAll clears extra rings",
+          "type": "toggle",
+          "help": "Also remove extra rings when UnequipAll runs on an actor, such as when transforming into werewolf or vampire lord form.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
         }
       ]
     },

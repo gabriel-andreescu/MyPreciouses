@@ -21,10 +21,13 @@ constexpr auto kVirtualSlotsSection = "VirtualSlots";
 constexpr auto kExtraRingModeSettingKey = "iExtraRingMode";
 constexpr auto kEnchantmentStrengthModeSettingKey = "iEnchantmentStrengthMode";
 constexpr auto kFixedEnchantmentStrengthSettingKey = "iFixedEnchantmentStrengthPercent";
+constexpr auto kUnequipAllClearsExtraRingsSettingKey = "bUnequipAllClearsExtraRings";
 constexpr auto kAlwaysChooseFingerSettingKey = "bAlwaysChooseFinger";
 constexpr auto kFingerSelectKeyboardModifierSettingKey = "iFingerSelectModifierKey";
 constexpr auto kFingerSelectGamepadModifierSettingKey = "iFingerSelectModifierButton";
 constexpr auto kDebugLoggingSettingKey = "bEnableDebugLogging";
+constexpr auto kUnequipAllClearsExtraRingsSettingComment
+    = "; Also remove extra rings when UnequipAll runs on an actor, such as when transforming into werewolf or vampire lord form.\n; Default: 1";
 constexpr auto kAlwaysChooseFingerSettingComment
     = "; Always show the finger selection menu whenever you use Equip or Left Equip on a ring without pressing a modifier key.\n; Default: 0";
 constexpr auto kFingerSelectKeyboardModifierSettingComment
@@ -132,6 +135,7 @@ struct RawSettings {
     int extraRingMode {static_cast<int>(std::to_underlying(ExtraRingMode::kFunctional))};
     int enchantmentStrengthMode {static_cast<int>(std::to_underlying(EnchantmentStrengthMode::kFullStrength))};
     int fixedStrengthPercent {static_cast<int>(Settings::kDefaultFixedEnchantmentStrengthPercent)};
+    bool unequipAllClearsExtraRings {true};
     bool alwaysChooseFinger {false};
     int fingerSelectModifierKey {static_cast<int>(Settings::kDefaultFingerSelectModifierKey)};
     int fingerSelectModifierButton {static_cast<int>(Settings::kDefaultFingerSelectModifierButton)};
@@ -142,6 +146,7 @@ struct LoadedSettings {
     ExtraRingMode extraRingMode {ExtraRingMode::kFunctional};
     EnchantmentStrengthMode enchantmentStrengthMode {EnchantmentStrengthMode::kFullStrength};
     std::uint32_t fixedStrengthPercent {Settings::kDefaultFixedEnchantmentStrengthPercent};
+    bool unequipAllClearsExtraRings {true};
     bool alwaysChooseFinger {false};
     std::uint32_t fingerSelectModifierKey {Settings::kDefaultFingerSelectModifierKey};
     std::uint32_t fingerSelectModifierButton {Settings::kDefaultFingerSelectModifierButton};
@@ -267,6 +272,13 @@ void ReadSettings(CSimpleIniA& a_ini, RawSettings& a_settings) {
     );
     ReadMcmHelperBoolValue(
         a_ini,
+        a_settings.unequipAllClearsExtraRings,
+        kGeneralSection,
+        kUnequipAllClearsExtraRingsSettingKey,
+        kUnequipAllClearsExtraRingsSettingComment
+    );
+    ReadMcmHelperBoolValue(
+        a_ini,
         a_settings.alwaysChooseFinger,
         kFingerSelectorSection,
         kAlwaysChooseFingerSettingKey,
@@ -324,6 +336,7 @@ void ReadSettings(CSimpleIniA& a_ini, RawSettings& a_settings) {
         .extraRingMode = ClampExtraRingMode(a_raw.extraRingMode),
         .enchantmentStrengthMode = ClampStrengthMode(a_raw.enchantmentStrengthMode),
         .fixedStrengthPercent = ClampStrengthPercent(a_raw.fixedStrengthPercent),
+        .unequipAllClearsExtraRings = a_raw.unequipAllClearsExtraRings,
         .alwaysChooseFinger = a_raw.alwaysChooseFinger,
         .fingerSelectModifierKey = ClampFingerSelectModifierKey(a_raw.fingerSelectModifierKey),
         .fingerSelectModifierButton = ClampFingerSelectModifierButton(a_raw.fingerSelectModifierButton),
@@ -384,6 +397,7 @@ void Settings::Load() {
     alwaysChooseFinger_.store(false);
     fingerSelectModifierKey_.store(kDefaultFingerSelectModifierKey);
     fingerSelectModifierButton_.store(kDefaultFingerSelectModifierButton);
+    unequipAllClearsExtraRings_.store(true);
     enabledVirtualTargetBits_.store(kDefaultEnabledVirtualTargetBits);
 
     (void)Reload();
@@ -424,17 +438,19 @@ Settings::ReloadResult Settings::Reload() {
                                     != loaded.fingerSelectModifierKey;
     const auto modifierButtonChanged = fingerSelectModifierButton_.exchange(loaded.fingerSelectModifierButton)
                                        != loaded.fingerSelectModifierButton;
+    (void)unequipAllClearsExtraRings_.exchange(loaded.unequipAllClearsExtraRings);
     const auto virtualSlotsChanged = enabledVirtualTargetBits_.exchange(loaded.enabledVirtualTargetBits)
                                      != loaded.enabledVirtualTargetBits;
 
     (void)user.SaveFile(userPath.string().c_str());
 
     logger::info(
-        "Settings: loaded | path={} | extraRingMode={} | enchantmentStrengthMode={} | fixedStrength={} | alwaysChooseFinger={} | fingerSelectModifierKey={} | fingerSelectModifierButton={} | enabledVirtualTargets={:04X}",
+        "Settings: loaded | path={} | extraRingMode={} | enchantmentStrengthMode={} | fixedStrength={} | unequipAllClearsExtraRings={} | alwaysChooseFinger={} | fingerSelectModifierKey={} | fingerSelectModifierButton={} | enabledVirtualTargets={:04X}",
         userPath.string(),
         std::to_underlying(loaded.extraRingMode),
         std::to_underlying(loaded.enchantmentStrengthMode),
         loaded.fixedStrengthPercent,
+        loaded.unequipAllClearsExtraRings,
         loaded.alwaysChooseFinger,
         loaded.fingerSelectModifierKey,
         loaded.fingerSelectModifierButton,
@@ -463,6 +479,10 @@ std::uint32_t Settings::GetFingerSelectModifierKey() const {
 
 std::uint32_t Settings::GetFingerSelectModifierButton() const {
     return fingerSelectModifierButton_.load();
+}
+
+bool Settings::ShouldUnequipAllClearExtraRings() const {
+    return unequipAllClearsExtraRings_.load();
 }
 
 bool Settings::IsTargetEnabled(const Core::Target a_target) const {

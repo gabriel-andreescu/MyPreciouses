@@ -56,6 +56,7 @@ public:
     [[nodiscard]] bool AlwaysChooseFinger() const;
     [[nodiscard]] std::uint32_t GetFingerSelectModifierKey() const;
     [[nodiscard]] std::uint32_t GetFingerSelectModifierButton() const;
+    [[nodiscard]] bool ShouldUnequipAllClearExtraRings() const;
     [[nodiscard]] bool IsTargetEnabled(Core::Target a_target) const;
     [[nodiscard]] bool AreTargetsEnabled(const Core::TargetMask& a_targets) const;
     [[nodiscard]] std::optional<Core::Target> GetDefaultLeftTarget() const;
@@ -67,5 +68,6 @@ private:
     std::atomic_bool alwaysChooseFinger_ {false};
     std::atomic<std::uint32_t> fingerSelectModifierKey_ {kDefaultFingerSelectModifierKey};
     std::atomic<std::uint32_t> fingerSelectModifierButton_ {kDefaultFingerSelectModifierButton};
+    std::atomic_bool unequipAllClearsExtraRings_ {true};
     std::atomic<std::uint16_t> enabledVirtualTargetBits_ {kDefaultEnabledVirtualTargetBits};
 };
