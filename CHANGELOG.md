@@ -2,6 +2,7 @@
 
 ## 0.4.0 - Unreleased
 
+- feat: improve MCM organization and preserve existing settings during updates
 - feat: support vanilla UI
 - feat: add MCM controls for choosing enabled virtual ring slots
 - fix: ignore non-ring ClothingRing items that have no wearable ring model

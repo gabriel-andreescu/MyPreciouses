@@ -139,8 +139,8 @@ EndEvent
 Event OnSettingChange(String a_ID)
     Bool menuNeedsRefresh = False
 
-    If a_ID == "iFingerSelectModifierButton:General" && Game.UsingGamepad()
-        Int button = GetModSettingInt("iFingerSelectModifierButton:General")
+    If a_ID == "iFingerSelectModifierButton:FingerSelector" && Game.UsingGamepad()
+        Int button = GetModSettingInt("iFingerSelectModifierButton:FingerSelector")
         If ShouldShowVanillaControllerHintWarning(button)
             ShowMessage("Vanilla UI inventory hints only support RB. The finger selector still works, but the inventory hint will not be shown for this button.")
         EndIf

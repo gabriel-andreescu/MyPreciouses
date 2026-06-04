@@ -31,15 +31,6 @@
           }
         },
         {
-          "type": "hiddenToggle",
-          "text": "Controller input selected",
-          "groupControl": 3,
-          "valueOptions": {
-            "sourceType": "PropertyValueBool",
-            "propertyName": "bControllerInputSelected"
-          }
-        },
-        {
           "id": "iExtraRingMode:General",
           "text": "Extra ring mode",
           "type": "enum",
@@ -94,9 +85,23 @@
             "step": 5,
             "formatString": "{0}%"
           }
+        }
+      ]
+    },
+    {
+      "pageDisplayName": "Finger Selector",
+      "content": [
+        {
+          "type": "hiddenToggle",
+          "text": "Controller input selected",
+          "groupControl": 3,
+          "valueOptions": {
+            "sourceType": "PropertyValueBool",
+            "propertyName": "bControllerInputSelected"
+          }
         },
         {
-          "id": "bAlwaysChooseFinger:General",
+          "id": "bAlwaysChooseFinger:FingerSelector",
           "text": "Always choose finger",
           "type": "toggle",
           "help": "Always show the finger selection menu whenever you use Equip or Left Equip on a ring without pressing a modifier key.",
@@ -106,7 +111,7 @@
           }
         },
         {
-          "id": "iFingerSelectModifierKey:General",
+          "id": "iFingerSelectModifierKey:FingerSelector",
           "text": "Finger select modifier",
           "type": "keymap",
           "ignoreConflicts": true,
@@ -121,7 +126,7 @@
           }
         },
         {
-          "id": "iFingerSelectModifierButton:General",
+          "id": "iFingerSelectModifierButton:FingerSelector",
           "text": "Finger select modifier",
           "type": "keymap",
           "ignoreConflicts": true,

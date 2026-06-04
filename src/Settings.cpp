@@ -15,7 +15,8 @@ namespace {
 constexpr auto kModName = "LeftHandRingsSKSE"sv;
 constexpr auto kConfigRoot = "Data/MCM/Config"sv;
 constexpr auto kSettingsRoot = "Data/MCM/Settings"sv;
-constexpr auto kSettingsSection = "General";
+constexpr auto kGeneralSection = "General";
+constexpr auto kFingerSelectorSection = "FingerSelector";
 constexpr auto kVirtualSlotsSection = "VirtualSlots";
 constexpr auto kExtraRingModeSettingKey = "iExtraRingMode";
 constexpr auto kEnchantmentStrengthModeSettingKey = "iEnchantmentStrengthMode";
@@ -24,6 +25,12 @@ constexpr auto kAlwaysChooseFingerSettingKey = "bAlwaysChooseFinger";
 constexpr auto kFingerSelectKeyboardModifierSettingKey = "iFingerSelectModifierKey";
 constexpr auto kFingerSelectGamepadModifierSettingKey = "iFingerSelectModifierButton";
 constexpr auto kDebugLoggingSettingKey = "bEnableDebugLogging";
+constexpr auto kAlwaysChooseFingerSettingComment
+    = "; Always show the finger selection menu whenever you use Equip or Left Equip on a ring without pressing a modifier key.\n; Default: 0";
+constexpr auto kFingerSelectKeyboardModifierSettingComment
+    = "; Finger selection modifier for keyboard and mouse input.\n; Default: 42";
+constexpr auto kFingerSelectGamepadModifierSettingComment
+    = "; Finger selection modifier for controller input.\n; Vanilla UI inventory hints only support RB. The finger selector still works, but the inventory hint will not be shown for other controller buttons.\n; Default: 275";
 
 void SetMcmHelperBoolValue(
     CSimpleIniA& a_ini,
@@ -209,48 +216,75 @@ struct LoadedSettings {
     return (a_enabledVirtualTargetBits & static_cast<std::uint16_t>(1u << Core::ToIndex(a_target))) != 0;
 }
 
+void MigrateLegacyFingerSelectorSetting(CSimpleIniA& a_ini, const char* a_key, const char* a_comment) {
+    const auto* legacyValue = a_ini.GetValue(kGeneralSection, a_key, nullptr);
+    if (!legacyValue) {
+        return;
+    }
+
+    if (!a_ini.KeyExists(kFingerSelectorSection, a_key)) {
+        a_ini.SetValue(kFingerSelectorSection, a_key, legacyValue, a_comment);
+    }
+
+    (void)a_ini.Delete(kGeneralSection, a_key, false);
+}
+
+void MigrateLegacyFingerSelectorSettings(CSimpleIniA& a_ini) {
+    MigrateLegacyFingerSelectorSetting(a_ini, kAlwaysChooseFingerSettingKey, kAlwaysChooseFingerSettingComment);
+    MigrateLegacyFingerSelectorSetting(
+        a_ini,
+        kFingerSelectKeyboardModifierSettingKey,
+        kFingerSelectKeyboardModifierSettingComment
+    );
+    MigrateLegacyFingerSelectorSetting(
+        a_ini,
+        kFingerSelectGamepadModifierSettingKey,
+        kFingerSelectGamepadModifierSettingComment
+    );
+}
+
 void ReadSettings(CSimpleIniA& a_ini, RawSettings& a_settings) {
     clib_util::ini::get_value(
         a_ini,
         a_settings.extraRingMode,
-        kSettingsSection,
+        kGeneralSection,
         kExtraRingModeSettingKey,
         "; Extra ring mode.\n; Functional applies normal ring enchantments and scripts. Cosmetic only shows the ring model.\n; Applies only to extra rings. The vanilla right-hand index finger ring is unaffected.\n; 0 = Functional, 1 = Cosmetic.\n; Default: 0"
     );
     clib_util::ini::get_value(
         a_ini,
         a_settings.enchantmentStrengthMode,
-        kSettingsSection,
+        kGeneralSection,
         kEnchantmentStrengthModeSettingKey,
         "; Ring enchantment strength mode.\n; Full keeps normal strength. Fixed uses the chosen strength. Split divides 100% evenly between counted rings.\n; Only equipped rings with at least one non-zero-magnitude enchantment effect are counted, including the vanilla right-hand index finger.\n; 0 = Full strength, 1 = Fixed strength, 2 = Split strength.\n; Default: 0"
     );
     clib_util::ini::get_value(
         a_ini,
         a_settings.fixedStrengthPercent,
-        kSettingsSection,
+        kGeneralSection,
         kFixedEnchantmentStrengthSettingKey,
         "; Fixed ring enchantment strength.\n; Used by Fixed strength mode. Only equipped rings with at least one non-zero-magnitude enchantment effect are counted, including the vanilla right-hand index finger.\n; Valid range: 5-100.\n; Default: 50"
     );
     ReadMcmHelperBoolValue(
         a_ini,
         a_settings.alwaysChooseFinger,
-        kSettingsSection,
+        kFingerSelectorSection,
         kAlwaysChooseFingerSettingKey,
-        "; Always show the finger selection menu whenever you use Equip or Left Equip on a ring without pressing a modifier key.\n; Default: 0"
+        kAlwaysChooseFingerSettingComment
     );
     clib_util::ini::get_value(
         a_ini,
         a_settings.fingerSelectModifierKey,
-        kSettingsSection,
+        kFingerSelectorSection,
         kFingerSelectKeyboardModifierSettingKey,
-        "; Finger selection modifier for keyboard and mouse input.\n; Default: 42"
+        kFingerSelectKeyboardModifierSettingComment
     );
     clib_util::ini::get_value(
         a_ini,
         a_settings.fingerSelectModifierButton,
-        kSettingsSection,
+        kFingerSelectorSection,
         kFingerSelectGamepadModifierSettingKey,
-        "; Finger selection modifier for controller input.\n; Vanilla UI inventory hints only support RB. The finger selector still works, but the inventory hint will not be shown for other controller buttons.\n; Default: 275"
+        kFingerSelectGamepadModifierSettingComment
     );
     for (const auto& setting : kVirtualSlotSettings) {
         ReadMcmHelperBoolValue(
@@ -271,6 +305,7 @@ void ReadSettings(CSimpleIniA& a_ini, RawSettings& a_settings) {
         CSimpleIniA defaults;
         defaults.SetUnicode();
         (void)defaults.LoadFile(defaultPath.string().c_str());
+        MigrateLegacyFingerSelectorSettings(defaults);
         ReadSettings(defaults, settings);
     }
 
@@ -278,6 +313,7 @@ void ReadSettings(CSimpleIniA& a_ini, RawSettings& a_settings) {
 
     a_user.SetUnicode();
     (void)a_user.LoadFile(a_userPath.string().c_str());
+    MigrateLegacyFingerSelectorSettings(a_user);
     ReadSettings(a_user, settings);
 
     return settings;
@@ -298,35 +334,35 @@ void ReadSettings(CSimpleIniA& a_ini, RawSettings& a_settings) {
 void RepairUserSettings(CSimpleIniA& a_user, const RawSettings& a_raw, const LoadedSettings& a_loaded) {
     if (std::cmp_not_equal(a_raw.extraRingMode, std::to_underlying(a_loaded.extraRingMode))) {
         a_user.SetLongValue(
-            kSettingsSection,
+            kGeneralSection,
             kExtraRingModeSettingKey,
             static_cast<long>(std::to_underlying(a_loaded.extraRingMode))
         );
     }
     if (std::cmp_not_equal(a_raw.enchantmentStrengthMode, std::to_underlying(a_loaded.enchantmentStrengthMode))) {
         a_user.SetLongValue(
-            kSettingsSection,
+            kGeneralSection,
             kEnchantmentStrengthModeSettingKey,
             static_cast<long>(std::to_underlying(a_loaded.enchantmentStrengthMode))
         );
     }
     if (std::cmp_not_equal(a_raw.fixedStrengthPercent, a_loaded.fixedStrengthPercent)) {
         a_user.SetLongValue(
-            kSettingsSection,
+            kGeneralSection,
             kFixedEnchantmentStrengthSettingKey,
             static_cast<long>(a_loaded.fixedStrengthPercent)
         );
     }
     if (std::cmp_not_equal(a_raw.fingerSelectModifierKey, a_loaded.fingerSelectModifierKey)) {
         a_user.SetLongValue(
-            kSettingsSection,
+            kFingerSelectorSection,
             kFingerSelectKeyboardModifierSettingKey,
             static_cast<long>(a_loaded.fingerSelectModifierKey)
         );
     }
     if (std::cmp_not_equal(a_raw.fingerSelectModifierButton, a_loaded.fingerSelectModifierButton)) {
         a_user.SetLongValue(
-            kSettingsSection,
+            kFingerSelectorSection,
             kFingerSelectGamepadModifierSettingKey,
             static_cast<long>(a_loaded.fingerSelectModifierButton)
         );
@@ -363,7 +399,7 @@ bool Settings::ReadDebugLoggingEnabled() {
         CSimpleIniA ini;
         ini.SetUnicode();
         if (ini.LoadFile(path.string().c_str()) >= 0) {
-            enabled = ini.GetBoolValue(kSettingsSection, kDebugLoggingSettingKey, enabled);
+            enabled = ini.GetBoolValue(kGeneralSection, kDebugLoggingSettingKey, enabled);
         }
     }
 
