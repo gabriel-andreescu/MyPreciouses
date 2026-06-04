@@ -7,6 +7,7 @@
 - fix: ignore non-ring ClothingRing items that have no wearable ring model
 - fix: clear custom inventory ring controls from non-ring rows
 - fix: refresh inventory ring rows after vanilla slot swaps
+- fix: account for both hands when placing, replacing, and rendering multi-finger rings
 
 ## 0.3.6 - 2026-06-01
 

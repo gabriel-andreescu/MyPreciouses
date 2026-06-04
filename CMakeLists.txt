@@ -73,7 +73,8 @@ set(SOURCES
         src/Compatibility/Vanilla.h
         src/Core/ActorKey.h
         src/Core/Assignment.h
-        src/Core/FingerMask.h
+        src/Core/TargetMask.h
+        src/Core/TargetProjection.h
         src/Core/ItemSource.h
         src/Core/Target.h
         src/Equipment/AssignmentStore.cpp

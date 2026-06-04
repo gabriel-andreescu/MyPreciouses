@@ -137,20 +137,18 @@ namespace {
         return a_targets.size() > 1 || HasNonIndexTarget(a_targets);
     }
 
-    [[nodiscard]] bool IsSelectableTarget(const Core::FingerMask& a_sourceFingerMask, const Core::Target a_target) {
-        const auto projectedTargets = SourceModelFootprints::GetProjectedTargets(a_sourceFingerMask, a_target);
+    [[nodiscard]] bool IsSelectableTarget(const Core::TargetMask& a_sourceTargets, const Core::Target a_target) {
+        const auto projectedTargets = SourceModelFootprints::GetProjectedTargets(a_sourceTargets, a_target);
         return !projectedTargets.Empty() && Settings::GetSingleton()->AreTargetsEnabled(projectedTargets);
     }
 
     [[nodiscard]] bool HasMultipleSelectableTargetsOnHand(
-        const Core::FingerMask& a_sourceFingerMask,
+        const Core::TargetMask& a_sourceTargets,
         const Core::Hand a_hand
     ) {
         auto count = std::uint32_t {0};
         for (const auto finger : Core::kFingers) {
-            if (IsSelectableTarget(a_sourceFingerMask, Core::Target {.hand = a_hand, .finger = finger})
-                && ++count
-                > 1) {
+            if (IsSelectableTarget(a_sourceTargets, Core::Target {.hand = a_hand, .finger = finger}) && ++count > 1) {
                 return true;
             }
         }
@@ -591,9 +589,8 @@ bool CanShowFingerSelectHint(const RE::GFxValue& a_entryObject) {
         return false;
     }
 
-    const auto sourceFingerMask = SourceModelFootprints::GetSourceFingerMask(*ring);
-    return !sourceFingerMask.IsMultiFinger()
-           && (HasMultipleSelectableTargetsOnHand(sourceFingerMask, Core::Hand::kLeft)
-               || HasMultipleSelectableTargetsOnHand(sourceFingerMask, Core::Hand::kRight));
+    const auto sourceTargets = SourceModelFootprints::GetSourceTargets(*ring);
+    return HasMultipleSelectableTargetsOnHand(sourceTargets, Core::Hand::kLeft)
+           || HasMultipleSelectableTargetsOnHand(sourceTargets, Core::Hand::kRight);
 }
 }

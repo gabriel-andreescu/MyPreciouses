@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Core/FingerMask.h"
+#include "Core/TargetMask.h"
 
 #include <REX/REX/Singleton.h>
 

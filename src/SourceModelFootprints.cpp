@@ -1,5 +1,6 @@
 #include "SourceModelFootprints.h"
 
+#include "Core/TargetProjection.h"
 #include "ModelPaths.h"
 
 #include <RE/N/NiSkinData.h>
@@ -22,6 +23,8 @@ namespace {
     constexpr auto kRightFingerNodePrefix = "NPC R Finger"sv;
     constexpr auto kLeftFingerCodePrefix = " [LF"sv;
     constexpr auto kRightFingerCodePrefix = " [RF"sv;
+    constexpr auto kLeftHandNode = "NPC L Hand [LHnd]"sv;
+    constexpr auto kRightHandNode = "NPC R Hand [RHnd]"sv;
     constexpr auto kNodeCodeSuffix = "]"sv;
     constexpr auto kRingBodyPart = std::uint16_t {36};
     constexpr auto kMinimumSkinWeight = 0.000001F;
@@ -33,8 +36,8 @@ namespace {
         kRingPartitions,
     };
 
-    constexpr auto kNonFingerWeightBucket = Core::kFingers.size();
-    constexpr auto kWeightBucketCount = Core::kFingers.size() + 1;
+    constexpr auto kNonTargetWeightBucket = Core::kAllTargets.size();
+    constexpr auto kWeightBucketCount = Core::kAllTargets.size() + 1;
 
     struct FingerBone {
         Core::Hand hand {Core::Hand::kRight};
@@ -51,14 +54,14 @@ namespace {
     };
 
     struct SkinInfluenceScan {
-        Core::FingerMask fingerMask;
+        Core::TargetMask sourceTargets;
         bool hasWeightedInfluence {false};
         bool hasMeaningfulFingerInfluence {false};
         bool hasMeaningfulNonFingerInfluence {false};
     };
 
     struct SourceModelFootprint {
-        Core::FingerMask fingerMask;
+        Core::TargetMask sourceTargets;
         bool hasRingEvidence {false};
     };
 
@@ -171,14 +174,34 @@ namespace {
         return std::format("NPC {} Finger{}{} [{}F{}{}]", side, family, segment, side, family, segment);
     }
 
+    [[nodiscard]] constexpr Core::Target ToTarget(const FingerBone& a_bone) {
+        return Core::Target {.hand = a_bone.hand, .finger = a_bone.finger};
+    }
+
+    [[nodiscard]] std::optional<Core::Hand> ParseHandNodeName(const std::string_view a_name) {
+        if (a_name == kLeftHandNode) {
+            return Core::Hand::kLeft;
+        }
+
+        if (a_name == kRightHandNode) {
+            return Core::Hand::kRight;
+        }
+
+        return std::nullopt;
+    }
+
+    [[nodiscard]] std::string MakeHandNodeName(const Core::Hand a_hand) {
+        return a_hand == Core::Hand::kLeft ? std::string {kLeftHandNode} : std::string {kRightHandNode};
+    }
+
     [[nodiscard]] std::size_t WeightBucketForBoneName(const char* a_boneName) {
         if (a_boneName && a_boneName[0] != '\0') {
             if (const auto parsedBone = ParseFingerBoneName(a_boneName)) {
-                return std::to_underlying(parsedBone->finger);
+                return Core::ToIndex(ToTarget(*parsedBone));
             }
         }
 
-        return kNonFingerWeightBucket;
+        return kNonTargetWeightBucket;
     }
 
     [[nodiscard]] std::uint32_t GetSkinBoneCount(const RE::NiSkinInstance& a_skin) {
@@ -283,7 +306,7 @@ namespace {
         }
     }
 
-    void CollectFingerMaskFromBoneNames(const RE::NiSkinInstance& a_skin, Core::FingerMask& a_fingerMask) {
+    void CollectSourceTargetsFromBoneNames(const RE::NiSkinInstance& a_skin, Core::TargetMask& a_sourceTargets) {
         const auto boneCount = GetSkinBoneCount(a_skin);
         for (std::uint32_t index = 0; index < boneCount; ++index) {
             const auto* boneName = GetSkinBoneName(a_skin, index);
@@ -292,7 +315,7 @@ namespace {
             }
 
             if (const auto parsedBone = ParseFingerBoneName(boneName)) {
-                a_fingerMask.Add(parsedBone->finger);
+                a_sourceTargets.Add(ToTarget(*parsedBone));
             }
         }
     }
@@ -316,12 +339,14 @@ namespace {
                 continue;
             }
 
-            if (bucket == kNonFingerWeightBucket) {
+            if (bucket == kNonTargetWeightBucket) {
                 a_result.hasMeaningfulNonFingerInfluence = true;
                 continue;
             }
 
-            a_result.fingerMask.Add(static_cast<Core::Finger>(bucket));
+            if (const auto target = Core::FromIndex(static_cast<std::uint32_t>(bucket))) {
+                a_result.sourceTargets.Add(*target);
+            }
             a_result.hasMeaningfulFingerInfluence = true;
         }
     }
@@ -357,16 +382,16 @@ namespace {
         return result;
     }
 
-    void CollectFingerMaskFromSkin(const RE::NiSkinInstance& a_skin, Core::FingerMask& a_fingerMask) {
+    void CollectSourceTargetsFromSkin(const RE::NiSkinInstance& a_skin, Core::TargetMask& a_sourceTargets) {
         const auto scan = ScanSkinInfluences(a_skin);
         if (!scan.hasWeightedInfluence) {
-            CollectFingerMaskFromBoneNames(a_skin, a_fingerMask);
+            CollectSourceTargetsFromBoneNames(a_skin, a_sourceTargets);
             return;
         }
 
-        for (const auto finger : Core::kFingers) {
-            if (scan.fingerMask.Occupies(finger)) {
-                a_fingerMask.Add(finger);
+        for (const auto target : Core::kAllTargets) {
+            if (scan.sourceTargets.Contains(target)) {
+                a_sourceTargets.Add(target);
             }
         }
     }
@@ -406,7 +431,10 @@ namespace {
         return sawFingerBone;
     }
 
-    [[nodiscard]] DismemberModelScan ScanDismemberPartitions(RE::NiAVObject& a_root, Core::FingerMask* a_fingerMask) {
+    [[nodiscard]] DismemberModelScan ScanDismemberPartitions(
+        RE::NiAVObject& a_root,
+        Core::TargetMask* a_sourceTargets
+    ) {
         auto sawDismemberPartitions = false;
         auto foundRingPartitions = false;
 
@@ -430,8 +458,8 @@ namespace {
             sawDismemberPartitions = true;
             if (HasRingPartition(*dismemberSkin) || HasOnlyMeaningfulFingerWeights(*skin)) {
                 foundRingPartitions = true;
-                if (a_fingerMask) {
-                    CollectFingerMaskFromSkin(*skin, *a_fingerMask);
+                if (a_sourceTargets) {
+                    CollectSourceTargetsFromSkin(*skin, *a_sourceTargets);
                 }
             }
 
@@ -446,12 +474,12 @@ namespace {
                                       : DismemberModelScan::kNoDismemberPartitions;
     }
 
-    void CollectFingerMaskFromNodeNames(RE::NiAVObject& a_root, Core::FingerMask& a_fingerMask) {
+    void CollectSourceTargetsFromNodeNames(RE::NiAVObject& a_root, Core::TargetMask& a_sourceTargets) {
         RE::BSVisit::TraverseScenegraphObjects(std::addressof(a_root), [&](RE::NiAVObject* a_object) {
             const auto* nodeName = a_object ? a_object->name.c_str() : nullptr;
             if (nodeName && nodeName[0] != '\0') {
                 if (const auto parsedBone = ParseFingerBoneName(nodeName)) {
-                    a_fingerMask.Add(parsedBone->finger);
+                    a_sourceTargets.Add(ToTarget(*parsedBone));
                 }
             }
 
@@ -459,7 +487,7 @@ namespace {
         });
     }
 
-    void CollectFingerMaskFromAllSkins(RE::NiAVObject& a_root, Core::FingerMask& a_fingerMask) {
+    void CollectSourceTargetsFromAllSkins(RE::NiAVObject& a_root, Core::TargetMask& a_sourceTargets) {
         RE::BSVisit::TraverseScenegraphGeometries(std::addressof(a_root), [&](RE::BSGeometry* a_geometry) {
             if (!a_geometry) {
                 return RE::BSVisit::BSVisitControl::kContinue;
@@ -467,32 +495,32 @@ namespace {
 
             auto& geometryData = a_geometry->GetGeometryRuntimeData();
             if (auto* skin = geometryData.skinInstance.get()) {
-                CollectFingerMaskFromSkin(*skin, a_fingerMask);
+                CollectSourceTargetsFromSkin(*skin, a_sourceTargets);
             }
 
             return RE::BSVisit::BSVisitControl::kContinue;
         });
     }
 
-    void MergeFingerMask(Core::FingerMask& a_target, const Core::FingerMask& a_source) {
-        for (const auto finger : Core::kFingers) {
-            if (a_source.Occupies(finger)) {
-                a_target.Add(finger);
+    void MergeSourceTargets(Core::TargetMask& a_target, const Core::TargetMask a_source) {
+        for (const auto sourceTarget : Core::kAllTargets) {
+            if (a_source.Contains(sourceTarget)) {
+                a_target.Add(sourceTarget);
             }
         }
     }
 
     [[nodiscard]] SourceModelFootprint ScanModelFootprint(RE::NiAVObject& a_root) {
         SourceModelFootprint footprint;
-        const auto dismemberScan = ScanDismemberPartitions(a_root, std::addressof(footprint.fingerMask));
+        const auto dismemberScan = ScanDismemberPartitions(a_root, std::addressof(footprint.sourceTargets));
         if (dismemberScan != DismemberModelScan::kNoDismemberPartitions) {
             footprint.hasRingEvidence = dismemberScan == DismemberModelScan::kRingPartitions;
             return footprint;
         }
 
-        CollectFingerMaskFromNodeNames(a_root, footprint.fingerMask);
-        CollectFingerMaskFromAllSkins(a_root, footprint.fingerMask);
-        footprint.hasRingEvidence = !footprint.fingerMask.Empty();
+        CollectSourceTargetsFromNodeNames(a_root, footprint.sourceTargets);
+        CollectSourceTargetsFromAllSkins(a_root, footprint.sourceTargets);
+        footprint.hasRingEvidence = !footprint.sourceTargets.Empty();
         return footprint;
     }
 
@@ -528,7 +556,7 @@ namespace {
         }
 
         const auto modelFootprint = ScanModelFootprint(*sourceRoot);
-        MergeFingerMask(a_footprint.fingerMask, modelFootprint.fingerMask);
+        MergeSourceTargets(a_footprint.sourceTargets, modelFootprint.sourceTargets);
         a_footprint.hasRingEvidence = a_footprint.hasRingEvidence || modelFootprint.hasRingEvidence;
     }
 
@@ -551,73 +579,70 @@ namespace {
         return std::min(segment, kLastThumbSegment);
     }
 
-    [[nodiscard]] std::optional<Core::Finger> FirstOccupiedFinger(const Core::FingerMask& a_sourceFingerMask) {
-        for (const auto finger : Core::kFingers) {
-            if (a_sourceFingerMask.Occupies(finger)) {
-                return finger;
-            }
+    [[nodiscard]] std::optional<Core::Target> RetargetSourceTarget(
+        const Core::Target a_source,
+        const Core::Target a_target,
+        const Core::TargetMask a_sourceTargets
+    ) {
+        if (a_sourceTargets.Count() <= 1) {
+            return a_target;
         }
 
-        return std::nullopt;
+        const auto sourceAnchor = Core::FindSourceAnchor(a_sourceTargets);
+        return sourceAnchor ? Core::ProjectSourceTarget(a_source, *sourceAnchor, a_target) : std::nullopt;
     }
 
-    [[nodiscard]] std::optional<Core::Finger> RetargetFinger(
-        const Core::Finger a_source,
-        const Core::Finger a_anchor,
-        const Core::FingerMask& a_sourceFingerMask
+    [[nodiscard]] std::optional<Core::Hand> RetargetSourceHand(
+        const Core::Hand a_source,
+        const Core::Target a_target,
+        const Core::TargetMask a_sourceTargets
     ) {
-        if (!a_sourceFingerMask.IsMultiFinger()) {
-            return a_anchor;
+        if (a_sourceTargets.Count() <= 1) {
+            return a_target.hand;
         }
 
-        const auto firstOccupiedFinger = FirstOccupiedFinger(a_sourceFingerMask);
-        if (!firstOccupiedFinger) {
+        const auto sourceAnchor = Core::FindSourceAnchor(a_sourceTargets);
+        if (!sourceAnchor) {
             return std::nullopt;
         }
 
-        const auto sourceIndex = static_cast<std::size_t>(std::to_underlying(a_source));
-        const auto firstIndex = static_cast<std::size_t>(std::to_underlying(*firstOccupiedFinger));
-        if (sourceIndex < firstIndex) {
-            return std::nullopt;
-        }
-
-        const auto targetIndex = static_cast<std::size_t>(std::to_underlying(a_anchor)) + (sourceIndex - firstIndex);
-        if (targetIndex >= Core::kFingers.size()) {
-            return std::nullopt;
-        }
-
-        return Core::kFingers[targetIndex];
+        return a_source == sourceAnchor->hand ? a_target.hand : Core::OppositeHand(a_target.hand);
     }
 
     [[nodiscard]] std::optional<FingerBone> RetargetFingerBone(
         const FingerBone& a_source,
         const Core::Target a_target,
-        const Core::FingerMask& a_sourceFingerMask
+        const Core::TargetMask a_sourceTargets
     ) {
-        const auto targetFinger = RetargetFinger(a_source.finger, a_target.finger, a_sourceFingerMask);
-        if (!targetFinger) {
+        const auto retargetedTarget = RetargetSourceTarget(ToTarget(a_source), a_target, a_sourceTargets);
+        if (!retargetedTarget) {
             return std::nullopt;
         }
 
         return FingerBone {
-            .hand = a_target.hand,
-            .finger = *targetFinger,
-            .segment = RetargetSegment(a_source, *targetFinger),
+            .hand = retargetedTarget->hand,
+            .finger = retargetedTarget->finger,
+            .segment = RetargetSegment(a_source, retargetedTarget->finger),
         };
     }
 }
 
-std::optional<std::string> RetargetFingerBoneName(
+std::optional<std::string> RetargetSourceNodeName(
     const std::string_view a_name,
     const Core::Target a_target,
-    const Core::FingerMask& a_sourceFingerMask
+    const Core::TargetMask a_sourceTargets
 ) {
+    if (const auto sourceHand = ParseHandNodeName(a_name)) {
+        const auto retargetedHand = RetargetSourceHand(*sourceHand, a_target, a_sourceTargets);
+        return retargetedHand ? std::make_optional(MakeHandNodeName(*retargetedHand)) : std::nullopt;
+    }
+
     const auto sourceBone = ParseFingerBoneName(a_name);
     if (!sourceBone) {
         return std::nullopt;
     }
 
-    const auto retargetedBone = RetargetFingerBone(*sourceBone, a_target, a_sourceFingerMask);
+    const auto retargetedBone = RetargetFingerBone(*sourceBone, a_target, a_sourceTargets);
     return retargetedBone ? std::make_optional(MakeFingerBoneName(*retargetedBone)) : std::nullopt;
 }
 
@@ -655,32 +680,15 @@ bool HasRingModelEvidence(const RE::TESObjectARMO& a_ring) {
     return GetSourceModelFootprint(a_ring).hasRingEvidence;
 }
 
-Core::FingerMask GetSourceFingerMask(const RE::TESObjectARMO& a_ring) {
-    return GetSourceModelFootprint(a_ring).fingerMask;
+Core::TargetMask GetSourceTargets(const RE::TESObjectARMO& a_ring) {
+    return GetSourceModelFootprint(a_ring).sourceTargets;
 }
 
 Core::TargetMask GetProjectedTargets(const RE::TESObjectARMO& a_ring, const Core::Target a_target) {
-    return GetProjectedTargets(GetSourceFingerMask(a_ring), a_target);
+    return GetProjectedTargets(GetSourceTargets(a_ring), a_target);
 }
 
-Core::TargetMask GetProjectedTargets(const Core::FingerMask& a_sourceFingerMask, const Core::Target a_target) {
-    Core::TargetMask mask;
-    if (!a_sourceFingerMask.IsMultiFinger()) {
-        mask.Add(a_target);
-        return mask;
-    }
-
-    for (const auto finger : Core::kFingers) {
-        if (a_sourceFingerMask.Occupies(finger)) {
-            const auto targetFinger = RetargetFinger(finger, a_target.finger, a_sourceFingerMask);
-            if (!targetFinger) {
-                return {};
-            }
-
-            mask.Add(Core::Target {.hand = a_target.hand, .finger = *targetFinger});
-        }
-    }
-
-    return mask;
+Core::TargetMask GetProjectedTargets(const Core::TargetMask a_sourceTargets, const Core::Target a_target) {
+    return Core::ProjectSourceTargets(a_sourceTargets, a_target);
 }
 }

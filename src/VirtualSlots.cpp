@@ -48,7 +48,7 @@ namespace {
         ExtraDataListPtr extraList;
         Core::Assignment activeAssignment;
         ExtraRingMode mode {ExtraRingMode::kFunctional};
-        Core::FingerMask sourceFingerMask;
+        Core::TargetMask sourceTargets;
         bool active {false};
     };
 
@@ -690,7 +690,7 @@ namespace {
         state.activeAssignment = assignment;
         state.mode = mode;
         state.active = true;
-        state.sourceFingerMask = SourceModelFootprints::GetSourceFingerMask(*ring);
+        state.sourceTargets = SourceModelFootprints::GetSourceTargets(*ring);
 
         plan.apply = ApplyAction {
             .actor = std::addressof(a_actor),
@@ -726,7 +726,7 @@ namespace {
             sources.push_back(
                 Visuals::Attachments::AttachmentSource {
                     .target = target,
-                    .sourceFingerMask = state.sourceFingerMask,
+                    .sourceTargets = state.sourceTargets,
                     .sourceFormID = state.sourceFormID,
                 }
             );

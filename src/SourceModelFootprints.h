@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Core/FingerMask.h"
+#include "Core/TargetMask.h"
 
 #include <optional>
 #include <string>
@@ -13,16 +13,16 @@ class TESObjectARMO;
 }
 
 namespace SourceModelFootprints {
-[[nodiscard]] std::optional<std::string> RetargetFingerBoneName(
+[[nodiscard]] std::optional<std::string> RetargetSourceNodeName(
     std::string_view a_name,
     Core::Target a_target,
-    const Core::FingerMask& a_sourceFingerMask
+    Core::TargetMask a_sourceTargets
 );
 
 [[nodiscard]] bool HasOnlyMeaningfulFingerWeights(const RE::NiSkinInstance& a_skin);
 [[nodiscard]] bool IsRingModel(RE::NiAVObject& a_root);
 [[nodiscard]] bool HasRingModelEvidence(const RE::TESObjectARMO& a_ring);
-[[nodiscard]] Core::FingerMask GetSourceFingerMask(const RE::TESObjectARMO& a_ring);
+[[nodiscard]] Core::TargetMask GetSourceTargets(const RE::TESObjectARMO& a_ring);
 [[nodiscard]] Core::TargetMask GetProjectedTargets(const RE::TESObjectARMO& a_ring, Core::Target a_target);
-[[nodiscard]] Core::TargetMask GetProjectedTargets(const Core::FingerMask& a_sourceFingerMask, Core::Target a_target);
+[[nodiscard]] Core::TargetMask GetProjectedTargets(Core::TargetMask a_sourceTargets, Core::Target a_target);
 }

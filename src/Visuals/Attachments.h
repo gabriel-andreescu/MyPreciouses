@@ -1,8 +1,8 @@
 #pragma once
 
 #include "Core/ActorKey.h"
-#include "Core/FingerMask.h"
 #include "Core/Target.h"
+#include "Core/TargetMask.h"
 
 #include <cstdint>
 #include <vector>
@@ -15,7 +15,7 @@ class NiAVObject;
 namespace Visuals::Attachments {
 struct AttachmentSource {
     Core::Target target {Core::kDefaultLeftTarget};
-    Core::FingerMask sourceFingerMask;
+    Core::TargetMask sourceTargets;
     RE::FormID sourceFormID {0};
 };
 

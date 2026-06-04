@@ -25,8 +25,6 @@
 namespace Visuals::Attachments {
 namespace {
     constexpr auto* kRootNodeName = "LHRSVirtualRings";
-    constexpr auto kLeftHandNode = "NPC L Hand [LHnd]"sv;
-    constexpr auto kRightHandNode = "NPC R Hand [RHnd]"sv;
     constexpr std::array<RE::SEX, RE::SEXES::kTotal> kSexes {RE::SEXES::kMale, RE::SEXES::kFemale};
 
     std::mutex g_lock;
@@ -76,7 +74,7 @@ namespace {
 
     struct AttachmentSourceVisuals {
         Core::Target target {Core::kDefaultLeftTarget};
-        Core::FingerMask sourceFingerMask;
+        Core::TargetMask sourceTargets;
         RE::FormID sourceFormID {0};
         std::vector<ArmorAddonVisual> addonVisuals;
     };
@@ -109,16 +107,6 @@ namespace {
 
     [[nodiscard]] RE::Actor* AsActor(RE::TESObjectREFR* a_ref) {
         return a_ref ? skyrim_cast<RE::Actor*>(a_ref) : nullptr;
-    }
-
-    [[nodiscard]] std::optional<Core::Finger> FirstOccupiedFinger(const Core::FingerMask& a_sourceFingerMask) {
-        for (const auto finger : Core::kFingers) {
-            if (a_sourceFingerMask.Occupies(finger)) {
-                return finger;
-            }
-        }
-
-        return std::nullopt;
     }
 
     [[nodiscard]] RE::SEX GetActorSex(RE::TESObjectREFR* a_actor) {
@@ -206,7 +194,7 @@ namespace {
             visuals.push_back(
                 AttachmentSourceVisuals {
                     .target = source.target,
-                    .sourceFingerMask = source.sourceFingerMask,
+                    .sourceTargets = source.sourceTargets,
                     .sourceFormID = source.sourceFormID,
                     .addonVisuals = std::move(addonVisuals),
                 }
@@ -265,18 +253,6 @@ namespace {
         return nullptr;
     }
 
-    [[nodiscard]] std::optional<std::string> GetRetargetedNodeName(
-        const Core::Target a_target,
-        const Core::FingerMask& a_sourceFingerMask,
-        const std::string_view a_name
-    ) {
-        if (a_name == kLeftHandNode || a_name == kRightHandNode) {
-            return a_target.hand == Core::Hand::kLeft ? std::string {kLeftHandNode} : std::string {kRightHandNode};
-        }
-
-        return SourceModelFootprints::RetargetFingerBoneName(a_name, a_target, a_sourceFingerMask);
-    }
-
     [[nodiscard]] RE::NiAVObject* FindBone(RE::BipedAnim& a_biped, const char* a_name) {
         if (!a_biped.root || !a_name || a_name[0] == '\0') {
             return nullptr;
@@ -288,7 +264,7 @@ namespace {
     [[nodiscard]] RE::NiAVObject* FindRetargetedBone(
         RE::BipedAnim& a_biped,
         const Core::Target a_target,
-        const Core::FingerMask& a_sourceFingerMask,
+        const Core::TargetMask& a_sourceTargets,
         const RE::NiAVObject& a_bone
     ) {
         const auto* boneName = a_bone.name.c_str();
@@ -296,7 +272,7 @@ namespace {
             return nullptr;
         }
 
-        const auto retargetedName = GetRetargetedNodeName(a_target, a_sourceFingerMask, boneName);
+        const auto retargetedName = SourceModelFootprints::RetargetSourceNodeName(boneName, a_target, a_sourceTargets);
         if (!retargetedName) {
             return nullptr;
         }
@@ -308,7 +284,7 @@ namespace {
     [[nodiscard]] bool RenameRetargetedNodes(
         RE::NiAVObject& a_root,
         const Core::Target a_target,
-        const Core::FingerMask& a_sourceFingerMask
+        const Core::TargetMask& a_sourceTargets
     ) {
         bool patched = false;
         RE::BSVisit::TraverseScenegraphObjects(std::addressof(a_root), [&](RE::NiAVObject* a_object) {
@@ -318,7 +294,11 @@ namespace {
 
             const auto* nodeName = a_object->name.c_str();
             if (nodeName && nodeName[0] != '\0') {
-                if (const auto retargetedName = GetRetargetedNodeName(a_target, a_sourceFingerMask, nodeName)) {
+                if (const auto retargetedName = SourceModelFootprints::RetargetSourceNodeName(
+                        nodeName,
+                        a_target,
+                        a_sourceTargets
+                    )) {
                     a_object->name = RE::BSFixedString {retargetedName->c_str()};
                     patched = true;
                 }
@@ -343,14 +323,14 @@ namespace {
     [[nodiscard]] bool PatchSkinInstance(
         RE::BipedAnim& a_biped,
         const Core::Target a_target,
-        const Core::FingerMask& a_sourceFingerMask,
+        const Core::TargetMask& a_sourceTargets,
         RE::NiSkinInstance& a_skin
     ) {
         bool retargetedThisSkin = false;
         const auto boneCount = a_skin.skinData ? a_skin.skinData->bones : a_skin.numMatrices;
         for (std::uint32_t index = 0; index < boneCount; ++index) {
             const auto* bone = a_skin.bones ? a_skin.bones[index] : nullptr;
-            auto* retargetedBone = bone ? FindRetargetedBone(a_biped, a_target, a_sourceFingerMask, *bone) : nullptr;
+            auto* retargetedBone = bone ? FindRetargetedBone(a_biped, a_target, a_sourceTargets, *bone) : nullptr;
             if (!retargetedBone) {
                 continue;
             }
@@ -377,7 +357,7 @@ namespace {
     [[nodiscard]] SkinPatchResult PatchSkinBindings(
         RE::BipedAnim& a_biped,
         const Core::Target a_target,
-        const Core::FingerMask& a_sourceFingerMask,
+        const Core::TargetMask& a_sourceTargets,
         RE::NiAVObject& a_root
     ) {
         SkinPatchResult result;
@@ -393,7 +373,7 @@ namespace {
             }
 
             result.foundSkin = true;
-            result.retargetedSkin = PatchSkinInstance(a_biped, a_target, a_sourceFingerMask, *skin)
+            result.retargetedSkin = PatchSkinInstance(a_biped, a_target, a_sourceTargets, *skin)
                                     || result.retargetedSkin;
             return RE::BSVisit::BSVisitControl::kContinue;
         });
@@ -404,14 +384,14 @@ namespace {
         RE::BipedAnim& a_biped,
         RE::NiAVObject& a_root,
         const Core::Target a_target,
-        const Core::FingerMask& a_sourceFingerMask
+        const Core::TargetMask& a_sourceTargets
     ) {
         if (!a_biped.root) {
             return false;
         }
 
-        const auto skinPatch = PatchSkinBindings(a_biped, a_target, a_sourceFingerMask, a_root);
-        const auto nodeNamesPatched = RenameRetargetedNodes(a_root, a_target, a_sourceFingerMask);
+        const auto skinPatch = PatchSkinBindings(a_biped, a_target, a_sourceTargets, a_root);
+        const auto nodeNamesPatched = RenameRetargetedNodes(a_root, a_target, a_sourceTargets);
         return skinPatch.foundSkin ? skinPatch.retargetedSkin : nodeNamesPatched;
     }
 
@@ -423,10 +403,17 @@ namespace {
 
     [[nodiscard]] bool NeedsVanillaRingCloneRetarget(
         const RE::TESObjectARMO& a_ring,
-        const Core::FingerMask& a_sourceFingerMask
+        const Core::TargetMask& a_sourceTargets
     ) {
-        if (a_sourceFingerMask.Empty()
-            || SourceModelFootprints::GetProjectedTargets(a_sourceFingerMask, Core::kVanillaRingSlotTarget).Empty()) {
+        if (a_sourceTargets.Empty()) {
+            return false;
+        }
+
+        const auto vanillaTargets = SourceModelFootprints::GetProjectedTargets(
+            a_sourceTargets,
+            Core::kVanillaRingSlotTarget
+        );
+        if (vanillaTargets.Empty()) {
             return false;
         }
 
@@ -434,8 +421,7 @@ namespace {
             return true;
         }
 
-        const auto firstOccupiedFinger = FirstOccupiedFinger(a_sourceFingerMask);
-        return firstOccupiedFinger && *firstOccupiedFinger != Core::Finger::kIndex;
+        return vanillaTargets != a_sourceTargets;
     }
 
     [[nodiscard]] RE::TESObjectARMO* GetPlayerRingForBipedObjectSlot(
@@ -475,7 +461,7 @@ namespace {
         RE::BipedAnim& a_biped,
         const bool a_firstPerson,
         const RE::FormID a_sourceFormID,
-        const Core::FingerMask& a_sourceFingerMask,
+        const Core::TargetMask& a_sourceTargets,
         const ArmorAddonVisual& a_visual
     ) {
         const auto* model = SelectModelVariant(a_visual, std::addressof(a_actor), a_firstPerson);
@@ -524,7 +510,7 @@ namespace {
             return nullptr;
         }
 
-        if (!PatchScenegraph(a_biped, *node, a_visual.target, a_sourceFingerMask)) {
+        if (!PatchScenegraph(a_biped, *node, a_visual.target, a_sourceTargets)) {
             logger::warn(
                 "Visuals: patch failed | target={} | source={:08X} | addon={:08X} | path='{}' | reason=noEditableRingData",
                 Core::TargetName(a_visual.target),
@@ -581,7 +567,7 @@ namespace {
                 a_biped,
                 a_firstPerson,
                 a_visuals.sourceFormID,
-                a_visuals.sourceFingerMask,
+                a_visuals.sourceTargets,
                 visual
             );
             if (addonNode) {
@@ -760,12 +746,12 @@ bool RetargetVanillaRingClone(RE::BipedAnim* a_biped, RE::NiAVObject* a_object, 
         return false;
     }
 
-    const auto sourceFingerMask = SourceModelFootprints::GetSourceFingerMask(*ring);
-    if (!NeedsVanillaRingCloneRetarget(*ring, sourceFingerMask)) {
+    const auto sourceTargets = SourceModelFootprints::GetSourceTargets(*ring);
+    if (!NeedsVanillaRingCloneRetarget(*ring, sourceTargets)) {
         return false;
     }
 
-    if (!PatchScenegraph(*a_biped, *a_object, Core::kVanillaRingSlotTarget, sourceFingerMask)) {
+    if (!PatchScenegraph(*a_biped, *a_object, Core::kVanillaRingSlotTarget, sourceTargets)) {
         logger::warn(
             "Visuals: worn ring retarget failed | source={:08X} | bipedSlot={} | target={} | reason=noEditableRingData",
             ring->GetFormID(),

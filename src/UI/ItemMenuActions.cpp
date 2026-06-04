@@ -62,7 +62,7 @@ namespace {
         ItemMenuHost hostMenu {ItemMenuHost::kInventory};
         Core::ActorKey itemActor;
         Core::ItemSource itemSource;
-        Core::FingerMask sourceFingerMask;
+        Core::TargetMask sourceTargets;
         std::optional<Core::Target> moveSourceTarget;
     };
 
@@ -231,8 +231,8 @@ namespace {
             .hostMenu = a_source.hostMenu,
             .itemActor = a_source.itemActor,
             .itemSource = a_source.itemSource,
-            .sourceFingerMask = a_source.ring ? SourceModelFootprints::GetSourceFingerMask(*a_source.ring)
-                                              : Core::FingerMask {},
+            .sourceTargets = a_source.ring ? SourceModelFootprints::GetSourceTargets(*a_source.ring)
+                                           : Core::TargetMask {},
             .moveSourceTarget = a_moveSourceTarget,
         };
     }
@@ -484,10 +484,10 @@ namespace {
     }
 
     [[nodiscard]] TargetAvailability GetTargetAvailability(
-        const Core::FingerMask& a_sourceFingerMask,
+        const Core::TargetMask& a_sourceTargets,
         const Core::Target a_target
     ) {
-        const auto projectedTargets = SourceModelFootprints::GetProjectedTargets(a_sourceFingerMask, a_target);
+        const auto projectedTargets = SourceModelFootprints::GetProjectedTargets(a_sourceTargets, a_target);
         if (projectedTargets.Empty()) {
             return TargetAvailability::kWontFit;
         }
@@ -497,20 +497,20 @@ namespace {
     }
 
     [[nodiscard]] std::optional<Core::Target> ResolveSelectableTarget(
-        const Core::FingerMask& a_sourceFingerMask,
+        const Core::TargetMask& a_sourceTargets,
         const Core::Target a_target
     ) {
-        return GetTargetAvailability(a_sourceFingerMask, a_target) == TargetAvailability::kAvailable
+        return GetTargetAvailability(a_sourceTargets, a_target) == TargetAvailability::kAvailable
                    ? std::make_optional(a_target)
                    : std::nullopt;
     }
 
     [[nodiscard]] bool WouldUnequipProtectedRightHandRing(
         const Core::ActorKey a_actor,
-        const Core::FingerMask& a_sourceFingerMask,
+        const Core::TargetMask& a_sourceTargets,
         const Core::Target a_target
     ) {
-        const auto projectedTargets = SourceModelFootprints::GetProjectedTargets(a_sourceFingerMask, a_target);
+        const auto projectedTargets = SourceModelFootprints::GetProjectedTargets(a_sourceTargets, a_target);
         if (projectedTargets.Empty()) {
             return false;
         }
@@ -559,7 +559,7 @@ namespace {
         const MenuRingSource& a_source,
         const Core::Hand a_hand,
         const FingerSelectMenu::Labels& a_labels,
-        const Core::FingerMask& a_sourceFingerMask
+        const Core::TargetMask& a_sourceTargets
     ) {
         static_assert(FingerSelectMenu::kRowCount == Core::kFingers.size());
 
@@ -570,13 +570,13 @@ namespace {
                 .hand = a_hand,
                 .finger = finger,
             };
-            const auto targetAvailability = GetTargetAvailability(a_sourceFingerMask, target);
+            const auto targetAvailability = GetTargetAvailability(a_sourceTargets, target);
             const auto selectableTarget = targetAvailability == TargetAvailability::kAvailable
                                               ? std::make_optional(target)
                                               : std::nullopt;
             const auto occupiedTargets = targetAvailability == TargetAvailability::kWontFit
                                              ? Core::TargetMask {}
-                                             : SourceModelFootprints::GetProjectedTargets(a_sourceFingerMask, target);
+                                             : SourceModelFootprints::GetProjectedTargets(a_sourceTargets, target);
             const auto actionLabel = [&] {
                 switch (targetAvailability) {
                     case TargetAvailability::kAvailable:
@@ -613,7 +613,7 @@ namespace {
     }
 
     [[nodiscard]] std::optional<Core::Target> FindFirstSelectableTargetOnHand(
-        const Core::FingerMask& a_sourceFingerMask,
+        const Core::TargetMask& a_sourceTargets,
         const Core::Hand a_hand
     ) {
         for (const auto finger : Core::kFingers) {
@@ -621,7 +621,7 @@ namespace {
                 .hand = a_hand,
                 .finger = finger,
             };
-            if (ResolveSelectableTarget(a_sourceFingerMask, target)) {
+            if (ResolveSelectableTarget(a_sourceTargets, target)) {
                 return target;
             }
         }
@@ -630,7 +630,7 @@ namespace {
     }
 
     [[nodiscard]] bool HasMultipleSelectableTargetsOnHand(
-        const Core::FingerMask& a_sourceFingerMask,
+        const Core::TargetMask& a_sourceTargets,
         const Core::Hand a_hand
     ) {
         auto count = std::uint32_t {0};
@@ -639,7 +639,7 @@ namespace {
                 .hand = a_hand,
                 .finger = finger,
             };
-            if (ResolveSelectableTarget(a_sourceFingerMask, target) && ++count > 1) {
+            if (ResolveSelectableTarget(a_sourceTargets, target) && ++count > 1) {
                 return true;
             }
         }
@@ -648,29 +648,29 @@ namespace {
     }
 
     [[nodiscard]] std::optional<Core::Target> FindDefaultSelectableTargetOnHand(
-        const Core::FingerMask& a_sourceFingerMask,
+        const Core::TargetMask& a_sourceTargets,
         const Core::Hand a_hand
     ) {
         const auto defaultTarget = DefaultTargetForHand(a_hand);
-        if (defaultTarget && ResolveSelectableTarget(a_sourceFingerMask, *defaultTarget)) {
+        if (defaultTarget && ResolveSelectableTarget(a_sourceTargets, *defaultTarget)) {
             return defaultTarget;
         }
 
-        return FindFirstSelectableTargetOnHand(a_sourceFingerMask, a_hand);
+        return FindFirstSelectableTargetOnHand(a_sourceTargets, a_hand);
     }
 
     [[nodiscard]] Core::Target FindFingerSelectorStartTarget(
         const MenuRingSource& a_source,
         const Core::Hand a_hand,
-        const Core::FingerMask& a_sourceFingerMask
+        const Core::TargetMask& a_sourceTargets
     ) {
         if (const auto selectedTarget = FindPreferredSelectedTargetOnHand(a_source, a_hand)) {
-            if (ResolveSelectableTarget(a_sourceFingerMask, *selectedTarget)) {
+            if (ResolveSelectableTarget(a_sourceTargets, *selectedTarget)) {
                 return *selectedTarget;
             }
         }
 
-        if (const auto defaultTarget = FindDefaultSelectableTargetOnHand(a_sourceFingerMask, a_hand)) {
+        if (const auto defaultTarget = FindDefaultSelectableTargetOnHand(a_sourceTargets, a_hand)) {
             return *defaultTarget;
         }
 
@@ -678,14 +678,14 @@ namespace {
     }
 
     [[nodiscard]] std::uint16_t GetPreviewSourceTargetBits(
-        const Core::FingerMask& a_sourceFingerMask,
+        const Core::TargetMask& a_sourceTargets,
         const std::optional<Core::Target> a_sourceTarget
     ) {
         if (!a_sourceTarget) {
             return 0;
         }
 
-        return SourceModelFootprints::GetProjectedTargets(a_sourceFingerMask, *a_sourceTarget).Bits();
+        return SourceModelFootprints::GetProjectedTargets(a_sourceTargets, *a_sourceTarget).Bits();
     }
 
     void ApplyStoredMenuRingSource(const StoredMenuRingSource& a_source, const Core::Target a_target) {
@@ -712,15 +712,15 @@ namespace {
             return true;
         }
 
-        const auto sourceFingerMask = SourceModelFootprints::GetSourceFingerMask(*ring);
-        if (!FindFirstSelectableTargetOnHand(sourceFingerMask, a_hand)) {
+        const auto sourceTargets = SourceModelFootprints::GetSourceTargets(*ring);
+        if (!FindFirstSelectableTargetOnHand(sourceTargets, a_hand)) {
             return false;
         }
 
         auto labels = GetFingerSelectLabels();
-        auto rows = BuildFingerRows(a_source, a_hand, labels, sourceFingerMask);
+        auto rows = BuildFingerRows(a_source, a_hand, labels, sourceTargets);
         const auto selectedTarget = FindPreferredSelectedTargetOnHand(a_source, a_hand);
-        const auto startTarget = FindFingerSelectorStartTarget(a_source, a_hand, sourceFingerMask);
+        const auto startTarget = FindFingerSelectorStartTarget(a_source, a_hand, sourceTargets);
         const auto startIndex = GetRowIndex(rows, startTarget);
         const auto storedSource = StoreMenuRingSource(a_source, selectedTarget);
 
@@ -730,7 +730,7 @@ namespace {
                 .ringName = GetMenuSourceRingLabel(a_source),
                 .rows = std::move(rows),
                 .previewEmptyRingLabel = RingItemRows::kEmptyRingDisplayName,
-                .previewSourceTargetBits = GetPreviewSourceTargetBits(sourceFingerMask, selectedTarget),
+                .previewSourceTargetBits = GetPreviewSourceTargetBits(sourceTargets, selectedTarget),
                 .selectedIndex = startIndex,
                 .inputDevice = a_inputDevice,
                 .hostMenu = a_source.hostMenu,
@@ -739,16 +739,13 @@ namespace {
                         return FingerSelectMenu::ResultDisposition::kClose;
                     }
 
-                    const auto targetAvailability = GetTargetAvailability(
-                        storedSource.sourceFingerMask,
-                        *a_result.target
-                    );
+                    const auto targetAvailability = GetTargetAvailability(storedSource.sourceTargets, *a_result.target);
                     if (targetAvailability == TargetAvailability::kDisabled) {
                         ShowVirtualSlotDisabledMessage();
                         return FingerSelectMenu::ResultDisposition::kKeepOpen;
                     }
 
-                    const auto target = ResolveSelectableTarget(storedSource.sourceFingerMask, *a_result.target);
+                    const auto target = ResolveSelectableTarget(storedSource.sourceTargets, *a_result.target);
                     if (!target) {
                         ShowWontFitMessage(*a_result.target);
                         return FingerSelectMenu::ResultDisposition::kKeepOpen;
@@ -756,7 +753,7 @@ namespace {
 
                     if (WouldUnequipProtectedRightHandRing(
                             storedSource.itemActor,
-                            storedSource.sourceFingerMask,
+                            storedSource.sourceTargets,
                             *target
                         )) {
                         ShowRingUnequipBlockedMessage();
@@ -890,9 +887,9 @@ bool HandleRingUseFromMenuEntry(
         return true;
     }
 
-    const auto sourceFingerMask = SourceModelFootprints::GetSourceFingerMask(*source->ring);
+    const auto sourceTargets = SourceModelFootprints::GetSourceTargets(*source->ring);
     const auto trigger = GetFingerSelectTrigger();
-    if (trigger.requested && HasMultipleSelectableTargetsOnHand(sourceFingerMask, a_hand)) {
+    if (trigger.requested && HasMultipleSelectableTargetsOnHand(sourceTargets, a_hand)) {
         const auto opened = ShowFingerSelector(*source, a_hand, trigger.inputDevice);
         logger::debug(
             "UI: item menu finger selector {} | host={} | hand={} | actor={:08X} | source={:08X} | reason=modifier | input={}",
@@ -925,7 +922,7 @@ bool HandleRingUseFromMenuEntry(
         return false;
     }
 
-    const auto defaultLeftTarget = FindDefaultSelectableTargetOnHand(sourceFingerMask, Core::Hand::kLeft);
+    const auto defaultLeftTarget = FindDefaultSelectableTargetOnHand(sourceTargets, Core::Hand::kLeft);
     if (!defaultLeftTarget) {
         ShowNoEnabledVirtualSlotMessage();
         return true;
