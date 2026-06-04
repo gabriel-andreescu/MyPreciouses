@@ -26,6 +26,7 @@ var SKYUI_KEY_A = 276;
 var SKYUI_KEY_B = 277;
 var ROW_TEXT_COLOR = 0xFFFFFF;
 var ROW_DISABLED_TEXT_COLOR = 0x606060;
+var ROW_NEGATIVE_TEXT_COLOR = 0xFF0000;
 
 var fingerRows = [];
 var selectedRowIndex = 0;
@@ -147,6 +148,7 @@ makeEmptyRow = function()
         finger:"",
         equippedRing:"",
         baseEquippedRing:"",
+        ringTextColor:undefined,
         actionLabel:"",
         previewTargetBits:-1,
         enabled:true
@@ -169,11 +171,49 @@ refreshRows = function()
     for (var i = 0; i < ROW_COUNT; i++) {
         var row = fingerRows[i];
         var rowTextColor = row != undefined && row.enabled == false ? ROW_DISABLED_TEXT_COLOR : ROW_TEXT_COLOR;
+        var ringTextColor = row != undefined && row.ringTextColor != undefined ? row.ringTextColor : rowTextColor;
         writeText(fingerFields[i], row == undefined ? "" : row.finger);
         writeText(ringFields[i], row == undefined ? "" : row.equippedRing);
         setTextColor(fingerFields[i], rowTextColor);
-        setTextColor(ringFields[i], rowTextColor);
+        setTextColor(ringFields[i], ringTextColor);
     }
+};
+
+applySkyUINegativeTextColor = function(config)
+{
+    if (config == undefined || config.Appearance == undefined || config.Appearance.colors == undefined ||
+        config.Appearance.colors.negative == undefined) {
+        return;
+    }
+
+    var negativeColor = Number(config.Appearance.colors.negative.enabled);
+    if (!isNaN(negativeColor)) {
+        ROW_NEGATIVE_TEXT_COLOR = negativeColor;
+        refreshRows();
+    }
+};
+
+onSkyUIConfigLoad = function(event)
+{
+    applySkyUINegativeTextColor(event == undefined ? undefined : event.config);
+};
+
+onSkyUIConfigUpdate = function(event)
+{
+    applySkyUINegativeTextColor(event == undefined ? undefined : event.config);
+};
+
+initializeSkyUIConfig = function()
+{
+    if (!LHRS_USE_SKYUI_BUTTON_ART || _global.skyui == undefined || _global.skyui.util == undefined ||
+        _global.skyui.util.ConfigManager == undefined) {
+        return;
+    }
+
+    var configManager = _global.skyui.util.ConfigManager;
+    configManager.registerLoadCallback(this, "onSkyUIConfigLoad");
+    configManager.registerUpdateCallback(this, "onSkyUIConfigUpdate");
+    applySkyUINegativeTextColor(configManager._config);
 };
 
 updateSelectedRowArrow = function()
@@ -268,9 +308,15 @@ clearPreview = function()
     for (var i = 0; i < ROW_COUNT; i++) {
         if (fingerRows[i] != undefined) {
             fingerRows[i].equippedRing = fingerRows[i].baseEquippedRing;
+            fingerRows[i].ringTextColor = undefined;
         }
     }
     previewRowIndex = -1;
+};
+
+isPreviewEmptyRingLabel = function(label)
+{
+    return label == undefined || String(label).length == 0 || String(label) == previewEmptyRingLabel;
 };
 
 rowMatchesPreviewBits = function(row, previewTargetBits)
@@ -297,6 +343,7 @@ clearPreviewSource = function(previewTargetBits)
     for (var sourceIndex = 0; sourceIndex < ROW_COUNT; sourceIndex++) {
         if (rowMatchesPreviewBits(fingerRows[sourceIndex], sourceTargetBits)) {
             fingerRows[sourceIndex].equippedRing = previewEmptyRingLabel;
+            fingerRows[sourceIndex].ringTextColor = undefined;
         }
     }
 };
@@ -329,7 +376,12 @@ previewRow = function(index, shouldDispatch)
     clearPreviewSource(previewTargetBits);
     for (var previewIndex = 0; previewIndex < ROW_COUNT; previewIndex++) {
         if (rowMatchesPreviewBits(fingerRows[previewIndex], previewTargetBits)) {
-            fingerRows[previewIndex].equippedRing = selectedRingName;
+            if (isPreviewEmptyRingLabel(fingerRows[previewIndex].equippedRing)) {
+                fingerRows[previewIndex].equippedRing = selectedRingName;
+                fingerRows[previewIndex].ringTextColor = undefined;
+            } else {
+                fingerRows[previewIndex].ringTextColor = ROW_NEGATIVE_TEXT_COLOR;
+            }
         }
     }
     refreshRows();
@@ -397,6 +449,7 @@ SetRow = function(index, targetIndex, fingerLabel, equippedRingLabel, enabled, a
         finger:fingerLabel == undefined ? "" : String(fingerLabel),
         equippedRing:equippedRingLabel == undefined ? "" : String(equippedRingLabel),
         baseEquippedRing:equippedRingLabel == undefined ? "" : String(equippedRingLabel),
+        ringTextColor:undefined,
         actionLabel:actionLabel == undefined ? "" : String(actionLabel),
         previewTargetBits:previewTargetBits == undefined ? -1 : Number(previewTargetBits),
         enabled:enabled != false
@@ -920,6 +973,7 @@ onButtonLoad = function(button)
 };
 
 resetRows();
+initializeSkyUIConfig();
 refreshRows();
 configureRowIndicators();
 createRowHitAreas();

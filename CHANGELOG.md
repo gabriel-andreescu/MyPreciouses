@@ -8,6 +8,7 @@
 - fix: clear custom inventory ring controls from non-ring rows
 - fix: refresh inventory ring rows after vanilla slot swaps
 - fix: account for both hands when placing, replacing, and rendering multi-finger rings
+- fix: keep existing ring labels visible in finger selector replacement previews and use negative coloring for occupied slots
 
 ## 0.3.6 - 2026-06-01
 
