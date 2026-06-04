@@ -331,7 +331,7 @@ namespace {
     };
 
     void InstallInventoryMenuProcessMessageHook() {
-#ifndef __clang_analyzer__
+#ifndef STATIC_ANALYSIS
         REL::Relocation<std::uintptr_t> vTable {RE::InventoryMenu::VTABLE[0]};
         // InventoryMenu::ProcessMessage // 04
         InventoryMenuProcessMessageHook::func = vTable.write_vfunc(0x4, InventoryMenuProcessMessageHook::thunk);
@@ -404,7 +404,7 @@ namespace {
     };
 
     void InstallLoad3DHook() {
-#ifndef __clang_analyzer__
+#ifndef STATIC_ANALYSIS
         REL::Relocation<std::uintptr_t> vTable {RE::PlayerCharacter::VTABLE[0]};
         PlayerLoad3DHook::func = vTable.write_vfunc(0x6A, PlayerLoad3DHook::thunk);
 #endif

@@ -72,6 +72,7 @@ if (RUN_CLANG_TIDY_EXECUTABLE AND Python3_EXECUTABLE)
                     -clang-tidy-binary "${CLANG_TIDY_EXECUTABLE}"
                     -p "${BUILD_DIR}"
                     -source-filter "${source_filter}"
+                    -extra-arg=-DSTATIC_ANALYSIS=1
                     -extra-arg=-Wno-unused-command-line-argument
                     -j "${CLANG_TIDY_JOBS}"
                     -quiet
@@ -90,7 +91,7 @@ else ()
         message(STATUS "clang-tidy ${relative_source_file}")
 
         execute_process(
-                COMMAND "${CLANG_TIDY_EXECUTABLE}" --quiet -p "${BUILD_DIR}" -extra-arg=-Wno-unused-command-line-argument "${source_file}"
+                COMMAND "${CLANG_TIDY_EXECUTABLE}" --quiet -p "${BUILD_DIR}" -extra-arg=-DSTATIC_ANALYSIS=1 -extra-arg=-Wno-unused-command-line-argument "${source_file}"
                 RESULT_VARIABLE clang_tidy_result
                 COMMAND_ECHO STDOUT
         )
