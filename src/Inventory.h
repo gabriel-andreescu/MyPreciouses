@@ -51,6 +51,13 @@ struct RightWornRing {
     bool protectedStack {false};
 };
 
+enum class RightWornRingUnequipResult : std::uint8_t {
+    kNone,
+    kUnequipped,
+    kProtected,
+    kFailed,
+};
+
 struct RingInventoryState {
     RE::ExtraDataList* rightWornExtraList {nullptr};
     bool rightWorn {false};
@@ -62,11 +69,16 @@ struct RingInventoryState {
     const Core::CustomEnchantmentSignature& a_signature,
     const std::optional<Core::ExtraUniqueIDKey>& a_uniqueID
 );
-[[nodiscard]] bool IsProtectedRingStack(RE::ExtraDataList* a_extraList);
-[[nodiscard]] bool IsRightWorn(const RE::ExtraDataList* a_extraList);
+[[nodiscard]] bool IsUnequipProtectedRingStack(RE::ExtraDataList* a_extraList);
+[[nodiscard]] bool HasRightWornFlag(const RE::ExtraDataList* a_extraList);
+[[nodiscard]] bool IsRingSourceRightWorn(
+    RE::Actor& a_actor,
+    const RE::TESObjectARMO& a_ring,
+    const RE::ExtraDataList* a_extraList
+);
 [[nodiscard]] std::optional<RightWornRing> FindRightWornRing(RE::Actor& a_actor);
-[[nodiscard]] bool HasRightWornRing(RE::Actor& a_actor);
 [[nodiscard]] bool HasProtectedRightWornRing(RE::Actor& a_actor);
+[[nodiscard]] RightWornRingUnequipResult UnequipRightWornRing(RE::Actor& a_actor);
 [[nodiscard]] std::optional<CustomEnchantmentData> ReadCustomEnchantment(const RE::ExtraDataList& a_extraList);
 [[nodiscard]] bool MirrorCustomEnchantment(RE::ExtraDataList& a_target, const RE::ExtraDataList& a_source);
 [[nodiscard]] RE::InventoryEntryData* FindEntry(RE::Actor& a_actor, const RE::TESBoundObject& a_object);
@@ -85,5 +97,6 @@ struct RingInventoryState {
 [[nodiscard]] RE::TESObjectARMO* AsRing(RE::TESBoundObject* a_object);
 [[nodiscard]] RE::TESObjectARMO* AsRing(RE::TESForm* a_form);
 [[nodiscard]] bool IsRing(const RE::TESObjectARMO* a_armor);
+[[nodiscard]] bool HasClothingRingKeyword(const RE::TESObjectARMO* a_armor);
 [[nodiscard]] RingInventoryState GetRingInventoryState(RE::Actor& a_actor, const RE::TESObjectARMO& a_ring);
 }

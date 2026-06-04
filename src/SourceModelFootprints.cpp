@@ -2,6 +2,9 @@
 
 #include "ModelPaths.h"
 
+#include <RE/N/NiSkinData.h>
+#include <RE/N/NiSkinPartition.h>
+
 #include <algorithm>
 #include <array>
 #include <format>
@@ -42,7 +45,7 @@ namespace {
     };
 
     struct SkinVertexWeight {
-        std::uint16_t vertex {0};
+        std::uint32_t vertexKey {0};
         std::size_t bucket {0};
         float weight {0.0F};
     };
@@ -178,61 +181,112 @@ namespace {
         return kNonFingerWeightBucket;
     }
 
-    [[nodiscard]] bool HasSkinWeightData(const RE::NiSkinInstance& a_skin) {
-        return a_skin.skinData && a_skin.skinData->boneData;
+    [[nodiscard]] std::uint32_t GetSkinBoneCount(const RE::NiSkinInstance& a_skin) {
+        return a_skin.skinData && a_skin.skinData->bones > 0 ? a_skin.skinData->bones : a_skin.numMatrices;
     }
 
-    void CollectSkinBoneWeights(
+    [[nodiscard]] const char* GetSkinBoneName(const RE::NiSkinInstance& a_skin, const std::uint32_t a_index) {
+        if (!a_skin.bones || a_index >= GetSkinBoneCount(a_skin)) {
+            return nullptr;
+        }
+
+        const auto* bone = a_skin.bones[a_index];
+        return bone ? bone->name.c_str() : nullptr;
+    }
+
+    [[nodiscard]] const RE::NiSkinPartition* GetSkinPartition(const RE::NiSkinInstance& a_skin) {
+        if (a_skin.skinPartition) {
+            return a_skin.skinPartition.get();
+        }
+
+        return a_skin.skinData ? a_skin.skinData->skinPartition.get() : nullptr;
+    }
+
+    [[nodiscard]] bool HasPartitionWeights(const RE::NiSkinPartition::Partition& a_partition) {
+        if (!a_partition.weights || !a_partition.bonePalette || !a_partition.bones) {
+            return false;
+        }
+
+        return a_partition.vertices > 0 && a_partition.bonesPerVertex > 0 && a_partition.numBones > 0;
+    }
+
+    [[nodiscard]] std::uint32_t BuildPartitionVertexKey(
+        const RE::NiSkinPartition::Partition& a_partition,
+        const std::size_t a_partitionIndex,
+        const std::uint16_t a_vertexIndex,
+        const std::uint32_t a_totalVertexCount
+    ) {
+        if (a_partition.vertexMap) {
+            const auto mappedVertex = a_partition.vertexMap[a_vertexIndex];
+            if (a_totalVertexCount == 0 || mappedVertex < a_totalVertexCount) {
+                return mappedVertex;
+            }
+        }
+
+        constexpr auto kPartitionLocalVertexFlag = std::uint32_t {0x80000000};
+        return kPartitionLocalVertexFlag | (static_cast<std::uint32_t>(a_partitionIndex) << 16) | a_vertexIndex;
+    }
+
+    void CollectSkinPartitionWeights(
         const RE::NiSkinInstance& a_skin,
-        const std::uint32_t a_boneIndex,
+        const RE::NiSkinPartition& a_skinPartition,
         std::vector<SkinVertexWeight>& a_weights
     ) {
-        const auto* bone = a_skin.bones ? a_skin.bones[a_boneIndex] : nullptr;
-        const auto* boneName = bone ? bone->name.c_str() : nullptr;
-        const auto bucket = WeightBucketForBoneName(boneName);
-        const auto& boneData = a_skin.skinData->boneData[a_boneIndex];
-        if (!boneData.boneVertData || boneData.verts == 0) {
+        const auto boneCount = GetSkinBoneCount(a_skin);
+        if (!a_skin.bones || boneCount == 0) {
             return;
         }
 
-        for (std::uint16_t weightIndex = 0; weightIndex < boneData.verts; ++weightIndex) {
-            const auto& weight = boneData.boneVertData[weightIndex];
-            if (weight.weight <= kMinimumSkinWeight) {
+        const auto partitionCount = std::min<std::size_t>(
+            a_skinPartition.numPartitions,
+            a_skinPartition.partitions.size()
+        );
+        const auto totalVertexCount = a_skinPartition.vertexCount;
+
+        for (std::size_t partitionIndex = 0; partitionIndex < partitionCount; ++partitionIndex) {
+            const auto& partition = a_skinPartition.partitions[partitionIndex];
+            if (!HasPartitionWeights(partition)) {
                 continue;
             }
 
-            a_weights.push_back(
-                SkinVertexWeight {
-                    .vertex = weight.vert,
-                    .bucket = bucket,
-                    .weight = weight.weight,
+            const auto weightsPerVertex = static_cast<std::size_t>(partition.bonesPerVertex);
+            for (std::uint16_t vertexIndex = 0; vertexIndex < partition.vertices; ++vertexIndex) {
+                const auto
+                    vertexKey = BuildPartitionVertexKey(partition, partitionIndex, vertexIndex, totalVertexCount);
+
+                for (std::uint16_t weightIndex = 0; weightIndex < partition.bonesPerVertex; ++weightIndex) {
+                    const auto weightOffset = (static_cast<std::size_t>(vertexIndex) * weightsPerVertex) + weightIndex;
+                    const auto weight = partition.weights[weightOffset];
+                    if (weight <= kMinimumSkinWeight) {
+                        continue;
+                    }
+
+                    const auto partitionBoneIndex = partition.bonePalette[weightOffset];
+                    if (partitionBoneIndex >= partition.numBones) {
+                        continue;
+                    }
+
+                    const auto skinBoneIndex = partition.bones[partitionBoneIndex];
+                    if (skinBoneIndex >= boneCount) {
+                        continue;
+                    }
+
+                    a_weights.push_back(
+                        SkinVertexWeight {
+                            .vertexKey = vertexKey,
+                            .bucket = WeightBucketForBoneName(GetSkinBoneName(a_skin, skinBoneIndex)),
+                            .weight = weight,
+                        }
+                    );
                 }
-            );
+            }
         }
-    }
-
-    [[nodiscard]] std::vector<SkinVertexWeight> CollectSkinVertexWeights(const RE::NiSkinInstance& a_skin) {
-        std::vector<SkinVertexWeight> weights;
-        if (!HasSkinWeightData(a_skin)) {
-            return weights;
-        }
-
-        const auto boneCount = a_skin.skinData->bones;
-        for (std::uint32_t boneIndex = 0; boneIndex < boneCount; ++boneIndex) {
-            CollectSkinBoneWeights(a_skin, boneIndex, weights);
-        }
-
-        std::ranges::sort(weights, [](const auto& a_lhs, const auto& a_rhs) {
-            return a_lhs.vertex < a_rhs.vertex;
-        });
-        return weights;
     }
 
     void CollectFingerMaskFromBoneNames(const RE::NiSkinInstance& a_skin, Core::FingerMask& a_fingerMask) {
-        const auto boneCount = a_skin.skinData ? a_skin.skinData->bones : a_skin.numMatrices;
+        const auto boneCount = GetSkinBoneCount(a_skin);
         for (std::uint32_t index = 0; index < boneCount; ++index) {
-            const auto* bone = a_skin.bones ? a_skin.bones[index] : nullptr;
-            const auto* boneName = bone ? bone->name.c_str() : nullptr;
+            const auto* boneName = GetSkinBoneName(a_skin, index);
             if (!boneName || boneName[0] == '\0') {
                 continue;
             }
@@ -274,16 +328,26 @@ namespace {
 
     [[nodiscard]] SkinInfluenceScan ScanSkinInfluences(const RE::NiSkinInstance& a_skin) {
         SkinInfluenceScan result;
-        const auto weights = CollectSkinVertexWeights(a_skin);
+        const auto* skinPartition = GetSkinPartition(a_skin);
+        if (!skinPartition) {
+            return result;
+        }
+
+        std::vector<SkinVertexWeight> weights;
+        CollectSkinPartitionWeights(a_skin, *skinPartition, weights);
         if (weights.empty()) {
             return result;
         }
+
+        std::ranges::sort(weights, [](const auto& a_lhs, const auto& a_rhs) {
+            return a_lhs.vertexKey < a_rhs.vertexKey;
+        });
 
         result.hasWeightedInfluence = true;
         auto rangeStart = std::size_t {0};
         while (rangeStart < weights.size()) {
             auto rangeEnd = rangeStart;
-            while (rangeEnd < weights.size() && weights[rangeEnd].vertex == weights[rangeStart].vertex) {
+            while (rangeEnd < weights.size() && weights[rangeEnd].vertexKey == weights[rangeStart].vertexKey) {
                 ++rangeEnd;
             }
 
@@ -323,12 +387,11 @@ namespace {
     }
 
     [[nodiscard]] bool HasOnlyFingerBoneNames(const RE::NiSkinInstance& a_skin) {
-        const auto boneCount = a_skin.skinData ? a_skin.skinData->bones : a_skin.numMatrices;
+        const auto boneCount = GetSkinBoneCount(a_skin);
         auto sawFingerBone = false;
 
         for (std::uint32_t index = 0; index < boneCount; ++index) {
-            const auto* bone = a_skin.bones ? a_skin.bones[index] : nullptr;
-            const auto* boneName = bone ? bone->name.c_str() : nullptr;
+            const auto* boneName = GetSkinBoneName(a_skin, index);
             if (!boneName || boneName[0] == '\0') {
                 return false;
             }

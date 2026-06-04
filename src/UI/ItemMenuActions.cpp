@@ -370,7 +370,7 @@ namespace {
         }
 
         for (auto* extraList : *a_entry.extraLists) {
-            if (!Inventory::IsRightWorn(extraList)) {
+            if (!Inventory::HasRightWornFlag(extraList)) {
                 continue;
             }
 
@@ -511,12 +511,25 @@ namespace {
         const Core::Target a_target
     ) {
         const auto projectedTargets = SourceModelFootprints::GetProjectedTargets(a_sourceFingerMask, a_target);
-        if (!projectedTargets.Contains(Core::kVanillaRingSlotTarget)) {
+        if (projectedTargets.Empty()) {
             return false;
         }
 
         auto* actor = Core::ResolveActor(a_actor);
-        return actor && Inventory::HasProtectedRightWornRing(*actor);
+        if (!actor) {
+            return false;
+        }
+
+        const auto rightWorn = Inventory::FindRightWornRing(*actor);
+        if (!rightWorn || !rightWorn->ring || !rightWorn->protectedStack) {
+            return false;
+        }
+
+        const auto rightWornTargets = SourceModelFootprints::GetProjectedTargets(
+            *rightWorn->ring,
+            Core::kVanillaRingSlotTarget
+        );
+        return !rightWornTargets.Empty() && rightWornTargets.Intersects(projectedTargets);
     }
 
     [[nodiscard]] bool IsAnyFingerTargetOccupied(const Core::ActorKey a_actor, const Core::TargetMask& a_targets) {

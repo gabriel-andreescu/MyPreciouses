@@ -6,7 +6,9 @@
 #include "UI/InventoryMenu.h"
 #include "UI/ItemMenuActions.h"
 #include "VirtualSlots.h"
+#include "Visuals/Attachments.h"
 
+#include <cstdint>
 #include <optional>
 #include <string_view>
 
@@ -50,6 +52,23 @@ namespace {
             }
 
             a_effect->magnitude *= scale;
+        }
+
+        static inline REL::Relocation<decltype(thunk)> func;
+    };
+
+    struct BipedAnimBuildObjectHook {
+        static RE::NiAVObject* thunk(
+            RE::BipedAnim* a_biped,
+            RE::NiAVObject* a_object,
+            RE::NiAVObject* a_parent,
+            const std::int32_t a_bipedObjectSlot,
+            const bool a_arg5,
+            const bool a_arg6,
+            RE::NiAVObject* a_arg7
+        ) {
+            static_cast<void>(Visuals::Attachments::RetargetVanillaRingClone(a_biped, a_object, a_bipedObjectSlot));
+            return func(a_biped, a_object, a_parent, a_bipedObjectSlot, a_arg5, a_arg6, a_arg7);
         }
 
         static inline REL::Relocation<decltype(thunk)> func;
@@ -122,6 +141,17 @@ namespace {
                     }
                 )) {
                 return;
+            }
+
+            const auto equipHand = GetEquipHand(a_params.equipSlot);
+            const auto rightRingEquip = ring && (!equipHand || *equipHand != Core::Hand::kLeft);
+            if (rightRingEquip && !Inventory::IsRingSourceRightWorn(*a_actor, *ring, a_params.extraDataList)) {
+                switch (Inventory::UnequipRightWornRing(*a_actor)) {
+                    case Inventory::RightWornRingUnequipResult::kNone:
+                    case Inventory::RightWornRingUnequipResult::kUnequipped: break;
+                    case Inventory::RightWornRingUnequipResult::kProtected:
+                    case Inventory::RightWornRingUnequipResult::kFailed:     UI::RefreshRingItemRows(); return;
+                }
             }
 
             func(a_equipManager, a_actor, a_object, a_params);
@@ -252,11 +282,25 @@ namespace {
         logger::info("Hooks: FavoritesMenu quickslot hook installed");
     }
 
-    struct CharacterLoad3DHook {
-        static RE::NiAVObject* thunk(RE::Character* a_actor, bool a_backgroundLoading) {
-            auto* result = func(a_actor, a_backgroundLoading);
-            if (result && a_actor && a_actor->IsPlayerRef()) {
-                VirtualSlots::RequestVisualRefresh(Core::MakeActorKey(*a_actor));
+    void InstallVanillaRingCloneHook() {
+        constexpr auto buildObjectCaller = REL::VariantID(15534, 15711, 0x1DB680);
+
+        // BipedAnim reaches the object builder through two paths.
+        // Hook both so slot 36 ring models can be moved before they attach to the hand.
+        stl::write_thunk_call<BipedAnimBuildObjectHook>(
+            REL::Relocation {buildObjectCaller, REL::Relocate(0x1E4, 0x1F5, 0x1E4)}
+        );
+        stl::write_thunk_call<BipedAnimBuildObjectHook>(
+            REL::Relocation {buildObjectCaller, REL::Relocate(0x23E, 0x24B, 0x23E)}
+        );
+        logger::info("Hooks: BipedAnim object build hook installed");
+    }
+
+    struct PlayerLoad3DHook {
+        static RE::NiAVObject* thunk(RE::PlayerCharacter* a_player, bool a_backgroundLoading) {
+            auto* result = func(a_player, a_backgroundLoading);
+            if (a_player) {
+                VirtualSlots::RequestVisualRefresh(Core::MakeActorKey(*a_player));
             }
             return result;
         }
@@ -266,10 +310,10 @@ namespace {
 
     void InstallLoad3DHook() {
 #ifndef __clang_analyzer__
-        REL::Relocation<std::uintptr_t> vTable {RE::Character::VTABLE[0]};
-        CharacterLoad3DHook::func = vTable.write_vfunc(0x6A, CharacterLoad3DHook::thunk);
+        REL::Relocation<std::uintptr_t> vTable {RE::PlayerCharacter::VTABLE[0]};
+        PlayerLoad3DHook::func = vTable.write_vfunc(0x6A, PlayerLoad3DHook::thunk);
 #endif
-        logger::info("Hooks: Character Load3D hook installed");
+        logger::info("Hooks: PlayerCharacter Load3D hook installed");
     }
 }
 
@@ -278,6 +322,7 @@ void Install() {
     InstallEquipObjectHook();
     InstallGetEquippedConditionHook();
     InstallEnchantmentStrengthHook();
+    InstallVanillaRingCloneHook();
     InstallLoad3DHook();
 }
 }

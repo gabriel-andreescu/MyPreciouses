@@ -54,6 +54,14 @@ namespace {
     }
 
     [[nodiscard]] ActionResult RightHandRingCannotBeUnequippedResult();
+    [[nodiscard]] ActionResult UnequipRightWornRingForReplacement(RE::Actor& a_actor);
+    void MergeActionResult(ActionResult& a_result, ActionResult a_next);
+    void ClearVanillaRingSlotConflicts(
+        ActionResult& a_result,
+        Core::ActorKey a_actor,
+        const RE::TESObjectARMO& a_ring,
+        std::optional<Core::Target> a_selectedTarget
+    );
 
     [[nodiscard]] bool ClearVirtualAssignment(RE::Actor& a_actor, const Core::Target a_target) {
         const auto actorKey = Core::MakeActorKey(a_actor);
@@ -272,13 +280,6 @@ namespace {
             }
         }
 
-        const auto selection = AssignmentStore::Get(a_actor, a_target);
-        if (selection.source.Matches(a_source)) {
-            AssignmentStore::Clear(a_actor, a_target);
-            VirtualSlots::ClearTarget(a_actor, a_target);
-            result.selectionChanged = true;
-        }
-
         auto* equipManager = RE::ActorEquipManager::GetSingleton();
         if (!equipManager) {
             return result;
@@ -290,7 +291,26 @@ namespace {
             return result;
         }
 
+        const auto occupiedTargets = SourceModelFootprints::GetProjectedTargets(*ring, Core::kVanillaRingSlotTarget);
+        if (occupiedTargets.Empty()) {
+            return result;
+        }
+
+        const auto clearResult = UnequipRightWornRingForReplacement(*actor);
+        if (clearResult.blockReason != ActionBlockReason::kNone) {
+            return clearResult;
+        }
+        MergeActionResult(result, clearResult);
+
+        const auto selection = AssignmentStore::Get(a_actor, a_target);
+        if (selection.source.Matches(a_source)) {
+            AssignmentStore::Clear(a_actor, a_target);
+            VirtualSlots::ClearTarget(a_actor, a_target);
+            result.selectionChanged = true;
+        }
+
         equipManager->EquipObject(actor, ring, equipExtraList, 1, equipSlot, true, a_forceEquip, false, true);
+        ClearVanillaRingSlotConflicts(result, a_actor, *ring, std::nullopt);
         if (IsInVanillaRingSlot(*actor, *ring, a_source)) {
             Audio::EquipSounds::Play(*actor, *ring, Audio::EquipSounds::Cue::kEquip);
         }
@@ -303,7 +323,7 @@ namespace {
         RE::TESObjectARMO& a_ring,
         RE::ExtraDataList* a_extraList
     ) {
-        if (Inventory::IsProtectedRingStack(a_extraList)) {
+        if (Inventory::IsUnequipProtectedRingStack(a_extraList)) {
             return false;
         }
 
@@ -385,31 +405,44 @@ namespace {
         }
     }
 
+    [[nodiscard]] ActionResult UnequipRightWornRingForReplacement(RE::Actor& a_actor) {
+        ActionResult result;
+        switch (Inventory::UnequipRightWornRing(a_actor)) {
+            case Inventory::RightWornRingUnequipResult::kNone:       break;
+            case Inventory::RightWornRingUnequipResult::kUnequipped: result.inventoryChanged = true; break;
+            case Inventory::RightWornRingUnequipResult::kProtected:
+            case Inventory::RightWornRingUnequipResult::kFailed:     return RightHandRingCannotBeUnequippedResult();
+        }
+
+        return result;
+    }
+
+    [[nodiscard]] bool ConflictsWithRightWornRing(RE::Actor& a_actor, const Core::TargetMask& a_targets) {
+        if (a_targets.Empty()) {
+            return false;
+        }
+
+        const auto rightWorn = Inventory::FindRightWornRing(a_actor);
+        if (!rightWorn || !rightWorn->ring) {
+            return false;
+        }
+
+        const auto rightWornTargets = SourceModelFootprints::GetProjectedTargets(
+            *rightWorn->ring,
+            Core::kVanillaRingSlotTarget
+        );
+        return !rightWornTargets.Empty() && rightWornTargets.Intersects(a_targets);
+    }
+
     [[nodiscard]] ActionResult PrepareVanillaRingSlotForVirtualTarget(
         RE::Actor& a_actor,
         const Core::TargetMask& a_occupiedTargets
     ) {
-        ActionResult result;
-        if (!a_occupiedTargets.Contains(Core::kVanillaRingSlotTarget)) {
-            return result;
+        if (!ConflictsWithRightWornRing(a_actor, a_occupiedTargets)) {
+            return {};
         }
 
-        const auto rightWorn = Inventory::FindRightWornRing(a_actor);
-        if (!rightWorn) {
-            return result;
-        }
-
-        if (!rightWorn->ring || rightWorn->protectedStack) {
-            return RightHandRingCannotBeUnequippedResult();
-        }
-
-        if (!UnequipVanillaRingSlot(a_actor, *rightWorn->ring, rightWorn->extraList)
-            || Inventory::HasRightWornRing(a_actor)) {
-            return RightHandRingCannotBeUnequippedResult();
-        }
-
-        result.inventoryChanged = true;
-        return result;
+        return UnequipRightWornRingForReplacement(a_actor);
     }
 
     void ClearVanillaRingSlotConflict(
@@ -491,6 +524,16 @@ namespace {
         }
 
         const auto target = FindVirtualTargetForVanillaRingSlotEquip(a_actor, *actor, *ring, a_source);
+        const auto occupiedTargets = SourceModelFootprints::GetProjectedTargets(*ring, Core::kVanillaRingSlotTarget);
+        if (occupiedTargets.Empty()) {
+            return result;
+        }
+
+        const auto clearResult = UnequipRightWornRingForReplacement(*actor);
+        if (clearResult.blockReason != ActionBlockReason::kNone) {
+            return clearResult;
+        }
+        MergeActionResult(result, clearResult);
 
         if (!EquipVanillaRingSlot(*actor, *ring, sourceMatches.equipExtraList)) {
             return result;
@@ -546,7 +589,7 @@ namespace {
             return ClearVirtualAssignment(a_actor, a_target);
         }
 
-        if (occupiedTargets.Contains(Core::kVanillaRingSlotTarget) && Inventory::HasRightWornRing(a_actor)) {
+        if (ConflictsWithRightWornRing(a_actor, occupiedTargets)) {
             return ClearVirtualAssignment(a_actor, a_target);
         }
 

@@ -99,11 +99,20 @@ void RefreshItemRowsAfterEquipmentAction(
     const RE::FormID a_sourceFormID,
     const Equipment::ActionResult a_result
 ) {
-    if (!a_result.inventoryChanged && !a_result.sourceUnavailable && !a_result.selectionChanged) {
+    if (!a_result.inventoryChanged
+        && !a_result.sourceUnavailable
+        && !a_result.selectionChanged
+        && a_result.blockReason
+        == Equipment::ActionBlockReason::kNone) {
         return;
     }
 
     stl::add_ui_task([a_hostMenu, a_actor, a_sourceFormID, a_result] {
+        if (a_result.blockReason == Equipment::ActionBlockReason::kRightHandRingCannotBeUnequipped) {
+            RefreshCurrentItemMenuRows();
+            return;
+        }
+
         if (a_result.inventoryChanged) {
             if (a_hostMenu == ItemMenuHost::kInventory) {
                 static_cast<void>(InventoryMenu::TryRefreshOpenMenuRows());

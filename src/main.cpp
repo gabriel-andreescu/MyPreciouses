@@ -4,7 +4,6 @@
 #include "Papyrus.h"
 #include "Serialization.h"
 #include "Settings.h"
-#include "VirtualSlots.h"
 #include "Visuals/Attachments.h"
 
 #include <spdlog/sinks/basic_file_sink.h>
@@ -12,15 +11,6 @@
 
 namespace {
 constexpr auto kTrampolineSize = 1024;
-
-void QueueDelayedVirtualSlotRefresh() {
-    stl::add_thread_task(
-        [] {
-            VirtualSlots::RequestRefresh(Core::GetPlayerActorKey());
-        },
-        250ms
-    );
-}
 
 [[nodiscard]] spdlog::level::level_enum GetDefaultLogLevel() {
 #ifdef NDEBUG
@@ -39,9 +29,7 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
             Hooks::Install();
             EventListener::Register();
             break;
-        case SKSE::MessagingInterface::kNewGame:
-        case SKSE::MessagingInterface::kPostLoadGame: QueueDelayedVirtualSlotRefresh(); break;
-        default:                                      break;
+        default: break;
     }
 }
 

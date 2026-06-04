@@ -1,9 +1,11 @@
 #include "Visuals/Attachments.h"
 
 #include "Core/Target.h"
+#include "Inventory.h"
 #include "ModelPaths.h"
 #include "SourceModelFootprints.h"
 
+#include <RE/B/BipedAnim.h>
 #include <RE/M/MemoryManager.h>
 
 #include <algorithm>
@@ -17,6 +19,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace Visuals::Attachments {
@@ -106,6 +109,16 @@ namespace {
 
     [[nodiscard]] RE::Actor* AsActor(RE::TESObjectREFR* a_ref) {
         return a_ref ? skyrim_cast<RE::Actor*>(a_ref) : nullptr;
+    }
+
+    [[nodiscard]] std::optional<Core::Finger> FirstOccupiedFinger(const Core::FingerMask& a_sourceFingerMask) {
+        for (const auto finger : Core::kFingers) {
+            if (a_sourceFingerMask.Occupies(finger)) {
+                return finger;
+            }
+        }
+
+        return std::nullopt;
     }
 
     [[nodiscard]] RE::SEX GetActorSex(RE::TESObjectREFR* a_actor) {
@@ -402,6 +415,51 @@ namespace {
         return skinPatch.foundSkin ? skinPatch.retargetedSkin : nodeNamesPatched;
     }
 
+    [[nodiscard]] bool HasAddonOutsideRingSlot(const RE::TESObjectARMO& a_ring) {
+        return std::ranges::any_of(a_ring.armorAddons, [](const auto* a_addon) {
+            return a_addon && !a_addon->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing);
+        });
+    }
+
+    [[nodiscard]] bool NeedsVanillaRingCloneRetarget(
+        const RE::TESObjectARMO& a_ring,
+        const Core::FingerMask& a_sourceFingerMask
+    ) {
+        if (a_sourceFingerMask.Empty()
+            || SourceModelFootprints::GetProjectedTargets(a_sourceFingerMask, Core::kVanillaRingSlotTarget).Empty()) {
+            return false;
+        }
+
+        if (Inventory::HasClothingRingKeyword(std::addressof(a_ring)) && HasAddonOutsideRingSlot(a_ring)) {
+            return true;
+        }
+
+        const auto firstOccupiedFinger = FirstOccupiedFinger(a_sourceFingerMask);
+        return firstOccupiedFinger && *firstOccupiedFinger != Core::Finger::kIndex;
+    }
+
+    [[nodiscard]] RE::TESObjectARMO* GetPlayerRingForBipedObjectSlot(
+        RE::BipedAnim& a_biped,
+        const std::int32_t a_bipedObjectSlot
+    ) {
+        if (a_bipedObjectSlot < 0) {
+            return nullptr;
+        }
+
+        const auto bipedObjectSlot = static_cast<std::uint32_t>(a_bipedObjectSlot);
+        if (bipedObjectSlot >= std::to_underlying(RE::BIPED_OBJECTS::kEditorTotal)) {
+            return nullptr;
+        }
+
+        const auto actorRef = a_biped.actorRef.get();
+        auto* actor = AsActor(actorRef.get());
+        if (!actor || !actor->IsPlayerRef()) {
+            return nullptr;
+        }
+
+        return Inventory::AsRing(a_biped.objects[bipedObjectSlot].item);
+    }
+
     void ApplyTextureSwap(const ModelVariant& a_model, RE::NiAVObject& a_root) {
         if (!a_model.textureSwap || a_model.numAlternateTextures == 0) {
             return;
@@ -690,6 +748,34 @@ void EnableFirstPersonRingSlotForRaces() {
     }
 
     logger::info("Visuals: first-person ring race flags patched | races={}", patched);
+}
+
+bool RetargetVanillaRingClone(RE::BipedAnim* a_biped, RE::NiAVObject* a_object, const std::int32_t a_bipedObjectSlot) {
+    if (!a_biped || !a_object) {
+        return false;
+    }
+
+    auto* ring = GetPlayerRingForBipedObjectSlot(*a_biped, a_bipedObjectSlot);
+    if (!ring) {
+        return false;
+    }
+
+    const auto sourceFingerMask = SourceModelFootprints::GetSourceFingerMask(*ring);
+    if (!NeedsVanillaRingCloneRetarget(*ring, sourceFingerMask)) {
+        return false;
+    }
+
+    if (!PatchScenegraph(*a_biped, *a_object, Core::kVanillaRingSlotTarget, sourceFingerMask)) {
+        logger::warn(
+            "Visuals: worn ring retarget failed | source={:08X} | bipedSlot={} | target={} | reason=noEditableRingData",
+            ring->GetFormID(),
+            a_bipedObjectSlot,
+            Core::TargetName(Core::kVanillaRingSlotTarget)
+        );
+        return false;
+    }
+
+    return true;
 }
 
 void RequestRefresh(const Core::ActorKey a_actor, std::vector<AttachmentSource> a_sources) {
