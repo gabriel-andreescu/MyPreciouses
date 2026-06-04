@@ -1,5 +1,7 @@
 #include "Inventory.h"
 
+#include "SourceModelFootprints.h"
+
 #include <RE/E/ExtraCannotWear.h>
 
 #include <algorithm>
@@ -128,6 +130,19 @@ namespace {
         return std::nullopt;
     }
 
+    [[nodiscard]] bool HasRingArmorAddon(const RE::TESObjectARMO& a_armor) {
+        return std::ranges::any_of(a_armor.armorAddons, [](const RE::TESObjectARMA* a_addon) {
+            return a_addon && a_addon->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing);
+        });
+    }
+
+    [[nodiscard]] bool IsClothingRingWithRingEvidence(const RE::TESObjectARMO& a_armor) {
+        if (!a_armor.HasKeywordString(kClothingRingKeyword)) {
+            return false;
+        }
+
+        return HasRingArmorAddon(a_armor) || SourceModelFootprints::HasRingModelEvidence(a_armor);
+    }
 }
 
 bool CustomSourceMatch::HasMatch() const {
@@ -542,10 +557,15 @@ RE::TESObjectARMO* AsRing(RE::TESForm* a_form) {
 }
 
 bool IsRing(const RE::TESObjectARMO* a_armor) {
-    return a_armor
-           && (a_armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing)
-               || a_armor->HasKeywordString(kClothingRingKeyword))
-           && !a_armor->armorAddons.empty();
+    if (!a_armor || a_armor->armorAddons.empty()) {
+        return false;
+    }
+
+    if (a_armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing)) {
+        return true;
+    }
+
+    return IsClothingRingWithRingEvidence(*a_armor);
 }
 
 RingInventoryState GetRingInventoryState(RE::Actor& a_actor, const RE::TESObjectARMO& a_ring) {

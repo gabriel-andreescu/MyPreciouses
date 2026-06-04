@@ -54,11 +54,16 @@ namespace {
         bool hasMeaningfulNonFingerInfluence {false};
     };
 
+    struct SourceModelFootprint {
+        Core::FingerMask fingerMask;
+        bool hasRingEvidence {false};
+    };
+
     std::mutex g_cacheLock;
 
-    [[nodiscard]] std::unordered_map<RE::FormID, Core::FingerMask>& SourceFingerMasks() {
-        static auto* masks = new std::unordered_map<RE::FormID, Core::FingerMask>();
-        return *masks;
+    [[nodiscard]] std::unordered_map<RE::FormID, SourceModelFootprint>& SourceModelFootprints() {
+        static auto* footprints = new std::unordered_map<RE::FormID, SourceModelFootprint>();
+        return *footprints;
     }
 
     [[nodiscard]] bool IsAsciiDigit(const char a_value) {
@@ -406,26 +411,33 @@ namespace {
         });
     }
 
-    void CollectFingerMaskFromModel(RE::NiAVObject& a_root, Core::FingerMask& a_fingerMask) {
-        const auto dismemberScan = ScanDismemberPartitions(a_root, std::addressof(a_fingerMask));
+    void MergeFingerMask(Core::FingerMask& a_target, const Core::FingerMask& a_source) {
+        for (const auto finger : Core::kFingers) {
+            if (a_source.Occupies(finger)) {
+                a_target.Add(finger);
+            }
+        }
+    }
+
+    [[nodiscard]] SourceModelFootprint ScanModelFootprint(RE::NiAVObject& a_root) {
+        SourceModelFootprint footprint;
+        const auto dismemberScan = ScanDismemberPartitions(a_root, std::addressof(footprint.fingerMask));
         if (dismemberScan != DismemberModelScan::kNoDismemberPartitions) {
-            return;
+            footprint.hasRingEvidence = dismemberScan == DismemberModelScan::kRingPartitions;
+            return footprint;
         }
 
-        CollectFingerMaskFromNodeNames(a_root, a_fingerMask);
-        CollectFingerMaskFromAllSkins(a_root, a_fingerMask);
+        CollectFingerMaskFromNodeNames(a_root, footprint.fingerMask);
+        CollectFingerMaskFromAllSkins(a_root, footprint.fingerMask);
+        footprint.hasRingEvidence = !footprint.fingerMask.Empty();
+        return footprint;
     }
 
     [[nodiscard]] std::vector<std::string> GetSourceModelPaths(const RE::TESObjectARMO& a_ring) {
         std::vector<std::string> paths;
-        const auto customRingSlots = !a_ring.HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing);
 
         for (const auto* addon : a_ring.armorAddons) {
             if (!addon) {
-                continue;
-            }
-
-            if (!customRingSlots && !addon->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing)) {
                 continue;
             }
 
@@ -439,7 +451,7 @@ namespace {
         return paths;
     }
 
-    void MergeModelFingerMask(const std::string& a_path, Core::FingerMask& a_fingerMask) {
+    void MergeModelFootprint(const std::string& a_path, SourceModelFootprint& a_footprint) {
         RE::NiPointer<RE::NiNode> sourceRoot;
         const RE::BSModelDB::DBTraits::ArgsType args;
         const auto loadResult = RE::BSModelDB::Demand(a_path.c_str(), sourceRoot, args);
@@ -452,16 +464,18 @@ namespace {
             return;
         }
 
-        CollectFingerMaskFromModel(*sourceRoot, a_fingerMask);
+        const auto modelFootprint = ScanModelFootprint(*sourceRoot);
+        MergeFingerMask(a_footprint.fingerMask, modelFootprint.fingerMask);
+        a_footprint.hasRingEvidence = a_footprint.hasRingEvidence || modelFootprint.hasRingEvidence;
     }
 
-    [[nodiscard]] Core::FingerMask DetectSourceFingerMask(const RE::TESObjectARMO& a_ring) {
-        Core::FingerMask fingerMask;
+    [[nodiscard]] SourceModelFootprint DetectSourceModelFootprint(const RE::TESObjectARMO& a_ring) {
+        SourceModelFootprint footprint;
         for (const auto& path : GetSourceModelPaths(a_ring)) {
-            MergeModelFingerMask(path, fingerMask);
+            MergeModelFootprint(path, footprint);
         }
 
-        return fingerMask;
+        return footprint;
     }
 
     [[nodiscard]] std::uint8_t RetargetSegment(const FingerBone& a_source, const Core::Finger a_targetFinger) {
@@ -554,22 +568,32 @@ bool HasOnlyMeaningfulFingerWeights(const RE::NiSkinInstance& a_skin) {
 }
 
 bool IsRingModel(RE::NiAVObject& a_root) {
-    return ScanDismemberPartitions(a_root, nullptr) != DismemberModelScan::kNonRingPartitions;
+    return ScanModelFootprint(a_root).hasRingEvidence;
+}
+
+namespace {
+    [[nodiscard]] SourceModelFootprint GetSourceModelFootprint(const RE::TESObjectARMO& a_ring) {
+        const auto formID = a_ring.GetFormID();
+        {
+            std::scoped_lock lock(g_cacheLock);
+            const auto& sourceModelFootprints = SourceModelFootprints();
+            if (const auto cached = sourceModelFootprints.find(formID); cached != sourceModelFootprints.end()) {
+                return cached->second;
+            }
+        }
+
+        const auto footprint = DetectSourceModelFootprint(a_ring);
+        std::scoped_lock lock(g_cacheLock);
+        return SourceModelFootprints().try_emplace(formID, footprint).first->second;
+    }
+}
+
+bool HasRingModelEvidence(const RE::TESObjectARMO& a_ring) {
+    return GetSourceModelFootprint(a_ring).hasRingEvidence;
 }
 
 Core::FingerMask GetSourceFingerMask(const RE::TESObjectARMO& a_ring) {
-    const auto formID = a_ring.GetFormID();
-    {
-        std::scoped_lock lock(g_cacheLock);
-        const auto& sourceFingerMasks = SourceFingerMasks();
-        if (const auto cached = sourceFingerMasks.find(formID); cached != sourceFingerMasks.end()) {
-            return cached->second;
-        }
-    }
-
-    const auto fingerMask = DetectSourceFingerMask(a_ring);
-    std::scoped_lock lock(g_cacheLock);
-    return SourceFingerMasks().try_emplace(formID, fingerMask).first->second;
+    return GetSourceModelFootprint(a_ring).fingerMask;
 }
 
 Core::TargetMask GetProjectedTargets(const RE::TESObjectARMO& a_ring, const Core::Target a_target) {

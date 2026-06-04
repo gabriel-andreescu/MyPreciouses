@@ -8,6 +8,7 @@
 #include "UI/Scaleform.h"
 
 #include <algorithm>
+#include <array>
 #include <optional>
 #include <string_view>
 #include <vector>
@@ -21,6 +22,7 @@ namespace {
     constexpr auto kScaleformItemFormID = "formId";
     constexpr auto kScaleformItemText = "text";
     constexpr auto kScaleformEquipState = "equipState";
+    constexpr auto kScaleformIsEquipped = "isEquipped";
     constexpr auto kScaleformSelectionKind = "lhrsSelectionKind";
     constexpr auto kScaleformCustomEnchantmentID = "lhrsCustomEnchantmentID";
     constexpr auto kScaleformCustomCharge = "lhrsCustomCharge";
@@ -32,6 +34,10 @@ namespace {
     constexpr auto kScaleformCustomBlockReason = "lhrsCustomBlockReason";
     constexpr auto kScaleformVanillaRingSlotEquipped = "lhrsVanillaRingSlotEquipped";
     constexpr auto kScaleformRingBaseText = "lhrsBaseText";
+    constexpr auto kScaleformRingBaseHadEquipState = "lhrsBaseHadEquipState";
+    constexpr auto kScaleformRingBaseEquipState = "lhrsBaseEquipState";
+    constexpr auto kScaleformRingBaseHadIsEquipped = "lhrsBaseHadIsEquipped";
+    constexpr auto kScaleformRingBaseIsEquipped = "lhrsBaseIsEquipped";
     constexpr auto kRingRowLeftHandShortKey = "$LHRS_Inventory_LeftHandShort";
     constexpr auto kRingRowRightHandShortKey = "$LHRS_Inventory_RightHandShort";
 
@@ -303,10 +309,156 @@ namespace {
         a_object.SetMember(kScaleformCustomBlockReason, std::to_underlying(a_failure));
     }
 
+    void PreserveBaseEquipPresentation(RE::GFxValue& a_object) {
+        if (Scaleform::ReadBoolMember(a_object, kScaleformRingBaseHadEquipState)) {
+            return;
+        }
+
+        const auto equipState = Scaleform::ReadIntMember(a_object, kScaleformEquipState);
+        a_object.SetMember(kScaleformRingBaseHadEquipState, equipState.has_value());
+        if (equipState) {
+            a_object.SetMember(kScaleformRingBaseEquipState, *equipState);
+        } else {
+            static_cast<void>(a_object.DeleteMember(kScaleformRingBaseEquipState));
+        }
+
+        const auto isEquipped = Scaleform::ReadBoolMember(a_object, kScaleformIsEquipped);
+        a_object.SetMember(kScaleformRingBaseHadIsEquipped, isEquipped.has_value());
+        if (isEquipped) {
+            a_object.SetMember(kScaleformRingBaseIsEquipped, *isEquipped);
+        } else {
+            static_cast<void>(a_object.DeleteMember(kScaleformRingBaseIsEquipped));
+        }
+    }
+
     void StampEquipState(RE::GFxValue& a_object, const int a_equipState, const bool a_vanillaRingSlotEquipped) {
+        PreserveBaseEquipPresentation(a_object);
         a_object.SetMember(kScaleformVanillaRingSlotEquipped, a_vanillaRingSlotEquipped);
-        a_object.SetMember("equipState", a_equipState);
-        a_object.SetMember("isEquipped", a_equipState > kSkyUIEquipStateNone);
+        a_object.SetMember(kScaleformEquipState, a_equipState);
+        a_object.SetMember(kScaleformIsEquipped, a_equipState > kSkyUIEquipStateNone);
+    }
+
+    [[nodiscard]] bool RestoreBaseIntMember(
+        RE::GFxValue& a_object,
+        const char* a_member,
+        const char* a_hadBaseMember,
+        const char* a_baseMember
+    ) {
+        const auto hadBase = Scaleform::ReadBoolMember(a_object, a_hadBaseMember);
+        if (!hadBase) {
+            return false;
+        }
+
+        if (!*hadBase) {
+            return a_object.DeleteMember(a_member);
+        }
+
+        const auto baseValue = Scaleform::ReadIntMember(a_object, a_baseMember);
+        if (!baseValue) {
+            return a_object.DeleteMember(a_member);
+        }
+
+        const auto currentValue = Scaleform::ReadIntMember(a_object, a_member);
+        if (currentValue && *currentValue == *baseValue) {
+            return false;
+        }
+
+        return a_object.SetMember(a_member, *baseValue);
+    }
+
+    [[nodiscard]] bool RestoreBaseBoolMember(
+        RE::GFxValue& a_object,
+        const char* a_member,
+        const char* a_hadBaseMember,
+        const char* a_baseMember
+    ) {
+        const auto hadBase = Scaleform::ReadBoolMember(a_object, a_hadBaseMember);
+        if (!hadBase) {
+            return false;
+        }
+
+        if (!*hadBase) {
+            return a_object.DeleteMember(a_member);
+        }
+
+        const auto baseValue = Scaleform::ReadBoolMember(a_object, a_baseMember);
+        if (!baseValue) {
+            return a_object.DeleteMember(a_member);
+        }
+
+        const auto currentValue = Scaleform::ReadBoolMember(a_object, a_member);
+        if (currentValue && *currentValue == *baseValue) {
+            return false;
+        }
+
+        return a_object.SetMember(a_member, *baseValue);
+    }
+
+    [[nodiscard]] bool RestoreBaseEquipPresentation(RE::GFxValue& a_object) {
+        auto changed = RestoreBaseIntMember(
+            a_object,
+            kScaleformEquipState,
+            kScaleformRingBaseHadEquipState,
+            kScaleformRingBaseEquipState
+        );
+        changed = RestoreBaseBoolMember(
+                      a_object,
+                      kScaleformIsEquipped,
+                      kScaleformRingBaseHadIsEquipped,
+                      kScaleformRingBaseIsEquipped
+                  )
+                  || changed;
+        return changed;
+    }
+
+    [[nodiscard]] bool RestoreRingRowLabel(RE::GFxValue& a_object) {
+        const auto baseText = Scaleform::ReadStringMember(a_object, kScaleformRingBaseText);
+        if (!baseText) {
+            return false;
+        }
+
+        auto changed = false;
+        const auto currentText = Scaleform::ReadStringMember(a_object, kScaleformItemText);
+        if (!currentText || *currentText != *baseText) {
+            RE::GFxValue displayText;
+            displayText.SetString(baseText->c_str());
+            changed = a_object.SetMember(kScaleformItemText, displayText) || changed;
+        }
+
+        return a_object.DeleteMember(kScaleformRingBaseText) || changed;
+    }
+
+    [[nodiscard]] bool ClearRingSourceMembers(RE::GFxValue& a_object) {
+        constexpr std::array members {
+            kScaleformSelectionKind,
+            kScaleformCustomEnchantmentID,
+            kScaleformCustomCharge,
+            kScaleformCustomRemoveOnUnequip,
+            kScaleformCustomDisplayName,
+            kScaleformCustomHasUniqueID,
+            kScaleformCustomUniqueBaseID,
+            kScaleformCustomUniqueID,
+            kScaleformCustomBlockReason,
+            kScaleformVanillaRingSlotEquipped,
+            kScaleformRingBaseHadEquipState,
+            kScaleformRingBaseEquipState,
+            kScaleformRingBaseHadIsEquipped,
+            kScaleformRingBaseIsEquipped,
+        };
+
+        auto changed = false;
+        for (const auto* member : members) {
+            changed = a_object.DeleteMember(member) || changed;
+        }
+
+        return changed;
+    }
+
+    [[nodiscard]] RowStampResult ClearRingEntry(RE::GFxValue& a_object) {
+        const auto labelChanged = RestoreRingRowLabel(a_object);
+        const auto equipChanged = RestoreBaseEquipPresentation(a_object);
+        const auto sourceChanged = ClearRingSourceMembers(a_object);
+        return labelChanged || equipChanged || sourceChanged ? RowStampResult::kChanged : RowStampResult::kIgnored;
     }
 
     [[nodiscard]] std::optional<RingRowPresentation> ResolveRingRowPresentation(
@@ -373,7 +525,7 @@ RowStampResult StampRingEntry(
 ) {
     const auto presentation = ResolveRingRowPresentation(a_entry, a_actor);
     if (!presentation) {
-        return RowStampResult::kIgnored;
+        return ClearRingEntry(a_object);
     }
 
     return StampRingEntry(a_object, *presentation, a_actor, a_updateRowLabel);
@@ -382,12 +534,12 @@ RowStampResult StampRingEntry(
 RowStampResult RefreshStampedRingEntry(RE::GFxValue& a_entryObject, const Core::ActorKey a_actor) {
     const auto formID = Scaleform::ReadUInt32Member(a_entryObject, kScaleformItemFormID);
     if (!formID) {
-        return RowStampResult::kIgnored;
+        return ClearRingEntry(a_entryObject);
     }
 
     auto* ring = Inventory::AsRing(RE::TESForm::LookupByID<RE::TESObjectARMO>(*formID));
     if (!ring) {
-        return RowStampResult::kIgnored;
+        return ClearRingEntry(a_entryObject);
     }
 
     const auto previousEquipState = Scaleform::ReadIntMember(a_entryObject, kScaleformEquipState)
@@ -412,6 +564,10 @@ bool CanUseRingEquipHint(const RE::GFxValue& a_entryObject) {
     }
 
     const auto formID = Scaleform::ReadUInt32Member(a_entryObject, kScaleformItemFormID).value_or(0);
+    if (!Inventory::AsRing(RE::TESForm::LookupByID<RE::TESObjectARMO>(formID))) {
+        return false;
+    }
+
     const auto source = ReadStampedItemSource(a_entryObject, formID);
     if (!source.IsAssigned()) {
         return false;

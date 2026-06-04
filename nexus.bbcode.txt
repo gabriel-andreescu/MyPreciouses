@@ -57,7 +57,7 @@ The mod was designed to avoid conflicts. If you find any compatibility issues, p
 [list]
 [*]All vanilla, DLC, and CC rings are supported.[/*]
 [*][b]Frostmoon Pack rings[/b]: Each different Frostmoon ring can provide its werewolf bonus at the same time. Extra copies of the same Frostmoon ring can still be worn, but they are cosmetic only.[/*]
-[*][b]Mod-added rings[/b]: Supported if they are Armor records that use body slot 36 (Ring), or if they have the vanilla ClothingRing keyword. Rings with the ClothingRing keyword can use other body slots, as long as their model uses ring body part 36 or has no meaningful skin weights outside finger bones, such as NPC L Finger30 [LF30]. Tiny incidental weights on other bones are ignored.[/*]
+[*][b]Mod-added rings[/b]: Supported if they are Armor records that use body slot 36 (Ring). Armor records that use a different body slot must have the vanilla ClothingRing keyword, and at least one Armor Addon wearable model must be set up like a real worn ring: either using ring body part 36, or skinned mainly to finger bones such as NPC L Finger30 [LF30]. Tiny incidental weights on other bones are ignored.[/*]
 [*][b]Other ring-like items[/b]: Rings that use neither body slot 36 nor the ClothingRing keyword are ignored. That means they are left alone and work as intended by their mod author.[/*]
 [*][b]Enchantments[/b]: Supported, including player-made enchantments and custom user names.[/*]
 [*][b]Scripted rings[/b]: Supported when their scripts use OnEquipped and OnUnequipped. I checked the scripted rings in the vanilla game, DLC, and CC content, and they all use this pattern.[/*]

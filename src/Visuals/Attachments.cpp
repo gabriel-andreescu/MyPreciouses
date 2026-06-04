@@ -128,13 +128,8 @@ namespace {
     [[nodiscard]] std::optional<ArmorAddonVisual> CaptureArmorAddonVisual(
         const RE::TESObjectARMA& a_sourceAddon,
         const Core::Target a_target,
-        RE::TESRace& a_actorRace,
-        const bool a_customRingSlots
+        RE::TESRace& a_actorRace
     ) {
-        if (!a_customRingSlots && !a_sourceAddon.HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing)) {
-            return std::nullopt;
-        }
-
         if (!a_sourceAddon.IsValidRace(std::addressof(a_actorRace))) {
             return std::nullopt;
         }
@@ -163,13 +158,12 @@ namespace {
         RE::TESRace& a_actorRace
     ) {
         std::vector<ArmorAddonVisual> visuals;
-        const auto customRingSlots = !a_source.HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing);
         for (auto* addon : a_source.armorAddons) {
             if (!addon) {
                 continue;
             }
 
-            if (auto visual = CaptureArmorAddonVisual(*addon, a_target, a_actorRace, customRingSlots)) {
+            if (auto visual = CaptureArmorAddonVisual(*addon, a_target, a_actorRace)) {
                 visuals.push_back(std::move(*visual));
             }
         }
@@ -463,7 +457,7 @@ namespace {
         ApplyTextureSwap(*model, *node);
         if (!SourceModelFootprints::IsRingModel(*node)) {
             logger::debug(
-                "Visuals: source skipped | target={} | source={:08X} | addon={:08X} | path='{}' | reason=noRingPartition",
+                "Visuals: source skipped | target={} | source={:08X} | addon={:08X} | path='{}' | reason=noRingModelEvidence",
                 Core::TargetName(a_visual.target),
                 a_sourceFormID,
                 a_visual.sourceAddon ? a_visual.sourceAddon->GetFormID() : 0,

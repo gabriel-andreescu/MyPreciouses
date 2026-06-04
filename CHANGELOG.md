@@ -4,6 +4,8 @@
 
 - feat: support vanilla UI
 - feat: add MCM controls for choosing enabled virtual ring slots
+- fix: ignore non-ring ClothingRing items that have no wearable ring model
+- fix: clear custom inventory ring controls from non-ring rows
 - fix: refresh inventory ring rows after vanilla slot swaps
 
 ## 0.3.5 - 2026-05-30

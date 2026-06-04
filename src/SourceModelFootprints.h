@@ -21,6 +21,7 @@ namespace SourceModelFootprints {
 
 [[nodiscard]] bool HasOnlyMeaningfulFingerWeights(const RE::NiSkinInstance& a_skin);
 [[nodiscard]] bool IsRingModel(RE::NiAVObject& a_root);
+[[nodiscard]] bool HasRingModelEvidence(const RE::TESObjectARMO& a_ring);
 [[nodiscard]] Core::FingerMask GetSourceFingerMask(const RE::TESObjectARMO& a_ring);
 [[nodiscard]] Core::TargetMask GetProjectedTargets(const RE::TESObjectARMO& a_ring, Core::Target a_target);
 [[nodiscard]] Core::TargetMask GetProjectedTargets(const Core::FingerMask& a_sourceFingerMask, Core::Target a_target);
