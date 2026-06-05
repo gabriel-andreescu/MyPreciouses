@@ -16,9 +16,16 @@
 namespace Papyrus::ScriptEventMirror {
 namespace {
     constexpr auto kRecordPapyrusBindings = Serialization::MakeRecordType('P', 'Y', 'B', 'D');
-    constexpr std::uint32_t kPapyrusBindingsVersion = 1;
+    constexpr std::uint32_t kPapyrusBindingsRecordVersion1 = 1;
+    constexpr std::uint32_t kPapyrusBindingsRecordVersion2 = 2;
+    constexpr std::uint32_t kCurrentPapyrusBindingsRecordVersion = kPapyrusBindingsRecordVersion2;
     constexpr const char* kOnEquipped = "OnEquipped";
     constexpr const char* kOnUnequipped = "OnUnequipped";
+
+    enum class BindingState : std::uint32_t {
+        kActive = 0,
+        kSuspended,
+    };
 
     struct OwnedScriptObject {
         std::string scriptName;
@@ -30,18 +37,78 @@ namespace {
         RE::FormID effectSourceFormID {0};
         RE::VMHandle handle {0};
         bool loadedFromSave {false};
+        BindingState state {BindingState::kActive};
         std::vector<std::string> expectedScriptNames;
         std::vector<std::string> ownedScriptNames;
         std::vector<OwnedScriptObject> ownedScriptObjects;
     };
 
-    struct StoredBindingHeader {
+    struct StoredBindingHeaderV1 {
         RE::FormID sourceFormID {0};
         RE::FormID effectSourceFormID {0};
         RE::VMHandle handle {0};
         std::uint32_t expectedScriptCount {0};
         std::uint32_t ownedScriptCount {0};
     };
+
+    struct StoredBindingHeaderV2 {
+        RE::FormID sourceFormID {0};
+        RE::FormID effectSourceFormID {0};
+        RE::VMHandle handle {0};
+        std::uint32_t expectedScriptCount {0};
+        std::uint32_t ownedScriptCount {0};
+        std::uint32_t bindingState {std::to_underlying(BindingState::kActive)};
+    };
+
+    [[nodiscard]] BindingState ToBindingState(const std::uint32_t a_state) {
+        return a_state == std::to_underlying(BindingState::kSuspended) ? BindingState::kSuspended
+                                                                       : BindingState::kActive;
+    }
+
+    [[nodiscard]] bool WriteStoredBindingHeader(
+        SKSE::SerializationInterface& a_intfc,
+        const StoredBindingHeaderV2& a_header
+    ) {
+        return Serialization::WriteField(a_intfc, a_header.sourceFormID)
+               && Serialization::WriteField(a_intfc, a_header.effectSourceFormID)
+               && Serialization::WriteField(a_intfc, a_header.handle)
+               && Serialization::WriteField(a_intfc, a_header.expectedScriptCount)
+               && Serialization::WriteField(a_intfc, a_header.ownedScriptCount)
+               && Serialization::WriteField(a_intfc, a_header.bindingState);
+    }
+
+    [[nodiscard]] std::optional<StoredBindingHeaderV2> ReadStoredBindingHeader(
+        SKSE::SerializationInterface& a_intfc,
+        std::uint32_t& a_remaining,
+        const std::uint32_t a_version
+    ) {
+        if (a_version == kPapyrusBindingsRecordVersion1) {
+            StoredBindingHeaderV1 storedV1;
+            if (!Serialization::ReadField(a_intfc, a_remaining, storedV1)) {
+                return std::nullopt;
+            }
+
+            return StoredBindingHeaderV2 {
+                .sourceFormID = storedV1.sourceFormID,
+                .effectSourceFormID = storedV1.effectSourceFormID,
+                .handle = storedV1.handle,
+                .expectedScriptCount = storedV1.expectedScriptCount,
+                .ownedScriptCount = storedV1.ownedScriptCount,
+            };
+        }
+
+        StoredBindingHeaderV2 storedV2;
+        if (!Serialization::ReadField(a_intfc, a_remaining, storedV2.sourceFormID)
+            || !Serialization::ReadField(a_intfc, a_remaining, storedV2.effectSourceFormID)
+            || !Serialization::ReadField(a_intfc, a_remaining, storedV2.handle)
+            || !Serialization::ReadField(a_intfc, a_remaining, storedV2.expectedScriptCount)
+            || !Serialization::ReadField(a_intfc, a_remaining, storedV2.ownedScriptCount)
+            || !Serialization::ReadField(a_intfc, a_remaining, storedV2.bindingState)) {
+            return std::nullopt;
+        }
+
+        return storedV2;
+    }
 
     [[nodiscard]] bool CanReadStoredScriptNames(const std::uint32_t a_remaining, const std::uint32_t a_scriptCount) {
         return a_scriptCount <= a_remaining / sizeof(std::uint32_t);
@@ -181,7 +248,8 @@ namespace {
         const std::vector<RE::BSFixedString>& a_expectedScriptNames,
         const std::vector<RE::BSFixedString>& a_ownedScriptNames,
         const std::vector<OwnedScriptObject>& a_ownedScriptObjects,
-        const bool a_loadedFromSave
+        const bool a_loadedFromSave,
+        const BindingState a_state
     ) {
         auto& registry = GetRegistry();
         std::scoped_lock lock(registry.lock);
@@ -197,6 +265,7 @@ namespace {
                     .effectSourceFormID = a_effectSourceFormID,
                     .handle = a_handle,
                     .loadedFromSave = a_loadedFromSave,
+                    .state = a_state,
                     .expectedScriptNames = expectedScriptNames,
                     .ownedScriptNames = ownedScriptNames,
                 }
@@ -209,6 +278,7 @@ namespace {
         it->effectSourceFormID = a_effectSourceFormID;
         it->handle = a_handle;
         it->loadedFromSave = it->loadedFromSave || a_loadedFromSave;
+        it->state = a_state;
         if (!expectedScriptNames.empty()) {
             it->expectedScriptNames = expectedScriptNames;
         }
@@ -223,7 +293,8 @@ namespace {
     [[nodiscard]] std::optional<BindingRecord> FindBindingRecord(
         const RE::FormID a_sourceFormID,
         const RE::FormID a_effectSourceFormID,
-        const bool a_requireLoadedFromSave
+        const bool a_requireLoadedFromSave,
+        const std::optional<BindingState> a_requiredState = std::nullopt
     ) {
         auto& registry = GetRegistry();
         std::scoped_lock lock(registry.lock);
@@ -233,7 +304,10 @@ namespace {
         }
 
         const auto bindingIt = std::ranges::find_if(effectSourceIt->second, [&](const auto& a_binding) {
-            return a_binding.sourceFormID == a_sourceFormID && (!a_requireLoadedFromSave || a_binding.loadedFromSave);
+            return a_binding.sourceFormID
+                   == a_sourceFormID
+                   && (!a_requireLoadedFromSave || a_binding.loadedFromSave)
+                   && (!a_requiredState || a_binding.state == *a_requiredState);
         });
         if (bindingIt == effectSourceIt->second.end()) {
             return std::nullopt;
@@ -242,8 +316,9 @@ namespace {
         return *bindingIt;
     }
 
-    void MarkBindingAdopted(
+    void SetBindingRuntimeState(
         const BindingHandle& a_bindingHandle,
+        const BindingState a_state,
         const std::vector<OwnedScriptObject>& a_ownedScriptObjects
     ) {
         auto& registry = GetRegistry();
@@ -260,6 +335,7 @@ namespace {
 
         bindingIt->handle = a_bindingHandle.handle;
         bindingIt->loadedFromSave = false;
+        bindingIt->state = a_state;
         MergeOwnedScriptObjects(*bindingIt, a_ownedScriptObjects);
     }
 
@@ -510,7 +586,8 @@ namespace {
                 recordScriptNames,
                 ownedScriptNames,
                 ownedScriptObjects,
-                false
+                false,
+                BindingState::kActive
             );
         }
 
@@ -567,9 +644,17 @@ namespace {
         }
     }
 
-    [[nodiscard]] bool AdoptRestorableBinding(const RE::TESForm& a_source, const RE::FormID a_effectSourceFormID) {
-        auto binding = FindBindingRecord(a_source.GetFormID(), a_effectSourceFormID, true);
+    [[nodiscard]] bool ResumeStoredBinding(
+        RE::Actor& a_actor,
+        const RE::TESForm& a_source,
+        const RE::FormID a_effectSourceFormID
+    ) {
+        auto binding = FindBindingRecord(a_source.GetFormID(), a_effectSourceFormID, false);
         if (!binding) {
+            return false;
+        }
+
+        if (!binding->loadedFromSave && binding->state != BindingState::kSuspended) {
             return false;
         }
 
@@ -583,21 +668,27 @@ namespace {
             return false;
         }
 
-        MarkBindingAdopted(
+        const auto wasSuspended = binding->state == BindingState::kSuspended;
+        SetBindingRuntimeState(
             BindingHandle {
                 .sourceFormID = a_source.GetFormID(),
                 .effectSourceFormID = a_effectSourceFormID,
                 .handle = binding->handle,
             },
+            BindingState::kActive,
             binding->ownedScriptObjects
         );
+
+        if (wasSuspended) {
+            static_cast<void>(DispatchOwnedEventScripts(*vm, *binding, a_actor, RE::BSFixedString {kOnEquipped}));
+        }
         return true;
     }
 }
 
 bool DispatchEquipped(RE::Actor& a_actor, const RE::TESObjectARMO& a_source, RE::TESObjectARMO& a_effectSource) {
     const auto effectSourceFormID = a_effectSource.GetFormID();
-    if (AdoptRestorableBinding(a_source, effectSourceFormID)) {
+    if (ResumeStoredBinding(a_actor, a_source, effectSourceFormID)) {
         return true;
     }
 
@@ -626,8 +717,33 @@ void RemoveEffectSourceBindingsForUnequip(const RE::FormID a_effectSourceFormID,
     EraseBindingsForEffectSource(a_effectSourceFormID);
 }
 
-bool HasRestorableBinding(const RE::FormID a_sourceFormID, const RE::FormID a_effectSourceFormID) {
-    return FindBindingRecord(a_sourceFormID, a_effectSourceFormID, true).has_value();
+void SuspendEffectSourceBindingsForUnequip(const RE::FormID a_effectSourceFormID, RE::Actor& a_unequippedActor) {
+    auto bindings = CopyBindingsForEffectSource(a_effectSourceFormID);
+    auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+    if (!vm) {
+        EraseBindingsForEffectSource(a_effectSourceFormID);
+        return;
+    }
+
+    for (auto& binding : bindings) {
+        static_cast<void>(ResolveExpectedScriptObjects(*vm, binding, binding.handle));
+        static_cast<void>(
+            DispatchOwnedEventScripts(*vm, binding, a_unequippedActor, RE::BSFixedString {kOnUnequipped})
+        );
+        SetBindingRuntimeState(
+            BindingHandle {
+                .sourceFormID = binding.sourceFormID,
+                .effectSourceFormID = binding.effectSourceFormID,
+                .handle = binding.handle,
+            },
+            BindingState::kSuspended,
+            binding.ownedScriptObjects
+        );
+    }
+}
+
+bool HasLoadedActiveBinding(const RE::FormID a_sourceFormID, const RE::FormID a_effectSourceFormID) {
+    return FindBindingRecord(a_sourceFormID, a_effectSourceFormID, true, BindingState::kActive).has_value();
 }
 
 void SaveBindings(SKSE::SerializationInterface& a_intfc, const std::vector<BindingRetentionKey>& a_retainedBindings) {
@@ -658,7 +774,7 @@ void SaveBindings(SKSE::SerializationInterface& a_intfc, const std::vector<Bindi
         return;
     }
 
-    if (!a_intfc.OpenRecord(kRecordPapyrusBindings, kPapyrusBindingsVersion)) {
+    if (!a_intfc.OpenRecord(kRecordPapyrusBindings, kCurrentPapyrusBindingsRecordVersion)) {
         logger::error("Papyrus: script event mirror save failed | reason=openRecord");
         return;
     }
@@ -670,15 +786,16 @@ void SaveBindings(SKSE::SerializationInterface& a_intfc, const std::vector<Bindi
     }
 
     for (const auto& binding : bindings) {
-        const StoredBindingHeader header {
+        const StoredBindingHeaderV2 header {
             .sourceFormID = binding.sourceFormID,
             .effectSourceFormID = binding.effectSourceFormID,
             .handle = binding.handle,
             .expectedScriptCount = static_cast<std::uint32_t>(binding.expectedScriptNames.size()),
             .ownedScriptCount = static_cast<std::uint32_t>(binding.ownedScriptNames.size()),
+            .bindingState = std::to_underlying(binding.state),
         };
 
-        if (!Serialization::WriteField(a_intfc, header)) {
+        if (!WriteStoredBindingHeader(a_intfc, header)) {
             logger::error(
                 "Papyrus: script event mirror save failed | source={:08X} | effectSource={:08X} | handle={:016X} | reason=writeHeader",
                 binding.sourceFormID,
@@ -727,7 +844,11 @@ bool TryLoadBindingRecord(const Serialization::RecordInfo a_recordInfo, SKSE::Se
         remaining = 0;
     };
 
-    if (a_recordInfo.version != kPapyrusBindingsVersion) {
+    const auto supportedVersion = a_recordInfo.version
+                                  == kPapyrusBindingsRecordVersion1
+                                  || a_recordInfo.version
+                                  == kPapyrusBindingsRecordVersion2;
+    if (!supportedVersion) {
         logger::warn(
             "Papyrus: script event mirror load skipped | version={} | reason=unsupportedVersion",
             a_recordInfo.version
@@ -744,8 +865,8 @@ bool TryLoadBindingRecord(const Serialization::RecordInfo a_recordInfo, SKSE::Se
     }
 
     for (std::uint32_t index = 0; index < bindingCount; ++index) {
-        StoredBindingHeader stored;
-        if (!Serialization::ReadField(a_intfc, remaining, stored)) {
+        auto storedV2 = ReadStoredBindingHeader(a_intfc, remaining, a_recordInfo.version);
+        if (!storedV2) {
             logger::error("Papyrus: script event mirror load failed | index={} | reason=readHeader", index);
             drainRemaining();
             return true;
@@ -755,7 +876,7 @@ bool TryLoadBindingRecord(const Serialization::RecordInfo a_recordInfo, SKSE::Se
         if (!ReadStoredScriptNames(
                 a_intfc,
                 remaining,
-                stored.expectedScriptCount,
+                storedV2->expectedScriptCount,
                 index,
                 "expectedScriptCountOverflow",
                 "readExpectedScript",
@@ -769,7 +890,7 @@ bool TryLoadBindingRecord(const Serialization::RecordInfo a_recordInfo, SKSE::Se
         if (!ReadStoredScriptNames(
                 a_intfc,
                 remaining,
-                stored.ownedScriptCount,
+                storedV2->ownedScriptCount,
                 index,
                 "ownedScriptCountOverflow",
                 "readOwnedScript",
@@ -782,24 +903,24 @@ bool TryLoadBindingRecord(const Serialization::RecordInfo a_recordInfo, SKSE::Se
         RE::FormID resolvedSourceFormID = 0;
         RE::FormID resolvedEffectSourceFormID = 0;
         RE::VMHandle resolvedHandle = 0;
-        const auto sourceResolved = stored.sourceFormID
+        const auto sourceResolved = storedV2->sourceFormID
                                     != 0
-                                    && a_intfc.ResolveFormID(stored.sourceFormID, resolvedSourceFormID);
-        const auto effectSourceResolved = stored.effectSourceFormID
+                                    && a_intfc.ResolveFormID(storedV2->sourceFormID, resolvedSourceFormID);
+        const auto effectSourceResolved = storedV2->effectSourceFormID
                                           != 0
                                           && a_intfc.ResolveFormID(
-                                              stored.effectSourceFormID,
+                                              storedV2->effectSourceFormID,
                                               resolvedEffectSourceFormID
                                           );
-        const auto handleResolved = stored.handle != 0 && a_intfc.ResolveHandle(stored.handle, resolvedHandle);
+        const auto handleResolved = storedV2->handle != 0 && a_intfc.ResolveHandle(storedV2->handle, resolvedHandle);
 
         if (!sourceResolved || !effectSourceResolved || !handleResolved) {
             logger::warn(
                 "Papyrus: script event mirror entry skipped | index={} | source={:08X} | effectSource={:08X} | handle={:016X} | sourceResolved={} | effectSourceResolved={} | handleResolved={} | reason=resolveFailed",
                 index,
-                stored.sourceFormID,
-                stored.effectSourceFormID,
-                stored.handle,
+                storedV2->sourceFormID,
+                storedV2->effectSourceFormID,
+                storedV2->handle,
                 sourceResolved,
                 effectSourceResolved,
                 handleResolved
@@ -814,7 +935,8 @@ bool TryLoadBindingRecord(const Serialization::RecordInfo a_recordInfo, SKSE::Se
             expectedScriptNames,
             ownedScriptNames,
             {},
-            true
+            true,
+            ToBindingState(storedV2->bindingState)
         );
     }
 

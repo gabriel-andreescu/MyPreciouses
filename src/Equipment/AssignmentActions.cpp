@@ -63,11 +63,15 @@ namespace {
         std::optional<Core::Target> a_selectedTarget
     );
 
-    [[nodiscard]] bool ClearVirtualAssignment(RE::Actor& a_actor, const Core::Target a_target) {
+    [[nodiscard]] bool ClearVirtualAssignment(
+        RE::Actor& a_actor,
+        const Core::Target a_target,
+        const VirtualSlots::ScriptBindingClearMode a_scriptBindings = VirtualSlots::ScriptBindingClearMode::kRelease
+    ) {
         const auto actorKey = Core::MakeActorKey(a_actor);
         const auto hadAssignment = AssignmentStore::Get(actorKey, a_target).IsAssigned();
         AssignmentStore::Clear(actorKey, a_target);
-        VirtualSlots::ClearTarget(actorKey, a_target);
+        VirtualSlots::ClearTarget(actorKey, a_target, Audio::EquipSounds::Cue::kNone, a_scriptBindings);
         return hadAssignment;
     }
 
@@ -1033,10 +1037,10 @@ ActionResult ClearDisabledVirtualSlotAssignments(const RefreshMode a_refreshMode
     return result;
 }
 
-ActionResult ClearVirtualAssignments(RE::Actor& a_actor) {
+ActionResult ClearVirtualAssignments(RE::Actor& a_actor, const VirtualSlots::ScriptBindingClearMode a_scriptBindings) {
     ActionResult result;
     for (const auto target : Core::kVirtualTargets) {
-        result.selectionChanged = ClearVirtualAssignment(a_actor, target) || result.selectionChanged;
+        result.selectionChanged = ClearVirtualAssignment(a_actor, target, a_scriptBindings) || result.selectionChanged;
     }
     return result;
 }

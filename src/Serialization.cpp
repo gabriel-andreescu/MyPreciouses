@@ -3,6 +3,7 @@
 #include "Compatibility/Vanilla.h"
 #include "Equipment/AssignmentActions.h"
 #include "Equipment/AssignmentStore.h"
+#include "Equipment/RaceSwitchRestore.h"
 #include "Papyrus/ScriptEventMirror.h"
 #include "VirtualSlots.h"
 
@@ -57,8 +58,10 @@ std::optional<std::string> ReadString(SKSE::SerializationInterface& a_intfc, std
 namespace {
     constexpr auto kSerializationID = MakeRecordType('L', 'H', 'R', 'S');
     constexpr auto kRecordAssignments = MakeRecordType('S', 'T', 'A', 'T');
+    constexpr auto kRecordRaceSwitchRestores = MakeRecordType('R', 'S', 'R', 'T');
     constexpr std::uint32_t kLegacyPlayerAssignmentRecordVersion = 4;
     constexpr std::uint32_t kAssignmentRecordVersion = 5;
+    constexpr std::uint32_t kRaceSwitchRestoreRecordVersion = 1;
     constexpr RE::FormID kPlayerFormID = 0x14;
 
     struct SerializedCustomEnchantmentHeader {
@@ -138,6 +141,26 @@ namespace {
         for (const auto& actorSnapshot : a_actorSnapshots) {
             if (!WriteField(a_intfc, actorSnapshot.actor.referenceFormID)
                 || !WriteSnapshot(a_intfc, actorSnapshot.assignments)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    [[nodiscard]] bool WriteRaceSwitchRestores(
+        SKSE::SerializationInterface& a_intfc,
+        const std::vector<Equipment::RaceSwitchRestore::PendingRestore>& a_restores
+    ) {
+        const auto restoreCount = static_cast<std::uint32_t>(a_restores.size());
+        if (!WriteField(a_intfc, restoreCount)) {
+            return false;
+        }
+
+        for (const auto& restore : a_restores) {
+            if (!WriteField(a_intfc, restore.actor.referenceFormID)
+                || !WriteField(a_intfc, restore.raceFormID)
+                || !WriteSnapshot(a_intfc, restore.assignments)) {
                 return false;
             }
         }
@@ -313,6 +336,52 @@ namespace {
         return snapshots;
     }
 
+    [[nodiscard]] std::optional<std::vector<Equipment::RaceSwitchRestore::PendingRestore>> ReadRaceSwitchRestores(
+        SKSE::SerializationInterface& a_intfc,
+        const std::uint32_t a_length
+    ) {
+        auto remaining = a_length;
+        std::uint32_t restoreCount = 0;
+        if (!ReadField(a_intfc, remaining, restoreCount)) {
+            DrainRecordData(a_intfc, remaining);
+            return std::nullopt;
+        }
+
+        std::vector<Equipment::RaceSwitchRestore::PendingRestore> restores;
+        restores.reserve(restoreCount);
+        for (std::uint32_t index = 0; index < restoreCount; ++index) {
+            RE::FormID actorFormID = 0;
+            RE::FormID raceFormID = 0;
+            if (!ReadField(a_intfc, remaining, actorFormID) || !ReadField(a_intfc, remaining, raceFormID)) {
+                DrainRecordData(a_intfc, remaining);
+                return std::nullopt;
+            }
+
+            auto snapshot = ReadSnapshot(a_intfc, remaining);
+            if (!snapshot) {
+                DrainRecordData(a_intfc, remaining);
+                return std::nullopt;
+            }
+
+            restores.push_back(
+                Equipment::RaceSwitchRestore::PendingRestore {
+                    .actor = Core::ActorKey {
+                        .referenceFormID = actorFormID,
+                    },
+                    .raceFormID = raceFormID,
+                    .assignments = std::move(*snapshot),
+                }
+            );
+        }
+
+        if (remaining != 0) {
+            DrainRecordData(a_intfc, remaining);
+            return std::nullopt;
+        }
+
+        return restores;
+    }
+
     [[nodiscard]] std::optional<std::vector<Core::ActorAssignments>> ReadAssignments(
         SKSE::SerializationInterface& a_intfc,
         const std::uint32_t a_version,
@@ -464,6 +533,43 @@ namespace {
         return resolvedSnapshots;
     }
 
+    [[nodiscard]] std::vector<Equipment::RaceSwitchRestore::PendingRestore> ResolveLoadedRaceSwitchRestores(
+        const std::vector<Equipment::RaceSwitchRestore::PendingRestore>& a_savedRestores,
+        SKSE::SerializationInterface& a_intfc
+    ) {
+        std::vector<Equipment::RaceSwitchRestore::PendingRestore> resolvedRestores;
+        resolvedRestores.reserve(a_savedRestores.size());
+        for (const auto& savedRestore : a_savedRestores) {
+            const auto actorFormID = ResolveFormID(a_intfc, savedRestore.actor.referenceFormID, "race switch actor"sv);
+            const auto raceFormID = ResolveFormID(a_intfc, savedRestore.raceFormID, "race switch race"sv);
+            if (actorFormID == 0 || raceFormID == 0) {
+                continue;
+            }
+
+            const auto actor = Core::ActorKey {
+                .referenceFormID = actorFormID,
+            };
+            Core::TargetAssignments resolvedSnapshot;
+            for (const auto target : Core::kVirtualTargets) {
+                const auto& savedAssignment = savedRestore.assignments.byTarget[Core::ToIndex(target)];
+                auto resolvedAssignment = ResolveAssignment(actor, target, savedAssignment, a_intfc);
+                if (resolvedAssignment) {
+                    resolvedSnapshot.byTarget[Core::ToIndex(target)] = std::move(*resolvedAssignment);
+                }
+            }
+
+            resolvedRestores.push_back(
+                Equipment::RaceSwitchRestore::PendingRestore {
+                    .actor = actor,
+                    .raceFormID = raceFormID,
+                    .assignments = std::move(resolvedSnapshot),
+                }
+            );
+        }
+
+        return resolvedRestores;
+    }
+
     [[nodiscard]] bool SameBindingRetentionKey(
         const Papyrus::ScriptEventMirror::BindingRetentionKey& a_lhs,
         const Papyrus::ScriptEventMirror::BindingRetentionKey& a_rhs
@@ -487,25 +593,37 @@ namespace {
         }
     }
 
+    void AddAssignmentBindingRetentionKeys(
+        std::vector<Papyrus::ScriptEventMirror::BindingRetentionKey>& a_keys,
+        const Core::TargetAssignments& a_assignments
+    ) {
+        for (const auto target : Core::kVirtualTargets) {
+            const auto& assignment = a_assignments.byTarget[Core::ToIndex(target)];
+            if (!assignment.IsAssigned()) {
+                continue;
+            }
+
+            AddBindingRetentionKey(
+                a_keys,
+                Papyrus::ScriptEventMirror::BindingRetentionKey {
+                    .sourceFormID = assignment.source.sourceFormID,
+                    .effectSourceFormID = assignment.retainedEffectSourceFormID,
+                }
+            );
+        }
+    }
+
     [[nodiscard]] std::vector<Papyrus::ScriptEventMirror::BindingRetentionKey> GetSaveBindingRetentionKeys(
-        const std::vector<Core::ActorAssignments>& a_snapshots
+        const std::vector<Core::ActorAssignments>& a_snapshots,
+        const std::vector<Equipment::RaceSwitchRestore::PendingRestore>& a_raceSwitchRestores
     ) {
         auto keys = VirtualSlots::GetActiveBindingRetentionKeys();
         for (const auto& actorState : a_snapshots) {
-            for (const auto target : Core::kVirtualTargets) {
-                const auto& assignment = actorState.assignments.byTarget[Core::ToIndex(target)];
-                if (!assignment.IsAssigned()) {
-                    continue;
-                }
+            AddAssignmentBindingRetentionKeys(keys, actorState.assignments);
+        }
 
-                AddBindingRetentionKey(
-                    keys,
-                    Papyrus::ScriptEventMirror::BindingRetentionKey {
-                        .sourceFormID = assignment.source.sourceFormID,
-                        .effectSourceFormID = assignment.retainedEffectSourceFormID,
-                    }
-                );
-            }
+        for (const auto& restore : a_raceSwitchRestores) {
+            AddAssignmentBindingRetentionKeys(keys, restore.assignments);
         }
 
         return keys;
@@ -531,6 +649,7 @@ namespace {
         }
 
         const auto snapshots = Equipment::AssignmentStore::GetAllSnapshots();
+        const auto raceSwitchRestores = Equipment::RaceSwitchRestore::GetPendingRestores();
         if (!a_intfc->OpenRecord(kRecordAssignments, kAssignmentRecordVersion)) {
             logger::error("Serialization: save failed | record=STAT | reason=openRecord");
             return;
@@ -540,7 +659,15 @@ namespace {
             logger::error("Serialization: save failed | record=STAT | reason=writeRecord");
         }
 
-        Papyrus::ScriptEventMirror::SaveBindings(*a_intfc, GetSaveBindingRetentionKeys(snapshots));
+        if (!raceSwitchRestores.empty()) {
+            if (!a_intfc->OpenRecord(kRecordRaceSwitchRestores, kRaceSwitchRestoreRecordVersion)) {
+                logger::error("Serialization: save failed | record=RSRT | reason=openRecord");
+            } else if (!WriteRaceSwitchRestores(*a_intfc, raceSwitchRestores)) {
+                logger::error("Serialization: save failed | record=RSRT | reason=writeRecord");
+            }
+        }
+
+        Papyrus::ScriptEventMirror::SaveBindings(*a_intfc, GetSaveBindingRetentionKeys(snapshots, raceSwitchRestores));
         Compatibility::Vanilla::Save(*a_intfc);
     }
 
@@ -565,6 +692,29 @@ namespace {
             }
 
             if (Compatibility::Vanilla::TryLoadRecord(recordInfo, *a_intfc)) {
+                continue;
+            }
+
+            if (type == kRecordRaceSwitchRestores) {
+                if (version != kRaceSwitchRestoreRecordVersion) {
+                    logger::warn(
+                        "Serialization: record skipped | version={} | length={} | reason=unsupportedRaceSwitchRestoreVersion",
+                        version,
+                        length
+                    );
+                    DrainRecordData(*a_intfc, length);
+                    continue;
+                }
+
+                auto restores = ReadRaceSwitchRestores(*a_intfc, length);
+                if (!restores) {
+                    logger::error("Serialization: load failed | record=RSRT | reason=readRecord");
+                    continue;
+                }
+
+                Equipment::RaceSwitchRestore::ReplacePendingRestores(
+                    ResolveLoadedRaceSwitchRestores(*restores, *a_intfc)
+                );
                 continue;
             }
 
@@ -603,6 +753,7 @@ namespace {
 
     void RevertCallback([[maybe_unused]] SKSE::SerializationInterface* a_intfc) {
         Equipment::AssignmentStore::Revert();
+        Equipment::RaceSwitchRestore::Revert();
         Papyrus::ScriptEventMirror::RevertBindings();
         VirtualSlots::Revert();
         QueueAssignmentRefresh();

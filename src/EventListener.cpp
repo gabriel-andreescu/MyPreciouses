@@ -2,9 +2,12 @@
 
 #include "Compatibility/Vanilla.h"
 #include "Equipment/AssignmentActions.h"
+#include "Equipment/RaceSwitchRestore.h"
 #include "Inventory.h"
 #include "UI.h"
 #include "UI/FingerSelectMenu.h"
+
+#include <utility>
 
 namespace {
 void RefreshRingItemRowsAfterReconciliation(const Equipment::ActionResult a_result) {
@@ -36,7 +39,8 @@ void EventListener::Register() {
     eventSource->AddEventSink<RE::TESContainerChangedEvent>(listener);
     eventSource->AddEventSink<RE::TESEquipEvent>(listener);
     eventSource->AddEventSink<RE::TESSpellCastEvent>(listener);
-    eventSource->AddEventSink<RE::TESSwitchRaceCompleteEvent>(listener);
+    // Restore virtual rings before SkyrimVM forwards race-switch completion to Papyrus listeners.
+    eventSource->PrependEventSink<RE::TESSwitchRaceCompleteEvent>(listener);
     ui->AddEventSink<RE::MenuOpenCloseEvent>(listener);
 
     auto* input = RE::BSInputDeviceManager::GetSingleton();
@@ -113,7 +117,24 @@ EventListener::Control EventListener::ProcessEvent(
 
     auto* eventReference = a_event->subject.get();
     auto* actor = eventReference ? eventReference->As<RE::Actor>() : nullptr;
-    if (actor && actor->IsPlayerRef()) {
+    if (!actor) {
+        return Control::kContinue;
+    }
+
+    const auto actorKey = Core::MakeActorKey(*actor);
+    const auto restoredVirtualRings = Equipment::RaceSwitchRestore::HandleRaceSwitchComplete(*actor);
+    if (restoredVirtualRings) {
+        Equipment::CompletionCallback onComplete;
+        if (actor->IsPlayerRef()) {
+            // Vanilla should never need this since menus pause the game, but this is useful for mods
+            // that unpause menus, like Skyrim Souls RE.
+            UI::RefreshRingItemRows();
+            onComplete = RefreshRingItemRowsAfterReconciliation;
+        }
+        Equipment::QueueAssignmentReconciliation(actorKey, std::move(onComplete));
+    }
+
+    if (actor->IsPlayerRef()) {
         Compatibility::Vanilla::HandleRaceSwitchComplete(*actor);
     }
 

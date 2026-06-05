@@ -382,6 +382,21 @@ bool ContainsSource(const Core::ActorKey a_actor, const RE::FormID a_sourceFormI
     });
 }
 
+void ReplaceSnapshot(const Core::ActorKey a_actor, Core::TargetAssignments a_snapshot) {
+    if (!a_actor) {
+        return;
+    }
+
+    std::scoped_lock lock(g_lock);
+    auto& snapshots = Snapshots();
+    if (!HasAnyAssignment(a_snapshot)) {
+        snapshots.erase(a_actor);
+        return;
+    }
+
+    snapshots.insert_or_assign(a_actor, std::move(a_snapshot));
+}
+
 void ReplaceAll(std::vector<Core::ActorAssignments> a_snapshots) {
     std::unordered_map<Core::ActorKey, Core::TargetAssignments> nextSnapshots;
     nextSnapshots.reserve(a_snapshots.size());

@@ -2,6 +2,7 @@
 
 #include "Core/ActorKey.h"
 #include "Equipment/AssignmentActions.h"
+#include "Equipment/RaceSwitchRestore.h"
 #include "Settings.h"
 #include "UI.h"
 #include "VirtualSlots.h"
@@ -30,6 +31,10 @@ namespace {
 
     void OnMcmConfigClose([[maybe_unused]] RE::TESQuest* a_quest) {
         const auto reload = Settings::GetSingleton()->Reload();
+        if (reload.unequipAllClearsExtraRingsChanged && !reload.unequipAllClearsExtraRingsEnabled) {
+            Equipment::RaceSwitchRestore::ClearActiveSwitches();
+        }
+
         if (!reload.Changed()) {
             return;
         }

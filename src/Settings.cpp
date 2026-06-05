@@ -27,7 +27,7 @@ constexpr auto kFingerSelectKeyboardModifierSettingKey = "iFingerSelectModifierK
 constexpr auto kFingerSelectGamepadModifierSettingKey = "iFingerSelectModifierButton";
 constexpr auto kDebugLoggingSettingKey = "bEnableDebugLogging";
 constexpr auto kUnequipAllClearsExtraRingsSettingComment
-    = "; Also remove extra rings when UnequipAll runs on an actor, such as when transforming into werewolf or vampire lord form.\n; Default: 1";
+    = "; Clear extra rings when UnequipAll runs, then restore them after race transformations such as werewolf or vampire lord\n; Default: 1";
 constexpr auto kAlwaysChooseFingerSettingComment
     = "; Always show the finger selection menu whenever you use Equip or Left Equip on a ring without pressing a modifier key.\n; Default: 0";
 constexpr auto kFingerSelectKeyboardModifierSettingComment
@@ -438,7 +438,10 @@ Settings::ReloadResult Settings::Reload() {
                                     != loaded.fingerSelectModifierKey;
     const auto modifierButtonChanged = fingerSelectModifierButton_.exchange(loaded.fingerSelectModifierButton)
                                        != loaded.fingerSelectModifierButton;
-    (void)unequipAllClearsExtraRings_.exchange(loaded.unequipAllClearsExtraRings);
+    const auto unequipAllClearsExtraRingsChanged = unequipAllClearsExtraRings_.exchange(
+                                                       loaded.unequipAllClearsExtraRings
+                                                   )
+                                                   != loaded.unequipAllClearsExtraRings;
     const auto virtualSlotsChanged = enabledVirtualTargetBits_.exchange(loaded.enabledVirtualTargetBits)
                                      != loaded.enabledVirtualTargetBits;
 
@@ -461,6 +464,8 @@ Settings::ReloadResult Settings::Reload() {
         .extraRingModeChanged = extraRingModeChanged,
         .enchantmentStrengthChanged = enchantmentStrengthModeChanged || fixedStrengthChanged,
         .fingerSelectionChanged = alwaysChooseFingerChanged || modifierKeyChanged || modifierButtonChanged,
+        .unequipAllClearsExtraRingsChanged = unequipAllClearsExtraRingsChanged,
+        .unequipAllClearsExtraRingsEnabled = loaded.unequipAllClearsExtraRings,
         .virtualSlotsChanged = virtualSlotsChanged,
     };
 }

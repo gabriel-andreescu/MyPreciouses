@@ -1,6 +1,8 @@
 #include "Hooks.h"
 
 #include "Equipment/AssignmentActions.h"
+#include "Equipment/RaceSwitchRestore.h"
+#include "HookUtil.h"
 #include "Inventory.h"
 #include "Settings.h"
 #include "UI.h"
@@ -14,16 +16,98 @@
 #include <cstdint>
 #include <cstring>
 #include <optional>
+#include <span>
+#include <string>
 #include <string_view>
-
-#include <xbyak/xbyak.h>
 
 namespace Hooks {
 namespace {
-    constexpr std::size_t kExistingBranchPatchSize {5};
+    constexpr std::ptrdiff_t kActorSwitchRacePatchOffset {0x9};
+    constexpr std::size_t kActorSwitchRacePatchSizeAE {5};
+    constexpr std::size_t kActorSwitchRacePatchSizeSEVR {6};
     constexpr std::size_t kUnequipAllHelperPatchSize {6};
     constexpr RE::FormID kRightHandEquipSlotFormID {0x00013F42};
     constexpr RE::FormID kLeftHandEquipSlotFormID {0x00013F43};
+
+    constexpr std::array<std::byte, kActorSwitchRacePatchSizeAE> kActorSwitchRacePrologueAE {
+        std::byte {0x48},
+        std::byte {0x89},
+        std::byte {0x5C},
+        std::byte {0x24},
+        std::byte {0x18},
+    };
+
+    constexpr std::array<std::byte, kActorSwitchRacePatchSizeSEVR> kActorSwitchRacePrologueSEVR {
+        std::byte {0x41},
+        std::byte {0x56},
+        std::byte {0x48},
+        std::byte {0x83},
+        std::byte {0xEC},
+        std::byte {0x40},
+    };
+
+    [[nodiscard]] std::string FormatBytes(std::span<const std::byte> a_bytes) {
+        if (a_bytes.empty()) {
+            return {};
+        }
+
+        constexpr std::array<char, 16> kHexDigits {
+            '0',
+            '1',
+            '2',
+            '3',
+            '4',
+            '5',
+            '6',
+            '7',
+            '8',
+            '9',
+            'A',
+            'B',
+            'C',
+            'D',
+            'E',
+            'F',
+        };
+
+        std::string formatted;
+        formatted.reserve((a_bytes.size() * 3) - 1);
+        for (const auto byte : a_bytes) {
+            if (!formatted.empty()) {
+                formatted.push_back(' ');
+            }
+
+            const auto value = std::to_integer<unsigned>(byte);
+            formatted.push_back(kHexDigits[(value >> 4) & 0xF]);
+            formatted.push_back(kHexDigits[value & 0xF]);
+        }
+        return formatted;
+    }
+
+    template <class T>
+    [[nodiscard]] bool TryHookExistingBranch(const std::uintptr_t a_address, const std::string_view a_hookName) {
+        const auto existingBranch = HookUtil::DecodeBranch(a_address);
+        if (!existingBranch) {
+            return false;
+        }
+
+        const auto result = HookUtil::HookExistingBranch<T>(a_address, *existingBranch);
+        if (result == HookUtil::HookWriteResult::kSuccess) {
+            logger::warn(
+                "Hooks: {} hook chained | reason=existingBranch | branch={}",
+                a_hookName,
+                existingBranch->name
+            );
+        } else {
+            logger::error(
+                "Hooks: {} hook skipped | reason={} | branch={}",
+                a_hookName,
+                HookUtil::GetFailureReason(result),
+                existingBranch->name
+            );
+        }
+        return true;
+    }
 
     [[nodiscard]] std::optional<Core::Hand> GetEquipHand(const RE::BGSEquipSlot* a_slot) {
         if (!a_slot) {
@@ -44,11 +128,18 @@ namespace {
     }
 
     void ClearExtraRingsAfterUnequipAll(RE::Actor* a_actor) {
-        if (!a_actor || !Settings::GetSingleton()->ShouldUnequipAllClearExtraRings()) {
+        if (!a_actor) {
             return;
         }
 
-        const auto result = Equipment::ClearVirtualAssignments(*a_actor);
+        if (!Settings::GetSingleton()->ShouldUnequipAllClearExtraRings()) {
+            return;
+        }
+
+        const auto restorePending = Equipment::RaceSwitchRestore::MarkClearedDuringRaceSwitch(*a_actor);
+        const auto scriptBindings = restorePending ? VirtualSlots::ScriptBindingClearMode::kSuspend
+                                                   : VirtualSlots::ScriptBindingClearMode::kRelease;
+        const auto result = Equipment::ClearVirtualAssignments(*a_actor, scriptBindings);
         if (result.selectionChanged && a_actor->IsPlayerRef()) {
             UI::RefreshRingItemRows();
         }
@@ -131,6 +222,77 @@ namespace {
         logger::info("Hooks: GetEquipped condition hook installed");
     }
 
+    struct ActorSwitchRaceHook {
+        using SwitchRace_t = void(RE::Actor* a_actor, RE::TESRace* a_race, bool a_player);
+
+        static void thunk(RE::Actor* a_actor, RE::TESRace* a_race, bool a_player) {
+            const auto captureEnabled = Settings::GetSingleton()->ShouldUnequipAllClearExtraRings();
+            if (captureEnabled && a_actor && a_race) {
+                Equipment::RaceSwitchRestore::BeginRaceSwitch(*a_actor, *a_race);
+            }
+
+            func(a_actor, a_race, a_player);
+        }
+
+        static inline REL::Relocation<SwitchRace_t> func;
+    };
+
+    void InstallActorSwitchRaceHook() {
+        // Patch after the initial null-race branch. The trampoline copies fixed prologue bytes.
+        REL::Relocation<std::byte*> target {RELOCATION_ID(36901, 37925), kActorSwitchRacePatchOffset};
+        const auto address = target.address();
+        const auto* targetBytes = target.get();
+
+        if (TryHookExistingBranch<ActorSwitchRaceHook>(address, "Actor::SwitchRace"sv)) {
+            return;
+        }
+
+        if (REL::Module::IsSE() || REL::Module::IsVR()) {
+            if (std::memcmp(targetBytes, kActorSwitchRacePrologueSEVR.data(), kActorSwitchRacePrologueSEVR.size())
+                == 0) {
+                const auto result = HookUtil::HookFunctionPrologue<ActorSwitchRaceHook, kActorSwitchRacePatchSizeSEVR>(
+                    address,
+                    targetBytes
+                );
+                if (result == HookUtil::HookWriteResult::kSuccess) {
+                    logger::info("Hooks: Actor::SwitchRace hook installed");
+                } else {
+                    logger::error(
+                        "Hooks: Actor::SwitchRace hook skipped | reason={}",
+                        HookUtil::GetFailureReason(result)
+                    );
+                }
+                return;
+            }
+
+            logger::error(
+                "Hooks: Actor::SwitchRace hook skipped | reason=unexpectedPrologue | address={:X} | bytes={}",
+                address,
+                FormatBytes(std::span<const std::byte> {targetBytes, kActorSwitchRacePatchSizeSEVR})
+            );
+            return;
+        }
+
+        if (std::memcmp(targetBytes, kActorSwitchRacePrologueAE.data(), kActorSwitchRacePrologueAE.size()) == 0) {
+            const auto result = HookUtil::HookFunctionPrologue<ActorSwitchRaceHook, kActorSwitchRacePatchSizeAE>(
+                address,
+                targetBytes
+            );
+            if (result == HookUtil::HookWriteResult::kSuccess) {
+                logger::info("Hooks: Actor::SwitchRace hook installed");
+            } else {
+                logger::error("Hooks: Actor::SwitchRace hook skipped | reason={}", HookUtil::GetFailureReason(result));
+            }
+            return;
+        }
+
+        logger::error(
+            "Hooks: Actor::SwitchRace hook skipped | reason=unexpectedPrologue | address={:X} | bytes={}",
+            address,
+            FormatBytes(std::span<const std::byte> {targetBytes, kActorSwitchRacePatchSizeAE})
+        );
+    }
+
     struct UnequipAllHelperHook {
         using Helper_t = void(void* a_manager, RE::Actor* a_actor);
 
@@ -153,57 +315,31 @@ namespace {
         };
 
         // Shared engine UnequipAll helper reached by both the script/console command and Actor.UnequipAll.
-        // SE:  0x140637F20, Address Library ID 37943.
-        // AE:  0x1406C9DB0, Address Library ID 38899.
-        // GOG: 0x1406CBFE0, Address Library ID 38899 in the GOG runtime table.
-        // VR:  0x140640F30, Address Library ID 37943.
         REL::Relocation<std::byte*> target {RELOCATION_ID(37943, 38899)};
         const auto address = target.address();
         const auto* targetBytes = target.get();
-        auto& trampoline = SKSE::GetTrampoline();
 
-        if (REL::make_pattern<"E9">().match(address)) {
-            UnequipAllHelperHook::func = trampoline.write_branch<kExistingBranchPatchSize>(
-                address,
-                UnequipAllHelperHook::thunk
-            );
-            logger::warn("Hooks: UnequipAll helper hook chained | reason=existingBranch | branch=E9");
+        if (TryHookExistingBranch<UnequipAllHelperHook>(address, "UnequipAll helper"sv)) {
             return;
         }
 
         if (std::memcmp(targetBytes, kExpectedPrologue.data(), kExpectedPrologue.size()) == 0) {
-            struct Patch : Xbyak::CodeGenerator {
-                Patch(const std::uintptr_t a_originalFuncAddr, const std::byte* a_originalBytes) {
-                    for (std::size_t i = 0; i < kUnequipAllHelperPatchSize; ++i) {
-                        db(std::to_integer<std::uint8_t>(a_originalBytes[i]));
-                    }
-
-                    jmp(ptr[rip]);
-                    dq(a_originalFuncAddr + kUnequipAllHelperPatchSize);
-                }
-            };
-
-            Patch patch(address, targetBytes);
-            patch.ready();
-
-            trampoline.write_branch<kUnequipAllHelperPatchSize>(address, UnequipAllHelperHook::thunk);
-            auto* const alloc = trampoline.allocate(patch.getSize());
-            std::memcpy(alloc, patch.getCode(), patch.getSize());
-
-            UnequipAllHelperHook::func = reinterpret_cast<std::uintptr_t>(alloc);
-            logger::info("Hooks: UnequipAll helper hook installed");
+            const auto result = HookUtil::HookFunctionPrologue<UnequipAllHelperHook, kUnequipAllHelperPatchSize>(
+                address,
+                targetBytes
+            );
+            if (result == HookUtil::HookWriteResult::kSuccess) {
+                logger::info("Hooks: UnequipAll helper hook installed");
+            } else {
+                logger::error("Hooks: UnequipAll helper hook skipped | reason={}", HookUtil::GetFailureReason(result));
+            }
             return;
         }
 
         logger::error(
-            "Hooks: UnequipAll helper hook skipped | reason=unexpectedPrologue | address={:X} | bytes={:02X} {:02X} {:02X} {:02X} {:02X} {:02X}",
+            "Hooks: UnequipAll helper hook skipped | reason=unexpectedPrologue | address={:X} | bytes={}",
             address,
-            std::to_integer<unsigned>(targetBytes[0]),
-            std::to_integer<unsigned>(targetBytes[1]),
-            std::to_integer<unsigned>(targetBytes[2]),
-            std::to_integer<unsigned>(targetBytes[3]),
-            std::to_integer<unsigned>(targetBytes[4]),
-            std::to_integer<unsigned>(targetBytes[5])
+            FormatBytes(std::span<const std::byte> {targetBytes, kUnequipAllHelperPatchSize})
         );
     }
 
@@ -416,6 +552,7 @@ void Install() {
     InstallItemMenuHooks();
     InstallEquipObjectHook();
     InstallGetEquippedConditionHook();
+    InstallActorSwitchRaceHook();
     InstallUnequipAllHelperHook();
     InstallEnchantmentStrengthHook();
     InstallVanillaRingCloneHook();

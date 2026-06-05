@@ -2,6 +2,7 @@
 
 #include "Core/Assignment.h"
 #include "Core/Target.h"
+#include "VirtualSlots.h"
 
 #include <cstdint>
 #include <functional>
@@ -69,7 +70,10 @@ enum class RefreshMode : std::uint8_t {
     const RE::ObjectEquipParams& a_params,
     CompletionCallback a_onQueuedComplete = {}
 );
-[[nodiscard]] ActionResult ClearVirtualAssignments(RE::Actor& a_actor);
+[[nodiscard]] ActionResult ClearVirtualAssignments(
+    RE::Actor& a_actor,
+    VirtualSlots::ScriptBindingClearMode a_scriptBindings = VirtualSlots::ScriptBindingClearMode::kRelease
+);
 void QueueAssignmentReconciliation(Core::ActorKey a_actor, CompletionCallback a_onComplete = {});
 [[nodiscard]] ActionResult ClearDisabledVirtualSlotAssignments(
     RefreshMode a_refreshMode = RefreshMode::kAffectedActors

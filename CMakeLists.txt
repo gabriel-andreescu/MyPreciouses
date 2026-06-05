@@ -81,10 +81,13 @@ set(SOURCES
         src/Equipment/AssignmentStore.h
         src/Equipment/AssignmentActions.cpp
         src/Equipment/AssignmentActions.h
+        src/Equipment/RaceSwitchRestore.cpp
+        src/Equipment/RaceSwitchRestore.h
         src/Papyrus/ScriptEventMirror.cpp
         src/Papyrus/ScriptEventMirror.h
         src/EventListener.cpp
         src/EventListener.h
+        src/HookUtil.h
         src/Hooks.cpp
         src/Hooks.h
         src/Inventory.cpp

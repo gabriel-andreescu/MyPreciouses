@@ -39,6 +39,7 @@ void Clear(Core::ActorKey a_actor, Core::Target a_target);
 );
 [[nodiscard]] bool ContainsSource(Core::ActorKey a_actor, RE::FormID a_sourceFormID);
 
+void ReplaceSnapshot(Core::ActorKey a_actor, Core::TargetAssignments a_snapshot);
 void ReplaceAll(std::vector<Core::ActorAssignments> a_snapshots);
 void Revert();
 }

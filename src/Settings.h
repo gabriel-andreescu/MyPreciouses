@@ -40,10 +40,16 @@ public:
         bool extraRingModeChanged {false};
         bool enchantmentStrengthChanged {false};
         bool fingerSelectionChanged {false};
+        bool unequipAllClearsExtraRingsChanged {false};
+        bool unequipAllClearsExtraRingsEnabled {true};
         bool virtualSlotsChanged {false};
 
         [[nodiscard]] bool Changed() const {
-            return extraRingModeChanged || enchantmentStrengthChanged || fingerSelectionChanged || virtualSlotsChanged;
+            return extraRingModeChanged
+                   || enchantmentStrengthChanged
+                   || fingerSelectionChanged
+                   || unequipAllClearsExtraRingsChanged
+                   || virtualSlotsChanged;
         }
     };
 

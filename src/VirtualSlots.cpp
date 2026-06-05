@@ -65,6 +65,7 @@ namespace {
         RE::FormID sourceFormID {0};
         RE::FormID effectSourceFormID {0};
         Audio::EquipSounds::Cue sound {Audio::EquipSounds::Cue::kNone};
+        ScriptBindingClearMode scriptBindings {ScriptBindingClearMode::kRelease};
         bool dispatchUnequipped {false};
         bool active {false};
     };
@@ -305,7 +306,8 @@ namespace {
         RE::Actor* a_actor,
         TargetState& a_state,
         const bool a_dispatchUnequipped,
-        const Audio::EquipSounds::Cue a_sound = Audio::EquipSounds::Cue::kNone
+        const Audio::EquipSounds::Cue a_sound = Audio::EquipSounds::Cue::kNone,
+        const ScriptBindingClearMode a_scriptBindings = ScriptBindingClearMode::kRelease
     ) {
         if (!a_state.effectSource) {
             a_state = {};
@@ -318,6 +320,7 @@ namespace {
             .sourceFormID = a_state.sourceFormID,
             .effectSourceFormID = a_state.effectSource->GetFormID(),
             .sound = a_sound,
+            .scriptBindings = a_scriptBindings,
             .dispatchUnequipped = a_dispatchUnequipped,
             .active = a_state.active,
         };
@@ -348,6 +351,9 @@ namespace {
         if (existing->sound == Audio::EquipSounds::Cue::kNone) {
             existing->sound = a_clear.sound;
         }
+        if (a_clear.scriptBindings == ScriptBindingClearMode::kRelease) {
+            existing->scriptBindings = ScriptBindingClearMode::kRelease;
+        }
         existing->dispatchUnequipped = existing->dispatchUnequipped || a_clear.dispatchUnequipped;
         existing->active = existing->active || a_clear.active;
     }
@@ -362,10 +368,17 @@ namespace {
         }
 
         if (a_action.dispatchUnequipped && a_action.actor && a_action.active) {
-            Papyrus::ScriptEventMirror::RemoveEffectSourceBindingsForUnequip(
-                a_action.effectSourceFormID,
-                *a_action.actor
-            );
+            if (a_action.scriptBindings == ScriptBindingClearMode::kSuspend) {
+                Papyrus::ScriptEventMirror::SuspendEffectSourceBindingsForUnequip(
+                    a_action.effectSourceFormID,
+                    *a_action.actor
+                );
+            } else {
+                Papyrus::ScriptEventMirror::RemoveEffectSourceBindingsForUnequip(
+                    a_action.effectSourceFormID,
+                    *a_action.actor
+                );
+            }
         } else {
             Papyrus::ScriptEventMirror::RemoveEffectSourceBindings(a_action.effectSourceFormID);
         }
@@ -655,7 +668,7 @@ namespace {
                                               == ExtraRingMode::kFunctional
                                               && !state.active
                                               && restoredEffectSource
-                                              && Papyrus::ScriptEventMirror::HasRestorableBinding(
+                                              && Papyrus::ScriptEventMirror::HasLoadedActiveBinding(
                                                   ring->GetFormID(),
                                                   state.effectSource->GetFormID()
                                               );
@@ -840,7 +853,12 @@ void RequestVisualRefresh(const Core::ActorKey a_actor) {
     Visuals::Attachments::RequestRefresh(a_actor, SnapshotAttachmentSources(a_actor));
 }
 
-void ClearTarget(const Core::ActorKey a_actor, const Core::Target a_target, const Audio::EquipSounds::Cue a_sound) {
+void ClearTarget(
+    const Core::ActorKey a_actor,
+    const Core::Target a_target,
+    const Audio::EquipSounds::Cue a_sound,
+    const ScriptBindingClearMode a_scriptBindings
+) {
     if (!a_actor || !Core::IsVirtualTarget(a_target)) {
         return;
     }
@@ -855,7 +873,13 @@ void ClearTarget(const Core::ActorKey a_actor, const Core::Target a_target, cons
         }
 
         actorState->pendingSounds[Core::ToIndex(a_target)] = Audio::EquipSounds::Cue::kNone;
-        action = ExtractClearAction(actor, actorState->targets[Core::ToIndex(a_target)], true, a_sound);
+        action = ExtractClearAction(
+            actor,
+            actorState->targets[Core::ToIndex(a_target)],
+            true,
+            a_sound,
+            a_scriptBindings
+        );
     }
     RunClearAction(action);
     if (actor) {

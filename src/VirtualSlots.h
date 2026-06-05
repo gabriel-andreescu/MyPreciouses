@@ -5,10 +5,16 @@
 #include "Core/Target.h"
 #include "Papyrus/ScriptEventMirror.h"
 
+#include <cstdint>
 #include <optional>
 #include <vector>
 
 namespace VirtualSlots {
+enum class ScriptBindingClearMode : std::uint8_t {
+    kRelease = 0,
+    kSuspend,
+};
+
 struct RefreshOptions {
     std::optional<Core::Target> soundTarget;
     Audio::EquipSounds::Cue sound {Audio::EquipSounds::Cue::kNone};
@@ -19,7 +25,8 @@ void RequestVisualRefresh(Core::ActorKey a_actor);
 void ClearTarget(
     Core::ActorKey a_actor,
     Core::Target a_target,
-    Audio::EquipSounds::Cue a_sound = Audio::EquipSounds::Cue::kNone
+    Audio::EquipSounds::Cue a_sound = Audio::EquipSounds::Cue::kNone,
+    ScriptBindingClearMode a_scriptBindings = ScriptBindingClearMode::kRelease
 );
 void Revert();
 
