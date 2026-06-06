@@ -1,15 +1,20 @@
 #include "Hooks.h"
 
 #include "Equipment/AssignmentActions.h"
+#include "Equipment/AutoEquip.h"
 #include "Equipment/RaceSwitchRestore.h"
 #include "HookUtil.h"
 #include "Inventory.h"
 #include "Settings.h"
 #include "UI.h"
+#include "UI/ContainerMenu.h"
 #include "UI/InventoryMenu.h"
 #include "UI/ItemMenuActions.h"
 #include "VirtualSlots.h"
 #include "Visuals/Attachments.h"
+
+#include <RE/C/Character.h>
+#include <RE/C/ContainerMenu.h>
 
 #include <array>
 #include <cstddef>
@@ -475,6 +480,35 @@ namespace {
         logger::info("Hooks: InventoryMenu ProcessMessage hook installed");
     }
 
+    struct ContainerMenuProcessMessageHook {
+        static RE::UI_MESSAGE_RESULTS thunk(RE::ContainerMenu* a_menu, RE::UIMessage& a_message) {
+            const auto result = func(a_menu, a_message);
+
+            if (a_menu) {
+                switch (a_message.type.get()) {
+                    case RE::UI_MESSAGE_TYPE::kShow: UI::ContainerMenu::OnShown(*a_menu); break;
+                    case RE::UI_MESSAGE_TYPE::kInventoryUpdate:
+                        UI::ContainerMenu::OnInventoryUpdateProcessed(*a_menu);
+                        break;
+                    default: break;
+                }
+            }
+
+            return result;
+        }
+
+        static inline REL::Relocation<decltype(thunk)> func;
+    };
+
+    void InstallContainerMenuProcessMessageHook() {
+#ifndef STATIC_ANALYSIS
+        REL::Relocation<std::uintptr_t> vTable {RE::ContainerMenu::VTABLE[0]};
+        // ContainerMenu::ProcessMessage // 04
+        ContainerMenuProcessMessageHook::func = vTable.write_vfunc(0x4, ContainerMenuProcessMessageHook::thunk);
+#endif
+        logger::info("Hooks: ContainerMenu ProcessMessage hook installed");
+    }
+
     struct FavoritesUseQuickslotItemHook {
         static void thunk(
             RE::ActorEquipManager* a_equipManager,
@@ -505,6 +539,7 @@ namespace {
     void InstallItemMenuHooks() {
         InstallInventoryItemSelectHook();
         InstallInventoryMenuProcessMessageHook();
+        InstallContainerMenuProcessMessageHook();
         UI::RegisterItemMenuDataCallback();
 
         stl::write_thunk_call<FavoritesUseQuickslotItemHook>(
@@ -539,12 +574,27 @@ namespace {
         static inline REL::Relocation<decltype(thunk)> func;
     };
 
+    struct CharacterLoad3DHook {
+        static RE::NiAVObject* thunk(RE::Character* a_character, bool a_backgroundLoading) {
+            auto* result = func(a_character, a_backgroundLoading);
+            if (a_character) {
+                Equipment::AutoEquip::HandleActorLoad3D(*a_character);
+            }
+            return result;
+        }
+
+        static inline REL::Relocation<decltype(thunk)> func;
+    };
+
     void InstallLoad3DHook() {
 #ifndef STATIC_ANALYSIS
-        REL::Relocation<std::uintptr_t> vTable {RE::PlayerCharacter::VTABLE[0]};
-        PlayerLoad3DHook::func = vTable.write_vfunc(0x6A, PlayerLoad3DHook::thunk);
+        REL::Relocation<std::uintptr_t> playerVTable {RE::PlayerCharacter::VTABLE[0]};
+        PlayerLoad3DHook::func = playerVTable.write_vfunc(0x6A, PlayerLoad3DHook::thunk);
+
+        REL::Relocation<std::uintptr_t> characterVTable {RE::Character::VTABLE[0]};
+        CharacterLoad3DHook::func = characterVTable.write_vfunc(0x6A, CharacterLoad3DHook::thunk);
 #endif
-        logger::info("Hooks: PlayerCharacter Load3D hook installed");
+        logger::info("Hooks: Load3D hooks installed");
     }
 }
 

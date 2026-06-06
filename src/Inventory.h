@@ -27,6 +27,11 @@ struct EntryRingSource {
     EntryCustomFailure customFailure {EntryCustomFailure::kNone};
 };
 
+enum class SourceResolveMode : std::uint8_t {
+    kReadOnly,
+    kEnsureCustomUniqueID,
+};
+
 struct CustomSourceMatch {
     RE::ExtraDataList* firstExtraList {nullptr};
     RE::ExtraDataList* rightWornExtraList {nullptr};
@@ -92,7 +97,8 @@ struct RingInventoryState {
 [[nodiscard]] FormOnlySourceMatch FindFormOnlySourceMatches(RE::Actor& a_actor, const RE::TESObjectARMO& a_ring);
 [[nodiscard]] std::optional<EntryRingSource> ResolveEntryRingSource(
     RE::Actor& a_actor,
-    RE::InventoryEntryData& a_entry
+    RE::InventoryEntryData& a_entry,
+    SourceResolveMode a_mode = SourceResolveMode::kEnsureCustomUniqueID
 );
 [[nodiscard]] RE::TESObjectARMO* AsRing(RE::TESBoundObject* a_object);
 [[nodiscard]] RE::TESObjectARMO* AsRing(RE::TESForm* a_form);

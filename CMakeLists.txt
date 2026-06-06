@@ -79,6 +79,8 @@ set(SOURCES
         src/Core/Target.h
         src/Equipment/AssignmentStore.cpp
         src/Equipment/AssignmentStore.h
+        src/Equipment/AutoEquip.cpp
+        src/Equipment/AutoEquip.h
         src/Equipment/AssignmentActions.cpp
         src/Equipment/AssignmentActions.h
         src/Equipment/RaceSwitchRestore.cpp
@@ -112,6 +114,8 @@ set(SOURCES
         src/Settings.h
         src/UI.cpp
         src/UI.h
+        src/UI/ContainerMenu.cpp
+        src/UI/ContainerMenu.h
         src/UI/FavoritesMenu.cpp
         src/UI/FavoritesMenu.h
         src/UI/FingerSelectMenu.cpp

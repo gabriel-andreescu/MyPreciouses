@@ -2,10 +2,13 @@
 
 #include "Compatibility/Vanilla.h"
 #include "Equipment/AssignmentActions.h"
+#include "Equipment/AutoEquip.h"
 #include "Equipment/RaceSwitchRestore.h"
 #include "Inventory.h"
 #include "UI.h"
 #include "UI/FingerSelectMenu.h"
+
+#include <RE/C/ContainerMenu.h>
 
 #include <utility>
 
@@ -58,6 +61,7 @@ EventListener::Control EventListener::ProcessEvent(
     [[maybe_unused]] RE::BSTEventSource<RE::TESContainerChangedEvent>* a_eventSource
 ) {
     if (a_event) {
+        Equipment::AutoEquip::HandleContainerChanged(*a_event);
         Equipment::HandleContainerChangedForAssignments(
             Core::GetPlayerActorKey(),
             *a_event,
@@ -77,11 +81,16 @@ EventListener::Control EventListener::ProcessEvent(
 
     auto* eventReference = a_event->actor.get();
     auto* actor = eventReference ? eventReference->As<RE::Actor>() : nullptr;
-    if (!actor || !actor->IsPlayerRef()) {
+    if (!actor) {
         return Control::kContinue;
     }
 
     if (!Inventory::AsRing(RE::TESForm::LookupByID(a_event->baseObject))) {
+        return Control::kContinue;
+    }
+
+    if (!actor->IsPlayerRef()) {
+        Equipment::AutoEquip::HandleEquipEvent(*actor, a_event->baseObject);
         return Control::kContinue;
     }
 
@@ -150,6 +159,13 @@ EventListener::Control EventListener::ProcessEvent(
     }
 
     UI::HandleMenuOpenCloseEvent(*a_event);
+    if (a_event->menuName == RE::ContainerMenu::MENU_NAME.data()) {
+        if (a_event->opening) {
+            Equipment::AutoEquip::HandleContainerMenuOpened();
+        } else {
+            Equipment::AutoEquip::HandleContainerMenuClosed();
+        }
+    }
     return Control::kContinue;
 }
 

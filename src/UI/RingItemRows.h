@@ -21,6 +21,7 @@ enum class RowStampResult : std::uint8_t {
     Core::ActorKey a_actor,
     bool a_updateRowLabel
 );
+[[nodiscard]] RowStampResult ClearRingEntry(RE::GFxValue& a_object);
 [[nodiscard]] RowStampResult RefreshStampedRingEntry(RE::GFxValue& a_entryObject, Core::ActorKey a_actor);
 [[nodiscard]] bool CanUseRingEquipHint(const RE::GFxValue& a_entryObject);
 [[nodiscard]] bool CanShowFingerSelectHint(const RE::GFxValue& a_entryObject);

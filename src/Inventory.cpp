@@ -552,7 +552,11 @@ namespace {
     }
 }
 
-std::optional<EntryRingSource> ResolveEntryRingSource(RE::Actor& a_actor, RE::InventoryEntryData& a_entry) {
+std::optional<EntryRingSource> ResolveEntryRingSource(
+    RE::Actor& a_actor,
+    RE::InventoryEntryData& a_entry,
+    const SourceResolveMode a_mode
+) {
     auto* ring = AsRing(a_entry.GetObject());
     if (!ring || GetCount(a_actor, *ring) <= 0) {
         return std::nullopt;
@@ -578,8 +582,10 @@ std::optional<EntryRingSource> ResolveEntryRingSource(RE::Actor& a_actor, RE::In
         return source;
     }
 
-    const auto extraUniqueID = EnsureEntryCustomSelectionUniqueID(a_actor, *ring, customSelection);
-    if (!extraUniqueID) {
+    const auto extraUniqueID = a_mode == SourceResolveMode::kEnsureCustomUniqueID
+                                   ? EnsureEntryCustomSelectionUniqueID(a_actor, *ring, customSelection)
+                                   : customSelection.uniqueID;
+    if (a_mode == SourceResolveMode::kEnsureCustomUniqueID && !extraUniqueID) {
         source.source = {};
         return source;
     }

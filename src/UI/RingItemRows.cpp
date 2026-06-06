@@ -452,7 +452,7 @@ namespace {
         return changed;
     }
 
-    [[nodiscard]] RowStampResult ClearRingEntry(RE::GFxValue& a_object) {
+    [[nodiscard]] RowStampResult ClearRingEntryData(RE::GFxValue& a_object) {
         const auto labelChanged = RestoreRingRowLabel(a_object);
         const auto equipChanged = RestoreBaseEquipPresentation(a_object);
         const auto sourceChanged = ClearRingSourceMembers(a_object);
@@ -468,7 +468,7 @@ namespace {
             return std::nullopt;
         }
 
-        auto source = Inventory::ResolveEntryRingSource(*actor, a_entry);
+        auto source = Inventory::ResolveEntryRingSource(*actor, a_entry, Inventory::SourceResolveMode::kReadOnly);
         if (!source) {
             return std::nullopt;
         }
@@ -523,21 +523,25 @@ RowStampResult StampRingEntry(
 ) {
     const auto presentation = ResolveRingRowPresentation(a_entry, a_actor);
     if (!presentation) {
-        return ClearRingEntry(a_object);
+        return ClearRingEntryData(a_object);
     }
 
     return StampRingEntry(a_object, *presentation, a_actor, a_updateRowLabel);
 }
 
+RowStampResult ClearRingEntry(RE::GFxValue& a_object) {
+    return ClearRingEntryData(a_object);
+}
+
 RowStampResult RefreshStampedRingEntry(RE::GFxValue& a_entryObject, const Core::ActorKey a_actor) {
     const auto formID = Scaleform::ReadUInt32Member(a_entryObject, kScaleformItemFormID);
     if (!formID) {
-        return ClearRingEntry(a_entryObject);
+        return ClearRingEntryData(a_entryObject);
     }
 
     auto* ring = Inventory::AsRing(RE::TESForm::LookupByID<RE::TESObjectARMO>(*formID));
     if (!ring) {
-        return ClearRingEntry(a_entryObject);
+        return ClearRingEntryData(a_entryObject);
     }
 
     const auto previousEquipState = Scaleform::ReadIntMember(a_entryObject, kScaleformEquipState)

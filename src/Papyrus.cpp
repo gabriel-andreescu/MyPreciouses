@@ -2,6 +2,7 @@
 
 #include "Core/ActorKey.h"
 #include "Equipment/AssignmentActions.h"
+#include "Equipment/AutoEquip.h"
 #include "Equipment/RaceSwitchRestore.h"
 #include "Settings.h"
 #include "UI.h"
@@ -21,6 +22,7 @@ namespace {
 
     void RefreshRingsAfterSettingsChanged() {
         VirtualSlots::RequestRefresh(Core::GetPlayerActorKey());
+        Equipment::AutoEquip::QueueRefreshStoredActors(Equipment::AutoEquip::RefreshReason::kSettingsChanged);
         UI::RefreshRingItemRows();
     }
 

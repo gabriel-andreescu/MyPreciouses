@@ -2,6 +2,7 @@
 
 #include "Equipment/AssignmentActions.h"
 #include "Inventory.h"
+#include "UI/ContainerMenu.h"
 #include "UI/FavoritesMenu.h"
 #include "UI/FingerSelectMenu.h"
 #include "UI/InventoryMenu.h"
@@ -24,21 +25,44 @@ namespace {
         return inventoryMenu && inventoryMenu->uiMovie.get() == a_view;
     }
 
+    [[nodiscard]] std::optional<Core::ActorKey> ResolveItemMenuActorKey(RE::GFxMovieView* a_view) {
+        if (IsOpenInventoryMenuMovie(a_view)) {
+            return Core::GetPlayerActorKey();
+        }
+
+        if (!ContainerMenu::IsOpenMovie(a_view)) {
+            return Core::GetPlayerActorKey();
+        }
+
+        return ContainerMenu::ResolveVisibleActorKey(a_view);
+    }
+
+    [[nodiscard]] bool ShouldUpdateItemMenuRowLabel(RE::GFxMovieView* a_view) {
+        return IsOpenInventoryMenuMovie(a_view) || ContainerMenu::IsOpenMovie(a_view);
+    }
+
     void StampItemMenuRingRowData(RE::GFxMovieView* a_view, RE::GFxValue* a_object, RE::InventoryEntryData* a_item) {
         if (!a_object || !a_item) {
             return;
         }
 
-        static_cast<void>(RingItemRows::StampRingEntry(
-            *a_object,
-            *a_item,
-            Core::GetPlayerActorKey(),
-            IsOpenInventoryMenuMovie(a_view)
-        ));
+        const auto actor = ResolveItemMenuActorKey(a_view);
+        if (!actor) {
+            static_cast<void>(RingItemRows::ClearRingEntry(*a_object));
+            return;
+        }
+
+        static_cast<void>(
+            RingItemRows::StampRingEntry(*a_object, *a_item, *actor, ShouldUpdateItemMenuRowLabel(a_view))
+        );
     }
 
     void RefreshCurrentItemMenuRows() {
         if (InventoryMenu::TryRefreshOpenMenuRows()) {
+            return;
+        }
+
+        if (ContainerMenu::TryRefreshOpenMenuRows()) {
             return;
         }
 

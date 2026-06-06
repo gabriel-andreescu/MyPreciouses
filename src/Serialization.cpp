@@ -3,6 +3,7 @@
 #include "Compatibility/Vanilla.h"
 #include "Equipment/AssignmentActions.h"
 #include "Equipment/AssignmentStore.h"
+#include "Equipment/AutoEquip.h"
 #include "Equipment/RaceSwitchRestore.h"
 #include "Papyrus/ScriptEventMirror.h"
 #include "VirtualSlots.h"
@@ -638,7 +639,11 @@ namespace {
             }
 
             for (const auto& snapshot : snapshots) {
-                VirtualSlots::RequestRefresh(snapshot.actor);
+                if (snapshot.actor == Core::GetPlayerActorKey()) {
+                    VirtualSlots::RequestRefresh(snapshot.actor);
+                } else {
+                    Equipment::AutoEquip::QueueRefresh(snapshot.actor, Equipment::AutoEquip::RefreshReason::kLoad);
+                }
             }
         });
     }
@@ -753,6 +758,7 @@ namespace {
 
     void RevertCallback([[maybe_unused]] SKSE::SerializationInterface* a_intfc) {
         Equipment::AssignmentStore::Revert();
+        Equipment::AutoEquip::Revert();
         Equipment::RaceSwitchRestore::Revert();
         Papyrus::ScriptEventMirror::RevertBindings();
         VirtualSlots::Revert();
