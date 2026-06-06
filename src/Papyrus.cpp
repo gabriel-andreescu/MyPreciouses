@@ -21,7 +21,12 @@ namespace {
     }
 
     void RefreshRingsAfterSettingsChanged() {
-        VirtualSlots::RequestRefresh(Core::GetPlayerActorKey());
+        VirtualSlots::RequestRefresh(
+            Core::GetPlayerActorKey(),
+            VirtualSlots::RefreshOptions {
+                .reapplyEffects = true,
+            }
+        );
         Equipment::AutoEquip::QueueRefreshStoredActors(Equipment::AutoEquip::RefreshReason::kSettingsChanged);
         UI::RefreshRingItemRows();
     }

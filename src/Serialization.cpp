@@ -436,6 +436,16 @@ namespace {
             a_savedAssignment.retainedEffectSourceFormID,
             "effect source form"sv
         );
+        if (a_savedAssignment.retainedEffectSourceFormID != 0 && retainedEffectSourceFormID == 0) {
+            logger::warn(
+                "Serialization: virtual assignment cleared | actor={:08X} | target={} | source={:08X} | effectSource={:08X} | reason=effectSourceResolveFailed",
+                a_actor.referenceFormID,
+                Core::TargetName(a_target),
+                sourceFormID,
+                a_savedAssignment.retainedEffectSourceFormID
+            );
+            return std::nullopt;
+        }
 
         if (a_savedAssignment.source.kind == Core::ItemSourceKind::kFormOnly) {
             return Core::Assignment {
@@ -632,15 +642,18 @@ namespace {
 
     void QueueAssignmentRefresh() {
         stl::add_task([] {
+            const auto loadRefreshOptions = VirtualSlots::RefreshOptions {
+                .preserveLoadedEffects = true,
+            };
             const auto snapshots = Equipment::AssignmentStore::GetAllSnapshots();
             if (snapshots.empty()) {
-                VirtualSlots::RequestRefresh(Core::GetPlayerActorKey());
+                VirtualSlots::RequestRefresh(Core::GetPlayerActorKey(), loadRefreshOptions);
                 return;
             }
 
             for (const auto& snapshot : snapshots) {
                 if (snapshot.actor == Core::GetPlayerActorKey()) {
-                    VirtualSlots::RequestRefresh(snapshot.actor);
+                    VirtualSlots::RequestRefresh(snapshot.actor, loadRefreshOptions);
                 } else {
                     Equipment::AutoEquip::QueueRefresh(snapshot.actor, Equipment::AutoEquip::RefreshReason::kLoad);
                 }

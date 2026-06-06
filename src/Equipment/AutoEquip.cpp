@@ -477,6 +477,13 @@ namespace {
         return (a_reasons & refreshReasons) != 0;
     }
 
+    [[nodiscard]] VirtualSlots::RefreshOptions ToVirtualRefreshOptions(const ReasonMask a_reasons) {
+        return VirtualSlots::RefreshOptions {
+            .preserveLoadedEffects = (a_reasons & ToReasonMask(RefreshReason::kLoad)) != 0,
+            .reapplyEffects = (a_reasons & ToReasonMask(RefreshReason::kSettingsChanged)) != 0,
+        };
+    }
+
     void RunRefresh(const Core::ActorKey a_actor, const ReasonMask a_reasons) {
         if (!IsManagedActor(a_actor)) {
             return;
@@ -491,7 +498,7 @@ namespace {
         const auto plan = BuildPlan(*actor, candidates);
         const auto changed = ApplyPlan(a_actor, *actor, candidates, plan);
         if (changed || ShouldRefreshWhenUnchanged(a_reasons)) {
-            VirtualSlots::RequestRefresh(a_actor);
+            VirtualSlots::RequestRefresh(a_actor, ToVirtualRefreshOptions(a_reasons));
         }
         if (changed) {
             UI::RefreshRingItemRows();
@@ -597,7 +604,7 @@ void QueueRefreshStoredActors(const RefreshReason a_reason) {
     const auto snapshots = AssignmentStore::GetAllSnapshots();
     for (const auto& snapshot : snapshots) {
         if (IsPlayerActor(snapshot.actor)) {
-            VirtualSlots::RequestRefresh(snapshot.actor);
+            VirtualSlots::RequestRefresh(snapshot.actor, ToVirtualRefreshOptions(ToReasonMask(a_reason)));
             continue;
         }
 

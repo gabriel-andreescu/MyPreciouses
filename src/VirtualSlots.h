@@ -18,6 +18,8 @@ enum class ScriptBindingClearMode : std::uint8_t {
 struct RefreshOptions {
     std::optional<Core::Target> soundTarget;
     Audio::EquipSounds::Cue sound {Audio::EquipSounds::Cue::kNone};
+    bool preserveLoadedEffects {false};
+    bool reapplyEffects {false};
 };
 
 void RequestRefresh(Core::ActorKey a_actor, RefreshOptions a_options = {});

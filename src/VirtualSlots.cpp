@@ -55,8 +55,11 @@ namespace {
     struct ActorState {
         std::array<TargetState, Core::kAllTargets.size()> targets;
         std::array<Audio::EquipSounds::Cue, Core::kAllTargets.size()> pendingSounds {};
+        std::optional<std::uint32_t> appliedMagnitudeRingCount;
         bool refreshPending {false};
         bool refreshRunning {false};
+        bool preserveLoadedEffects {false};
+        bool reapplyEffects {false};
     };
 
     struct ClearAction {
@@ -77,6 +80,12 @@ namespace {
         RE::FormID sourceFormID {0};
         Audio::EquipSounds::Cue sound {Audio::EquipSounds::Cue::kNone};
         bool dispatchEquipped {false};
+    };
+
+    struct RefreshState {
+        std::optional<std::uint32_t> appliedMagnitudeRingCount;
+        bool preserveLoadedEffects {false};
+        bool reapplyEffects {false};
     };
 
     struct VanillaRingSlotState {
@@ -114,6 +123,10 @@ namespace {
         }
 
         return nullptr;
+    }
+
+    [[nodiscard]] bool HasApplyAction(const ApplyAction& a_action) {
+        return a_action.actor && a_action.effectSource;
     }
 
     [[nodiscard]] bool SourceMatchesGetEquippedArgument(
@@ -222,6 +235,17 @@ namespace {
         });
     }
 
+    [[nodiscard]] std::uint32_t CountActiveMagnitudeVirtualRings(const ActorState& a_actorState) {
+        auto count = std::uint32_t {0};
+        for (const auto target : Core::kVirtualTargets) {
+            if (HasCountedMagnitudeEnchantment(a_actorState.targets[Core::ToIndex(target)])) {
+                ++count;
+            }
+        }
+
+        return count;
+    }
+
     [[nodiscard]] std::uint32_t CountActiveMagnitudeVirtualRings(const Core::ActorKey a_actor) {
         if (!a_actor) {
             return 0;
@@ -229,18 +253,7 @@ namespace {
 
         std::scoped_lock lock(g_lock);
         const auto* actorState = FindActorState(a_actor);
-        if (!actorState) {
-            return 0;
-        }
-
-        auto count = std::uint32_t {0};
-        for (const auto target : Core::kVirtualTargets) {
-            if (HasCountedMagnitudeEnchantment(actorState->targets[Core::ToIndex(target)])) {
-                ++count;
-            }
-        }
-
-        return count;
+        return actorState ? CountActiveMagnitudeVirtualRings(*actorState) : 0;
     }
 
     [[nodiscard]] RE::TESObjectARMO* GetVanillaRingSlotArmor(RE::Actor& a_actor) {
@@ -292,7 +305,7 @@ namespace {
         return vanillaSlot.hasMagnitudeEnchantment && vanillaSlot.ring == a_source;
     }
 
-    void RefreshVanillaRingSlotEffects(RE::Actor& a_actor) {
+    void ReapplyVanillaRingSlotEffects(RE::Actor& a_actor) {
         const auto vanillaSlot = GetVanillaRingSlotState(a_actor);
         if (!vanillaSlot.hasMagnitudeEnchantment || !vanillaSlot.ring) {
             return;
@@ -412,6 +425,27 @@ namespace {
         Audio::EquipSounds::Play(*a_action.actor, a_action.sourceFormID, a_action.sound);
     }
 
+    [[nodiscard]] ApplyAction MakeApplyAction(
+        RE::Actor& a_actor,
+        const TargetState& a_state,
+        const RE::FormID a_sourceFormID,
+        const Audio::EquipSounds::Cue a_sound = Audio::EquipSounds::Cue::kNone,
+        const bool a_dispatchEquipped = false
+    ) {
+        if (!a_state.effectSource) {
+            return {};
+        }
+
+        return ApplyAction {
+            .actor = std::addressof(a_actor),
+            .effectSource = a_state.effectSource,
+            .extraList = a_state.extraList,
+            .sourceFormID = a_sourceFormID,
+            .sound = a_sound,
+            .dispatchEquipped = a_dispatchEquipped,
+        };
+    }
+
     [[nodiscard]] std::vector<RE::FormID> SnapshotFunctionalVirtualSourceFormIDs(const Core::ActorKey a_actor) {
         std::vector<RE::FormID> sourceFormIDs;
         if (!a_actor) {
@@ -444,16 +478,16 @@ namespace {
         );
     }
 
-    void StorePendingSound(ActorState& a_actorState, const RefreshOptions& a_options) {
-        if (a_options.sound == Audio::EquipSounds::Cue::kNone || !a_options.soundTarget) {
-            return;
+    void StoreRefreshOptions(ActorState& a_actorState, const RefreshOptions& a_options) {
+        if (a_options.sound
+            != Audio::EquipSounds::Cue::kNone
+            && a_options.soundTarget
+            && Core::IsVirtualTarget(*a_options.soundTarget)) {
+            a_actorState.pendingSounds[Core::ToIndex(*a_options.soundTarget)] = a_options.sound;
         }
 
-        if (!Core::IsVirtualTarget(*a_options.soundTarget)) {
-            return;
-        }
-
-        a_actorState.pendingSounds[Core::ToIndex(*a_options.soundTarget)] = a_options.sound;
+        a_actorState.preserveLoadedEffects = a_actorState.preserveLoadedEffects || a_options.preserveLoadedEffects;
+        a_actorState.reapplyEffects = a_actorState.reapplyEffects || a_options.reapplyEffects;
     }
 
     [[nodiscard]] Audio::EquipSounds::Cue ConsumePendingSound(ActorState& a_actorState, const Core::Target a_target) {
@@ -517,6 +551,7 @@ namespace {
         const Core::Target a_target,
         RE::TESObjectARMO& a_source,
         const Core::Assignment& a_assignment,
+        const bool a_requireRetainedEffectSource,
         TargetState& a_state,
         TargetRefreshPlan& a_plan
     ) {
@@ -532,7 +567,7 @@ namespace {
         RE::TESObjectARMO* effectSource = nullptr;
         if (a_assignment.retainedEffectSourceFormID != 0) {
             effectSource = RE::TESForm::LookupByID<RE::TESObjectARMO>(a_assignment.retainedEffectSourceFormID);
-            if (!effectSource) {
+            if (!effectSource && !a_requireRetainedEffectSource) {
                 logger::warn(
                     "VirtualSlots: restored effect source skipped | target={} | source={:08X} | effectSource={:08X} | reason=missing",
                     Core::TargetName(a_target),
@@ -540,6 +575,16 @@ namespace {
                     a_assignment.retainedEffectSourceFormID
                 );
             }
+        }
+
+        if (!effectSource && a_requireRetainedEffectSource) {
+            logger::warn(
+                "VirtualSlots: load-preserved assignment cleared | target={} | source={:08X} | effectSource={:08X} | reason=effectSourceMissing",
+                Core::TargetName(a_target),
+                a_source.GetFormID(),
+                a_assignment.retainedEffectSourceFormID
+            );
+            return false;
         }
 
         if (!effectSource) {
@@ -619,7 +664,8 @@ namespace {
     [[nodiscard]] TargetRefreshPlan BuildTargetRefreshPlan(
         const Core::ActorKey a_actorKey,
         RE::Actor& a_actor,
-        const Core::Target a_target
+        const Core::Target a_target,
+        const RefreshState& a_refreshState
     ) {
         const auto assignment = Equipment::AssignmentStore::Get(a_actorKey, a_target);
         auto* ring = LookupItemSource(assignment);
@@ -634,6 +680,7 @@ namespace {
         auto& state = actorState.targets[Core::ToIndex(a_target)];
         const auto sound = ConsumePendingSound(actorState, a_target);
         const auto mode = Settings::GetSingleton()->GetExtraRingMode();
+        const auto wasActive = state.active;
 
         if (!ring || !assignment.IsAssigned()) {
             const auto clearSound = sound == Audio::EquipSounds::Cue::kUnequip ? sound : Audio::EquipSounds::Cue::kNone;
@@ -649,13 +696,21 @@ namespace {
         const auto sourceChanged = state.sourceFormID != ring->GetFormID();
         const auto assignmentChanged = state.activeAssignment.source != assignment.source;
         const auto changedAssignment = !state.active || sourceChanged || assignmentChanged || state.mode != mode;
+        const auto hasRetainedEffectSource = assignment.retainedEffectSourceFormID != 0;
+        const auto preserveLoadedEffect = a_refreshState.preserveLoadedEffects
+                                          && !wasActive
+                                          && hasRetainedEffectSource
+                                          && mode
+                                          == ExtraRingMode::kFunctional;
 
-        if (!EnsureEffectSource(a_actor, a_target, *ring, assignment, state, plan)) {
-            logger::warn(
-                "VirtualSlots: effect source prepare failed | target={} | source={:08X}",
-                Core::TargetName(a_target),
-                ring->GetFormID()
-            );
+        if (!EnsureEffectSource(a_actor, a_target, *ring, assignment, preserveLoadedEffect, state, plan)) {
+            if (!preserveLoadedEffect) {
+                logger::warn(
+                    "VirtualSlots: effect source prepare failed | target={} | source={:08X}",
+                    Core::TargetName(a_target),
+                    ring->GetFormID()
+                );
+            }
             plan.clearAssignment = true;
             MergeClearAction(plan, ExtractClearAction(std::addressof(a_actor), state, true));
             return plan;
@@ -705,15 +760,62 @@ namespace {
         state.active = true;
         state.sourceTargets = SourceModelFootprints::GetSourceTargets(*ring);
 
-        plan.apply = ApplyAction {
-            .actor = std::addressof(a_actor),
-            .effectSource = state.effectSource,
-            .extraList = state.extraList,
-            .sourceFormID = ring->GetFormID(),
-            .sound = sound == Audio::EquipSounds::Cue::kEquip ? sound : Audio::EquipSounds::Cue::kNone,
-            .dispatchEquipped = mode == ExtraRingMode::kFunctional && changedAssignment,
-        };
+        if (mode == ExtraRingMode::kFunctional && changedAssignment && !preserveLoadedEffect) {
+            plan.apply = MakeApplyAction(
+                a_actor,
+                state,
+                ring->GetFormID(),
+                sound == Audio::EquipSounds::Cue::kEquip ? sound : Audio::EquipSounds::Cue::kNone,
+                true
+            );
+        }
         return plan;
+    }
+
+    void AddMagnitudeEffectReapplyActions(
+        const Core::ActorKey a_actorKey,
+        RE::Actor& a_actor,
+        std::vector<TargetRefreshPlan>& a_plans
+    ) {
+        std::scoped_lock lock(g_lock);
+        const auto* actorState = FindActorState(a_actorKey);
+        if (!actorState) {
+            return;
+        }
+
+        for (auto& plan : a_plans) {
+            if (HasApplyAction(plan.apply) || plan.clearAssignment) {
+                continue;
+            }
+
+            const auto& state = actorState->targets[Core::ToIndex(plan.target)];
+            if (!HasCountedMagnitudeEnchantment(state)) {
+                continue;
+            }
+
+            plan.apply = MakeApplyAction(a_actor, state, state.sourceFormID);
+        }
+    }
+
+    [[nodiscard]] RefreshState BeginRefresh(const Core::ActorKey a_actor) {
+        std::scoped_lock lock(g_lock);
+        auto& actorState = GetOrCreateActorState(a_actor);
+        actorState.refreshPending = false;
+
+        const RefreshState state {
+            .appliedMagnitudeRingCount = actorState.appliedMagnitudeRingCount,
+            .preserveLoadedEffects = actorState.preserveLoadedEffects,
+            .reapplyEffects = actorState.reapplyEffects,
+        };
+        actorState.preserveLoadedEffects = false;
+        actorState.reapplyEffects = false;
+        return state;
+    }
+
+    void StoreAppliedMagnitudeRingCount(const Core::ActorKey a_actor, const std::uint32_t a_count) {
+        std::scoped_lock lock(g_lock);
+        auto& actorState = GetOrCreateActorState(a_actor);
+        actorState.appliedMagnitudeRingCount = a_count;
     }
 
     [[nodiscard]] std::vector<Visuals::Attachments::AttachmentSource> SnapshotAttachmentSources(
@@ -748,18 +850,33 @@ namespace {
         return sources;
     }
 
-    void RefreshOnce(const Core::ActorKey a_actor) {
+    void RefreshOnce(const Core::ActorKey a_actor, const RefreshState& a_refreshState) {
         auto* actor = Core::ResolveActor(a_actor);
         if (!actor) {
             return;
         }
 
+        const auto previousMagnitudeRingCount = CountEquippedMagnitudeRings(*actor);
+
         std::vector<TargetRefreshPlan> plans;
         plans.reserve(Core::kVirtualTargets.size());
 
         for (const auto target : Core::kVirtualTargets) {
-            plans.push_back(BuildTargetRefreshPlan(a_actor, *actor, target));
+            plans.push_back(BuildTargetRefreshPlan(a_actor, *actor, target, a_refreshState));
         }
+
+        const auto nextMagnitudeRingCount = CountEquippedMagnitudeRings(*actor);
+        const auto baselineMagnitudeRingCount = a_refreshState.appliedMagnitudeRingCount.value_or(
+            previousMagnitudeRingCount
+        );
+        const auto magnitudeCountChanged = !a_refreshState.preserveLoadedEffects
+                                           && baselineMagnitudeRingCount
+                                           != nextMagnitudeRingCount;
+        const auto reapplyMagnitudeEffects = a_refreshState.reapplyEffects || magnitudeCountChanged;
+        if (reapplyMagnitudeEffects) {
+            AddMagnitudeEffectReapplyActions(a_actor, *actor, plans);
+        }
+        StoreAppliedMagnitudeRingCount(a_actor, nextMagnitudeRingCount);
 
         for (auto& plan : plans) {
             for (const auto& clear : plan.clears) {
@@ -782,7 +899,9 @@ namespace {
             RunApplyAction(plan.apply);
         }
 
-        RefreshVanillaRingSlotEffects(*actor);
+        if (reapplyMagnitudeEffects) {
+            ReapplyVanillaRingSlotEffects(*actor);
+        }
         RefreshVanillaCompatibility(a_actor);
 
         RequestVisualRefresh(a_actor);
@@ -794,12 +913,8 @@ namespace {
         }
 
         for (;;) {
-            {
-                std::scoped_lock lock(g_lock);
-                auto& actorState = GetOrCreateActorState(a_actor);
-                actorState.refreshPending = false;
-            }
-            RefreshOnce(a_actor);
+            const auto refreshState = BeginRefresh(a_actor);
+            RefreshOnce(a_actor, refreshState);
 
             std::scoped_lock lock(g_lock);
             auto* actorState = FindActorState(a_actor);
@@ -824,7 +939,7 @@ void RequestRefresh(const Core::ActorKey a_actor, const RefreshOptions a_options
     {
         std::scoped_lock lock(g_lock);
         auto& actorState = GetOrCreateActorState(a_actor);
-        StorePendingSound(actorState, a_options);
+        StoreRefreshOptions(actorState, a_options);
         if (actorState.refreshPending) {
             return;
         }
@@ -882,9 +997,6 @@ void ClearTarget(
         );
     }
     RunClearAction(action);
-    if (actor) {
-        RefreshVanillaRingSlotEffects(*actor);
-    }
     RefreshVanillaCompatibility(a_actor);
     RequestRefresh(a_actor, {});
     RequestVisualRefresh(a_actor);
