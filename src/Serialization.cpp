@@ -6,6 +6,7 @@
 #include "Equipment/AutoEquip.h"
 #include "Equipment/RaceSwitchRestore.h"
 #include "Papyrus/ScriptEventMirror.h"
+#include "Settings.h"
 #include "VirtualSlots.h"
 
 #include <algorithm>
@@ -63,7 +64,6 @@ namespace {
     constexpr std::uint32_t kLegacyPlayerAssignmentRecordVersion = 4;
     constexpr std::uint32_t kAssignmentRecordVersion = 5;
     constexpr std::uint32_t kRaceSwitchRestoreRecordVersion = 1;
-    constexpr RE::FormID kPlayerFormID = 0x14;
 
     struct SerializedCustomEnchantmentHeader {
         RE::FormID enchantmentFormID {0};
@@ -265,7 +265,7 @@ namespace {
         }
 
         return Core::ActorKey {
-            .referenceFormID = kPlayerFormID,
+            .referenceFormID = Core::kPlayerFormID,
         };
     }
 
@@ -544,6 +544,19 @@ namespace {
         return resolvedSnapshots;
     }
 
+    [[nodiscard]] std::vector<Core::ActorAssignments> FilterActorAssignmentsForNpcSupport(
+        std::vector<Core::ActorAssignments> a_snapshots
+    ) {
+        if (Settings::GetSingleton()->IsNpcSupportEnabled()) {
+            return a_snapshots;
+        }
+
+        std::erase_if(a_snapshots, [](const Core::ActorAssignments& a_snapshot) {
+            return !Core::IsPlayerActorKey(a_snapshot.actor);
+        });
+        return a_snapshots;
+    }
+
     [[nodiscard]] std::vector<Equipment::RaceSwitchRestore::PendingRestore> ResolveLoadedRaceSwitchRestores(
         const std::vector<Equipment::RaceSwitchRestore::PendingRestore>& a_savedRestores,
         SKSE::SerializationInterface& a_intfc
@@ -762,7 +775,9 @@ namespace {
                 continue;
             }
 
-            Equipment::AssignmentStore::ReplaceAll(ResolveLoadedAssignments(*snapshots, *a_intfc));
+            Equipment::AssignmentStore::ReplaceAll(
+                FilterActorAssignmentsForNpcSupport(ResolveLoadedAssignments(*snapshots, *a_intfc))
+            );
             static_cast<void>(Equipment::ClearDisabledVirtualSlotAssignments(Equipment::RefreshMode::kNone));
         }
 

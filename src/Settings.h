@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/ActorKey.h"
 #include "Core/TargetMask.h"
 
 #include <REX/REX/Singleton.h>
@@ -40,6 +41,8 @@ public:
         bool extraRingModeChanged {false};
         bool enchantmentStrengthChanged {false};
         bool fingerSelectionChanged {false};
+        bool npcSupportChanged {false};
+        bool npcSupportEnabled {true};
         bool unequipAllClearsExtraRingsChanged {false};
         bool unequipAllClearsExtraRingsEnabled {true};
         bool virtualSlotsChanged {false};
@@ -48,6 +51,7 @@ public:
             return extraRingModeChanged
                    || enchantmentStrengthChanged
                    || fingerSelectionChanged
+                   || npcSupportChanged
                    || unequipAllClearsExtraRingsChanged
                    || virtualSlotsChanged;
         }
@@ -62,6 +66,8 @@ public:
     [[nodiscard]] bool AlwaysChooseFinger() const;
     [[nodiscard]] std::uint32_t GetFingerSelectModifierKey() const;
     [[nodiscard]] std::uint32_t GetFingerSelectModifierButton() const;
+    [[nodiscard]] bool IsNpcSupportEnabled() const;
+    [[nodiscard]] bool IsActorVirtualRingSupportEnabled(Core::ActorKey a_actor) const;
     [[nodiscard]] bool ShouldUnequipAllClearExtraRings() const;
     [[nodiscard]] bool IsTargetEnabled(Core::Target a_target) const;
     [[nodiscard]] bool AreTargetsEnabled(const Core::TargetMask& a_targets) const;
@@ -74,6 +80,7 @@ private:
     std::atomic_bool alwaysChooseFinger_ {false};
     std::atomic<std::uint32_t> fingerSelectModifierKey_ {kDefaultFingerSelectModifierKey};
     std::atomic<std::uint32_t> fingerSelectModifierButton_ {kDefaultFingerSelectModifierButton};
+    std::atomic_bool npcSupportEnabled_ {true};
     std::atomic_bool unequipAllClearsExtraRings_ {true};
     std::atomic<std::uint16_t> enabledVirtualTargetBits_ {kDefaultEnabledVirtualTargetBits};
 };

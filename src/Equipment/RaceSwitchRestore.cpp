@@ -1,6 +1,7 @@
 #include "Equipment/RaceSwitchRestore.h"
 
 #include "Equipment/AssignmentStore.h"
+#include "Settings.h"
 
 #include <algorithm>
 #include <mutex>
@@ -47,6 +48,11 @@ namespace {
         return race ? race->GetFormID() : RE::FormID {0};
     }
 
+    void ClearActorStateLocked(const Core::ActorKey a_actor) {
+        ActiveSwitches().erase(a_actor);
+        PendingRestores().erase(a_actor);
+    }
+
 }
 
 void BeginRaceSwitch(RE::Actor& a_actor, RE::TESRace& a_targetRace) {
@@ -54,6 +60,12 @@ void BeginRaceSwitch(RE::Actor& a_actor, RE::TESRace& a_targetRace) {
     const auto raceFormID = GetRaceFormID(a_actor);
     const auto targetRaceFormID = a_targetRace.GetFormID();
     if (!actorKey || raceFormID == 0 || targetRaceFormID == 0 || raceFormID == targetRaceFormID) {
+        return;
+    }
+
+    if (!Settings::GetSingleton()->IsActorVirtualRingSupportEnabled(actorKey)) {
+        std::scoped_lock lock(g_lock);
+        ClearActorStateLocked(actorKey);
         return;
     }
 
@@ -98,6 +110,12 @@ bool MarkClearedDuringRaceSwitch(RE::Actor& a_actor) {
         return false;
     }
 
+    if (!Settings::GetSingleton()->IsActorVirtualRingSupportEnabled(actorKey)) {
+        std::scoped_lock lock(g_lock);
+        ClearActorStateLocked(actorKey);
+        return false;
+    }
+
     std::scoped_lock lock(g_lock);
     if (PendingRestores().contains(actorKey)) {
         return true;
@@ -137,6 +155,12 @@ bool HandleRaceSwitchComplete(RE::Actor& a_actor) {
         return false;
     }
 
+    if (!Settings::GetSingleton()->IsActorVirtualRingSupportEnabled(actorKey)) {
+        std::scoped_lock lock(g_lock);
+        ClearActorStateLocked(actorKey);
+        return false;
+    }
+
     std::optional<Core::TargetAssignments> restoredSnapshot;
     {
         std::scoped_lock lock(g_lock);
@@ -173,7 +197,11 @@ std::vector<PendingRestore> GetPendingRestores() {
     const auto& pendingRestores = PendingRestores();
     restores.reserve(pendingRestores.size());
     for (const auto& [actor, pending] : pendingRestores) {
-        if (!actor || pending.raceFormID == 0 || !HasAnyAssignment(pending.assignments)) {
+        if (!Settings::GetSingleton()->IsActorVirtualRingSupportEnabled(actor)) {
+            continue;
+        }
+
+        if (pending.raceFormID == 0 || !HasAnyAssignment(pending.assignments)) {
             continue;
         }
 
@@ -192,7 +220,11 @@ void ReplacePendingRestores(std::vector<PendingRestore> a_restores) {
     PendingRestoreMap nextRestores;
     nextRestores.reserve(a_restores.size());
     for (auto& restore : a_restores) {
-        if (!restore.actor || restore.raceFormID == 0 || !HasAnyAssignment(restore.assignments)) {
+        if (!Settings::GetSingleton()->IsActorVirtualRingSupportEnabled(restore.actor)) {
+            continue;
+        }
+
+        if (restore.raceFormID == 0 || !HasAnyAssignment(restore.assignments)) {
             continue;
         }
 
@@ -213,6 +245,16 @@ void ReplacePendingRestores(std::vector<PendingRestore> a_restores) {
 void ClearActiveSwitches() {
     std::scoped_lock lock(g_lock);
     ActiveSwitches().clear();
+}
+
+void ClearNonPlayerState() {
+    std::scoped_lock lock(g_lock);
+    std::erase_if(ActiveSwitches(), [](const auto& a_entry) {
+        return !Core::IsPlayerActorKey(a_entry.first);
+    });
+    std::erase_if(PendingRestores(), [](const auto& a_entry) {
+        return !Core::IsPlayerActorKey(a_entry.first);
+    });
 }
 
 void Revert() {

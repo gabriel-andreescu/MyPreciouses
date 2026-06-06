@@ -20,7 +20,20 @@ namespace {
         return UI::ShouldWarnUnsupportedVanillaInventoryHint(static_cast<std::uint32_t>(a_button));
     }
 
-    void RefreshRingsAfterSettingsChanged() {
+    void ClearNonPlayerVirtualRingState() {
+        static_cast<void>(Equipment::ClearNonPlayerVirtualAssignments());
+        Equipment::RaceSwitchRestore::ClearNonPlayerState();
+    }
+
+    void RefreshRingsAfterSettingsChanged(const Settings::ReloadResult a_reload) {
+        if (a_reload.virtualSlotsChanged) {
+            static_cast<void>(Equipment::ClearDisabledVirtualSlotAssignments());
+        }
+
+        if (a_reload.npcSupportChanged && !a_reload.npcSupportEnabled) {
+            ClearNonPlayerVirtualRingState();
+        }
+
         VirtualSlots::RequestRefresh(
             Core::GetPlayerActorKey(),
             VirtualSlots::RefreshOptions {
@@ -29,11 +42,6 @@ namespace {
         );
         Equipment::AutoEquip::QueueRefreshStoredActors(Equipment::AutoEquip::RefreshReason::kSettingsChanged);
         UI::RefreshRingItemRows();
-    }
-
-    void RefreshRingsAfterVirtualSlotsChanged() {
-        static_cast<void>(Equipment::ClearDisabledVirtualSlotAssignments());
-        RefreshRingsAfterSettingsChanged();
     }
 
     void OnMcmConfigClose([[maybe_unused]] RE::TESQuest* a_quest) {
@@ -46,11 +54,30 @@ namespace {
             return;
         }
 
+        const auto npcSupportDisabled = reload.npcSupportChanged && !reload.npcSupportEnabled;
         if (reload.extraRingModeChanged || reload.enchantmentStrengthChanged || reload.virtualSlotsChanged) {
-            logger::info("Papyrus: MCM ring settings changed | action=refreshRings");
-            stl::add_task(
-                reload.virtualSlotsChanged ? RefreshRingsAfterVirtualSlotsChanged : RefreshRingsAfterSettingsChanged
+            logger::info(
+                "Papyrus: MCM ring settings changed | action=refreshRings | clearNonPlayer={}",
+                npcSupportDisabled
             );
+            stl::add_task([reload] {
+                RefreshRingsAfterSettingsChanged(reload);
+            });
+            return;
+        }
+
+        if (npcSupportDisabled) {
+            logger::info("Papyrus: MCM NPC support disabled | action=clearNonPlayerVirtualRings");
+            stl::add_task([] {
+                ClearNonPlayerVirtualRingState();
+                UI::RefreshRingItemRows();
+            });
+            return;
+        }
+
+        if (reload.npcSupportChanged) {
+            logger::info("Papyrus: MCM NPC support enabled | action=refreshUI");
+            stl::add_task(UI::RefreshRingItemRows);
             return;
         }
 

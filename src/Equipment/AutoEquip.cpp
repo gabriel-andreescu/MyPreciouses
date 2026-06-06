@@ -70,11 +70,6 @@ namespace {
         return static_cast<ReasonMask>(a_reason);
     }
 
-    [[nodiscard]] bool IsPlayerActor(const Core::ActorKey a_actor) {
-        const auto player = Core::GetPlayerActorKey();
-        return player && a_actor == player;
-    }
-
     [[nodiscard]] bool HasAnyAssignment(const Core::TargetAssignments& a_snapshot) {
         return std::ranges::any_of(a_snapshot.byTarget, [](const Core::Assignment& a_assignment) {
             return a_assignment.IsAssigned();
@@ -554,7 +549,7 @@ namespace {
 }
 
 void HandleContainerMenuOpened() {
-    auto target = ResolveOpenFollowerTradeTarget();
+    auto target = Settings::GetSingleton()->IsNpcSupportEnabled() ? ResolveOpenFollowerTradeTarget() : std::nullopt;
     SetFollowerTradeActor(target);
     if (target) {
         logger::debug("AutoEquip: follower trade target registered | actor={:08X}", target->referenceFormID);
@@ -572,12 +567,13 @@ std::optional<Core::ActorKey> GetFollowerTradeTarget() {
 
 bool IsManagedActor(const Core::ActorKey a_actor) {
     return a_actor
-           && !IsPlayerActor(a_actor)
+           && !Core::IsPlayerActorKey(a_actor)
+           && Settings::GetSingleton()->IsNpcSupportEnabled()
            && (MatchesTradeActor(a_actor) || IsRegisteredActor(a_actor) || HasStoredAssignment(a_actor));
 }
 
 void QueueRefresh(const Core::ActorKey a_actor, const RefreshReason a_reason) {
-    if (!a_actor || IsPlayerActor(a_actor)) {
+    if (!IsManagedActor(a_actor)) {
         return;
     }
 
@@ -603,7 +599,7 @@ void QueueRefresh(const Core::ActorKey a_actor, const RefreshReason a_reason) {
 void QueueRefreshStoredActors(const RefreshReason a_reason) {
     const auto snapshots = AssignmentStore::GetAllSnapshots();
     for (const auto& snapshot : snapshots) {
-        if (IsPlayerActor(snapshot.actor)) {
+        if (Core::IsPlayerActorKey(snapshot.actor)) {
             VirtualSlots::RequestRefresh(snapshot.actor, ToVirtualRefreshOptions(ToReasonMask(a_reason)));
             continue;
         }
@@ -617,6 +613,10 @@ void HandleContainerChanged(const RE::TESContainerChangedEvent& a_event) {
         return;
     }
 
+    if (!Settings::GetSingleton()->IsNpcSupportEnabled()) {
+        return;
+    }
+
     const auto tradeActor = GetFollowerTradeTarget();
     if (tradeActor && EventTouchesActor(a_event, *tradeActor)) {
         QueueRefresh(*tradeActor, RefreshReason::kContainerChanged);
@@ -624,7 +624,7 @@ void HandleContainerChanged(const RE::TESContainerChangedEvent& a_event) {
 
     const auto snapshots = AssignmentStore::GetAllSnapshots();
     for (const auto& snapshot : snapshots) {
-        if (IsPlayerActor(snapshot.actor)
+        if (Core::IsPlayerActorKey(snapshot.actor)
             || (tradeActor && snapshot.actor == *tradeActor)
             || !EventTouchesActor(a_event, snapshot.actor)
             || !AssignmentStore::ContainsSource(snapshot.actor, a_event.baseObj)) {
@@ -648,7 +648,7 @@ void HandleEquipEvent(RE::Actor& a_actor, const RE::FormID a_sourceFormID) {
 
 void HandleActorLoad3D(RE::Actor& a_actor) {
     const auto actor = Core::MakeActorKey(a_actor);
-    if (!actor || IsPlayerActor(actor)) {
+    if (!actor || Core::IsPlayerActorKey(actor) || !Settings::GetSingleton()->IsNpcSupportEnabled()) {
         return;
     }
 

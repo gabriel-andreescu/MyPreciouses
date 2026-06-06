@@ -17,5 +17,6 @@ bool MarkClearedDuringRaceSwitch(RE::Actor& a_actor);
 [[nodiscard]] std::vector<PendingRestore> GetPendingRestores();
 void ReplacePendingRestores(std::vector<PendingRestore> a_restores);
 void ClearActiveSwitches();
+void ClearNonPlayerState();
 void Revert();
 }

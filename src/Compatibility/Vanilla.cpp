@@ -93,11 +93,6 @@ namespace {
     FrostmoonVirtualState g_virtualState;
     FrostmoonTransformState g_transformState;
 
-    [[nodiscard]] bool IsPlayerActorKey(const Core::ActorKey a_actor) {
-        const auto player = Core::GetPlayerActorKey();
-        return player && a_actor == player;
-    }
-
     [[nodiscard]] bool ContainsRingID(const std::vector<std::int32_t>& a_ringIDs, const std::int32_t a_ringID) {
         return std::ranges::find(a_ringIDs, a_ringID) != a_ringIDs.end();
     }
@@ -474,7 +469,7 @@ void RefreshFrostmoonVirtualRings(
     const Core::ActorKey a_actor,
     std::span<const RE::FormID> a_virtualRingSourceFormIDs
 ) {
-    if (!IsPlayerActorKey(a_actor)) {
+    if (!Core::IsPlayerActorKey(a_actor)) {
         return;
     }
 

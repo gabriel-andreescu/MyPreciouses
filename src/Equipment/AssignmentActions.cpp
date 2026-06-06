@@ -64,15 +64,22 @@ namespace {
     );
 
     [[nodiscard]] bool ClearVirtualAssignment(
+        const Core::ActorKey a_actor,
+        const Core::Target a_target,
+        const VirtualSlots::ScriptBindingClearMode a_scriptBindings = VirtualSlots::ScriptBindingClearMode::kRelease
+    ) {
+        const auto hadAssignment = AssignmentStore::Get(a_actor, a_target).IsAssigned();
+        AssignmentStore::Clear(a_actor, a_target);
+        VirtualSlots::ClearTarget(a_actor, a_target, Audio::EquipSounds::Cue::kNone, a_scriptBindings);
+        return hadAssignment;
+    }
+
+    [[nodiscard]] bool ClearVirtualAssignment(
         RE::Actor& a_actor,
         const Core::Target a_target,
         const VirtualSlots::ScriptBindingClearMode a_scriptBindings = VirtualSlots::ScriptBindingClearMode::kRelease
     ) {
-        const auto actorKey = Core::MakeActorKey(a_actor);
-        const auto hadAssignment = AssignmentStore::Get(actorKey, a_target).IsAssigned();
-        AssignmentStore::Clear(actorKey, a_target);
-        VirtualSlots::ClearTarget(actorKey, a_target, Audio::EquipSounds::Cue::kNone, a_scriptBindings);
-        return hadAssignment;
+        return ClearVirtualAssignment(Core::MakeActorKey(a_actor), a_target, a_scriptBindings);
     }
 
     struct SourceMatch {
@@ -964,6 +971,10 @@ ActionResult ToggleTarget(
     CompletionCallback a_onQueuedComplete
 ) {
     ActionResult result;
+    if (!Settings::GetSingleton()->IsActorVirtualRingSupportEnabled(a_selection.actor)) {
+        return result;
+    }
+
     if (a_target == Core::kVanillaRingSlotTarget) {
         return ToggleVanillaTarget(a_selection);
     }
@@ -1041,6 +1052,25 @@ ActionResult ClearVirtualAssignments(RE::Actor& a_actor, const VirtualSlots::Scr
     ActionResult result;
     for (const auto target : Core::kVirtualTargets) {
         result.selectionChanged = ClearVirtualAssignment(a_actor, target, a_scriptBindings) || result.selectionChanged;
+    }
+    return result;
+}
+
+ActionResult ClearNonPlayerVirtualAssignments(const VirtualSlots::ScriptBindingClearMode a_scriptBindings) {
+    ActionResult result;
+    for (const auto& actorSnapshot : AssignmentStore::GetAllSnapshots()) {
+        if (Core::IsPlayerActorKey(actorSnapshot.actor)) {
+            continue;
+        }
+
+        for (const auto target : Core::kVirtualTargets) {
+            if (!actorSnapshot.assignments.byTarget[Core::ToIndex(target)].IsAssigned()) {
+                continue;
+            }
+
+            result.selectionChanged = ClearVirtualAssignment(actorSnapshot.actor, target, a_scriptBindings)
+                                      || result.selectionChanged;
+        }
     }
     return result;
 }

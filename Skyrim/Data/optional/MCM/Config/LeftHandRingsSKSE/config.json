@@ -11,6 +11,7 @@
   "pages": [
     {
       "pageDisplayName": "General",
+      "cursorFillMode": "topToBottom",
       "content": [
         {
           "type": "hiddenToggle",
@@ -31,6 +32,28 @@
           }
         },
         {
+          "position": 0,
+          "text": "General",
+          "type": "header"
+        },
+        {
+          "position": 1,
+          "text": "Balance",
+          "type": "header"
+        },
+        {
+          "position": 2,
+          "id": "bUnequipAllClearsExtraRings:General",
+          "text": "Respect UnequipAll",
+          "type": "toggle",
+          "help": "Clear extra rings when UnequipAll runs, then restore them after race transformations such as werewolf or vampire lord",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        },
+        {
+          "position": 3,
           "id": "iExtraRingMode:General",
           "text": "Extra ring mode",
           "type": "enum",
@@ -45,6 +68,18 @@
           }
         },
         {
+          "position": 4,
+          "id": "bEnableNpcSupport:General",
+          "text": "Enable NPC support",
+          "type": "toggle",
+          "help": "Enable virtual ring support for actors other than the player, including followers and generic NPCs.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        },
+        {
+          "position": 5,
           "id": "iEnchantmentStrengthMode:General",
           "text": "Enchantment strength",
           "type": "enum",
@@ -64,6 +99,11 @@
           }
         },
         {
+          "position": 6,
+          "type": "empty"
+        },
+        {
+          "position": 7,
           "id": "iFixedEnchantmentStrengthPercent:General",
           "text": "Fixed strength",
           "type": "slider",
@@ -84,16 +124,6 @@
             "max": 100,
             "step": 5,
             "formatString": "{0}%"
-          }
-        },
-        {
-          "id": "bUnequipAllClearsExtraRings:General",
-          "text": "Respect UnequipAll",
-          "type": "toggle",
-          "help": "Clear extra rings when UnequipAll runs, then restore them after race transformations such as werewolf or vampire lord",
-          "valueOptions": {
-            "sourceType": "ModSettingBool",
-            "defaultValue": true
           }
         }
       ]

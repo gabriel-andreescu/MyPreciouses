@@ -74,6 +74,9 @@ enum class RefreshMode : std::uint8_t {
     RE::Actor& a_actor,
     VirtualSlots::ScriptBindingClearMode a_scriptBindings = VirtualSlots::ScriptBindingClearMode::kRelease
 );
+[[nodiscard]] ActionResult ClearNonPlayerVirtualAssignments(
+    VirtualSlots::ScriptBindingClearMode a_scriptBindings = VirtualSlots::ScriptBindingClearMode::kRelease
+);
 void QueueAssignmentReconciliation(Core::ActorKey a_actor, CompletionCallback a_onComplete = {});
 [[nodiscard]] ActionResult ClearDisabledVirtualSlotAssignments(
     RefreshMode a_refreshMode = RefreshMode::kAffectedActors

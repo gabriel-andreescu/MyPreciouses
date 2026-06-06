@@ -4,6 +4,8 @@
 #include <functional>
 
 namespace Core {
+inline constexpr RE::FormID kPlayerFormID {0x14};
+
 struct ActorKey {
     RE::FormID referenceFormID {0};
 
@@ -23,6 +25,11 @@ struct ActorKey {
 [[nodiscard]] inline ActorKey GetPlayerActorKey() {
     const auto* player = RE::PlayerCharacter::GetSingleton();
     return player ? MakeActorKey(*player) : ActorKey {};
+}
+
+[[nodiscard]] inline bool IsPlayerActorKey(const ActorKey a_actor) {
+    const auto player = GetPlayerActorKey();
+    return (player && a_actor == player) || a_actor.referenceFormID == kPlayerFormID;
 }
 
 [[nodiscard]] inline RE::Actor* ResolveActor(const ActorKey a_actor) {
