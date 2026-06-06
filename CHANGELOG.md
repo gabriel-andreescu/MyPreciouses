@@ -10,6 +10,7 @@
 - fix: ignore non-ring ClothingRing items that have no wearable ring model
 - fix: clear custom inventory ring controls from non-ring rows
 - fix: refresh inventory ring rows after vanilla slot swaps
+- fix: hide redundant index finger labels on inventory ring rows
 - fix: account for both hands when placing, replacing, and rendering multi-finger rings
 - fix: keep existing ring labels visible in finger selector replacement previews and use negative coloring for occupied slots
 - fix: clear extra rings when UnequipAll runs, then restore them after race transformations such as werewolf or vampire lord

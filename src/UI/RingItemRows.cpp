@@ -133,10 +133,6 @@ namespace {
         });
     }
 
-    [[nodiscard]] bool ShouldShowRingFingerSuffix(const std::vector<Core::Target>& a_targets) {
-        return a_targets.size() > 1 || HasNonIndexTarget(a_targets);
-    }
-
     [[nodiscard]] bool IsSelectableTarget(const Core::TargetMask& a_sourceTargets, const Core::Target a_target) {
         const auto projectedTargets = SourceModelFootprints::GetProjectedTargets(a_sourceTargets, a_target);
         return !projectedTargets.Empty() && Settings::GetSingleton()->AreTargetsEnabled(projectedTargets);
@@ -209,7 +205,7 @@ namespace {
         auto* ring = Inventory::AsRing(RE::TESForm::LookupByID(a_source.sourceFormID));
         const auto targets = ring ? CollectRingRowTargets(*ring, a_actor, a_source, a_vanillaRingSlotEquipped)
                                   : std::vector<Core::Target> {};
-        if (ShouldShowRingFingerSuffix(targets)) {
+        if (HasNonIndexTarget(targets)) {
             displayText.append(FormatRingFingerSuffix(targets));
         }
 
