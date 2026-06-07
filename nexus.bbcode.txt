@@ -1,5 +1,5 @@
 [size=4][color=#00ffff]OVERVIEW[/color][/size]
-Adds multi-ring support, so you can wear up to 10 rings at once, one on each finger.
+Adds multi-ring support for the player, followers, and NPCs, so they can wear up to 10 rings at once, one on each finger.
 
 
 [size=4][color=#00ffff]WHY ANOTHER MULTI-RING MOD?[/color][/size]
@@ -35,19 +35,29 @@ Or use the optional MCM addon to change the settings in-game.
 [*][b]Extra ring mode[/b]: Lets you choose between functional extra rings (keep enchantments and scripts) or cosmetic extra rings (only show the ring model).[/*]
 [*][b]Enchantment strength[/b]: Lets you balance ring enchantment strength. Only equipped rings with at least one non-zero-magnitude enchantment effect are counted. You can keep full strength, use a fixed percentage, or split the total strength between counted rings.[/*]
 [*][b]Always choose finger[/b]: Makes Equip and Left Equip open the finger selection menu without having to hold a modifier key.[/*]
+[*][b]Respect UnequipAll[/b]: Clears extra rings when UnequipAll (papyrus function and console command supported) runs, then restores them after race transformations like werewolf or vampire lord.[/*]
+[*][b]Virtual Slots[/b]: Lets you choose which finger is equippable individually, you can make it so that only the left-hand index finger and the right-hand index finger are enabled if you wish.[/*]
+[*][b]NPC support[/b]: Enables virtual ring support for followers and other NPCs. NPCs can also be set to prefer The Bond of Matrimony on the left-hand ring finger.[/*]
 [/list]
+
+[size=4][color=#00ffff]FOLLOWERS AND NPCS[/color][/size]
+If NPC support is enabled, followers and other NPCs can wear extra rings from their inventory. This follows vanilla's auto-equip mechanic: give them rings, and the auto-equip system decides what they wear. For now, NPCs prefer higher-value rings, with one-finger rings favored over multi-finger rings. I might expand this later with better customization, like combat-style presets.
+
+Manual ring assignment for followers and NPCs is outside the scope of this mod.
+
+Distributing rings to NPCs is also outside the scope of this mod. A [b]Left Hand Rings SKSE - NPC Showcase SPID[/b] file is available in the Miscellaneous section of the Files tab as an example.
+
 
 [size=4][color=#00ffff]REQUIREMENTS[/color][/size]
 SE/AE
 [url=https://www.nexusmods.com/skyrimspecialedition/mods/32444]Address Library for SKSE Plugins[/url]
-[url=https://www.nexusmods.com/skyrimspecialedition/mods/12604]SkyUI[/url]
 
 VR
 [url=https://www.nexusmods.com/skyrimspecialedition/mods/58101]Address Library for SKSEVR[/url]
-[url=https://www.nexusmods.com/skyrimspecialedition/mods/91535]SkyUI - VR[/url]
 [url=https://www.nexusmods.com/skyrimspecialedition/mods/23416]VRIK Player Avatar[/url]
 
 Optional MCM addon
+[url=https://www.nexusmods.com/skyrimspecialedition/mods/12604]SkyUI[/url] or [url=https://www.nexusmods.com/skyrimspecialedition/mods/91535]SkyUI - VR[/url]
 [url=https://www.nexusmods.com/skyrimspecialedition/mods/53000]MCM Helper[/url]
 
 
@@ -57,7 +67,7 @@ The mod was designed to avoid conflicts. If you find any compatibility issues, p
 [list]
 [*]All vanilla, DLC, and CC rings are supported.[/*]
 [*][b]Frostmoon Pack rings[/b]: Each different Frostmoon ring can provide its werewolf bonus at the same time. Extra copies of the same Frostmoon ring can still be worn, but they are cosmetic only.[/*]
-[*][b]Mod-added rings[/b]: Supported if they are Armor records that use body slot 36 (Ring). Armor records that use a different body slot must have the vanilla ClothingRing keyword, and at least one Armor Addon wearable model must be set up like a real worn ring: either using ring body part 36, or skinned mainly to finger bones such as NPC L Finger30 [LF30]. Tiny incidental weights on other bones are ignored.[/*]
+[*][b]Mod-added rings[/b]: Supported if they are Armor records that use body slot 36 (Ring), or if they have the vanilla ClothingRing keyword. Rings with the ClothingRing keyword can use other body slots, as long as their model uses ring body part 36 or has no meaningful skin weights outside finger bones, such as NPC L Finger30 [LF30]. Tiny incidental weights on other bones are ignored.[/*]
 [*][b]Other ring-like items[/b]: Rings that use neither body slot 36 nor the ClothingRing keyword are ignored. That means they are left alone and work as intended by their mod author.[/*]
 [*][b]Enchantments[/b]: Supported, including player-made enchantments and custom user names.[/*]
 [*][b]Scripted rings[/b]: Supported when their scripts use OnEquipped and OnUnequipped. I checked the scripted rings in the vanilla game, DLC, and CC content, and they all use this pattern.[/*]
@@ -65,30 +75,15 @@ The mod was designed to avoid conflicts. If you find any compatibility issues, p
 [/list]
 
 [list]
-[*]As of v0.3.5, compatible with [url=https://www.nexusmods.com/skyrimspecialedition/mods/123204]Alternate Forms Keep Utility[/url].[/*]
-[*]As of v0.3.5, compatible with [url=https://www.nexusmods.com/skyrimspecialedition/mods/68942]Bond of Matrimony[/url].[/*]
-[*]As of v0.3.5, compatible with [url=https://www.nexusmods.com/skyrimspecialedition/mods/42599]Ahzidal's Rings by Ave[/url].[/*]
 [*]Compatible with [url=https://www.nexusmods.com/skyrimspecialedition/mods/104215]The New Gentleman[/url] 4.1.0+. Older versions can crash with this mod.[/*]
 [*]If you use [url=https://www.nexusmods.com/skyrimspecialedition/mods/33414]VR Menu Mouse Fix[/url], the Favorites menu in VR does not currently allow left-equipping rings. The inventory menu works fine though.[/*]
-[*]Not compatible with [url=https://www.nexusmods.com/skyrimspecialedition/mods/93039]SkyUI Vanilla Menus[/url]. If more users request compatibility with this, I'll look into it.[/*]
-[/list]
-
-
-[size=4][color=#00ffff]TODO[/color][/size]
-[list]
-[*]Follower multi-ring support.[/*]
-[*]NPCs multi-ring support.[/*]
-[*]Vanilla UI support.[/*]
-[*][s]Controller support.[/s] [color=#00ff00]DONE[/color][/*]
-[*][s]VR support.[/s] [color=#00ff00]DONE[/color][/*]
-[*][s]Left-equip sounds.[/s] [color=#00ff00]DONE[/color][/*]
 [/list]
 
 
 [size=4][color=#00ffff]UNINSTALLATION[/color][/size]
 [list]
 [*]Unequip any extra rings you have equipped.[/*]
-[*]Save the game.[/*]
+[*]Save the game. If you used NPC support, disable it in the MCM and close the menu before saving.[/*]
 [*]Remove the mod.[/*]
 [/list]
 

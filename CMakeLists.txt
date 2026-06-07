@@ -8,12 +8,12 @@ set(VCPKG_INSTALL_OPTIONS "--no-print-usage")
 
 project(
         LeftHandRingsSKSE
-        VERSION 0.3.4
+        VERSION 0.4.0
         DESCRIPTION "Native multi-ring support"
         LANGUAGES CXX
 )
 
-set(OPTIONAL_ASSETS_VERSION 0.2.2)
+set(OPTIONAL_ASSETS_VERSION 0.3.0)
 
 find_program(CLANG_TIDY_EXECUTABLE NAMES clang-tidy)
 find_program(RUN_CLANG_TIDY_EXECUTABLE NAMES run-clang-tidy run-clang-tidy.py)
