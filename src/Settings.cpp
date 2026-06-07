@@ -16,12 +16,14 @@ constexpr auto kModName = "LeftHandRingsSKSE"sv;
 constexpr auto kConfigRoot = "Data/MCM/Config"sv;
 constexpr auto kSettingsRoot = "Data/MCM/Settings"sv;
 constexpr auto kGeneralSection = "General";
+constexpr auto kNpcSection = "NPCs";
 constexpr auto kFingerSelectorSection = "FingerSelector";
 constexpr auto kVirtualSlotsSection = "VirtualSlots";
 constexpr auto kExtraRingModeSettingKey = "iExtraRingMode";
 constexpr auto kEnchantmentStrengthModeSettingKey = "iEnchantmentStrengthMode";
 constexpr auto kFixedEnchantmentStrengthSettingKey = "iFixedEnchantmentStrengthPercent";
 constexpr auto kEnableNpcSupportSettingKey = "bEnableNpcSupport";
+constexpr auto kNpcPreferBondOfMatrimonyOnLeftRingFingerSettingKey = "bNpcPreferBondOfMatrimonyOnLeftRingFinger";
 constexpr auto kUnequipAllClearsExtraRingsSettingKey = "bUnequipAllClearsExtraRings";
 constexpr auto kAlwaysChooseFingerSettingKey = "bAlwaysChooseFinger";
 constexpr auto kFingerSelectKeyboardModifierSettingKey = "iFingerSelectModifierKey";
@@ -31,6 +33,8 @@ constexpr auto kUnequipAllClearsExtraRingsSettingComment
     = "; Clear extra rings when UnequipAll runs, then restore them after race transformations such as werewolf or vampire lord\n; Default: 1";
 constexpr auto kEnableNpcSupportSettingComment
     = "; Enable virtual ring support for actors other than the player, including followers and generic NPCs.\n; Default: 1";
+constexpr auto kNpcPreferBondOfMatrimonyOnLeftRingFingerSettingComment
+    = "; NPCs with The Bond of Matrimony prefer wearing it on the left-hand ring finger.\n; Default: 1";
 constexpr auto kAlwaysChooseFingerSettingComment
     = "; Always show the finger selection menu whenever you use Equip or Left Equip on a ring without pressing a modifier key.\n; Default: 0";
 constexpr auto kFingerSelectKeyboardModifierSettingComment
@@ -139,6 +143,7 @@ struct RawSettings {
     int enchantmentStrengthMode {static_cast<int>(std::to_underlying(EnchantmentStrengthMode::kFullStrength))};
     int fixedStrengthPercent {static_cast<int>(Settings::kDefaultFixedEnchantmentStrengthPercent)};
     bool npcSupportEnabled {true};
+    bool npcPreferBondOfMatrimonyOnLeftRingFinger {true};
     bool unequipAllClearsExtraRings {true};
     bool alwaysChooseFinger {false};
     int fingerSelectModifierKey {static_cast<int>(Settings::kDefaultFingerSelectModifierKey)};
@@ -151,6 +156,7 @@ struct LoadedSettings {
     EnchantmentStrengthMode enchantmentStrengthMode {EnchantmentStrengthMode::kFullStrength};
     std::uint32_t fixedStrengthPercent {Settings::kDefaultFixedEnchantmentStrengthPercent};
     bool npcSupportEnabled {true};
+    bool npcPreferBondOfMatrimonyOnLeftRingFinger {true};
     bool unequipAllClearsExtraRings {true};
     bool alwaysChooseFinger {false};
     std::uint32_t fingerSelectModifierKey {Settings::kDefaultFingerSelectModifierKey};
@@ -278,9 +284,16 @@ void ReadSettings(CSimpleIniA& a_ini, RawSettings& a_settings) {
     ReadMcmHelperBoolValue(
         a_ini,
         a_settings.npcSupportEnabled,
-        kGeneralSection,
+        kNpcSection,
         kEnableNpcSupportSettingKey,
         kEnableNpcSupportSettingComment
+    );
+    ReadMcmHelperBoolValue(
+        a_ini,
+        a_settings.npcPreferBondOfMatrimonyOnLeftRingFinger,
+        kNpcSection,
+        kNpcPreferBondOfMatrimonyOnLeftRingFingerSettingKey,
+        kNpcPreferBondOfMatrimonyOnLeftRingFingerSettingComment
     );
     ReadMcmHelperBoolValue(
         a_ini,
@@ -349,6 +362,7 @@ void ReadSettings(CSimpleIniA& a_ini, RawSettings& a_settings) {
         .enchantmentStrengthMode = ClampStrengthMode(a_raw.enchantmentStrengthMode),
         .fixedStrengthPercent = ClampStrengthPercent(a_raw.fixedStrengthPercent),
         .npcSupportEnabled = a_raw.npcSupportEnabled,
+        .npcPreferBondOfMatrimonyOnLeftRingFinger = a_raw.npcPreferBondOfMatrimonyOnLeftRingFinger,
         .unequipAllClearsExtraRings = a_raw.unequipAllClearsExtraRings,
         .alwaysChooseFinger = a_raw.alwaysChooseFinger,
         .fingerSelectModifierKey = ClampFingerSelectModifierKey(a_raw.fingerSelectModifierKey),
@@ -411,6 +425,7 @@ void Settings::Load() {
     fingerSelectModifierKey_.store(kDefaultFingerSelectModifierKey);
     fingerSelectModifierButton_.store(kDefaultFingerSelectModifierButton);
     npcSupportEnabled_.store(true);
+    npcPreferBondOfMatrimonyOnLeftRingFinger_.store(true);
     unequipAllClearsExtraRings_.store(true);
     enabledVirtualTargetBits_.store(kDefaultEnabledVirtualTargetBits);
 
@@ -453,6 +468,10 @@ Settings::ReloadResult Settings::Reload() {
     const auto modifierButtonChanged = fingerSelectModifierButton_.exchange(loaded.fingerSelectModifierButton)
                                        != loaded.fingerSelectModifierButton;
     const auto npcSupportChanged = npcSupportEnabled_.exchange(loaded.npcSupportEnabled) != loaded.npcSupportEnabled;
+    const auto npcBondOfMatrimonyLeftRingFingerPreferenceChanged = npcPreferBondOfMatrimonyOnLeftRingFinger_.exchange(
+                                                                       loaded.npcPreferBondOfMatrimonyOnLeftRingFinger
+                                                                   )
+                                                                   != loaded.npcPreferBondOfMatrimonyOnLeftRingFinger;
     const auto unequipAllClearsExtraRingsChanged = unequipAllClearsExtraRings_.exchange(
                                                        loaded.unequipAllClearsExtraRings
                                                    )
@@ -463,12 +482,13 @@ Settings::ReloadResult Settings::Reload() {
     (void)user.SaveFile(userPath.string().c_str());
 
     logger::info(
-        "Settings: loaded | path={} | extraRingMode={} | enchantmentStrengthMode={} | fixedStrength={} | npcSupportEnabled={} | unequipAllClearsExtraRings={} | alwaysChooseFinger={} | fingerSelectModifierKey={} | fingerSelectModifierButton={} | enabledVirtualTargets={:04X}",
+        "Settings: loaded | path={} | extraRingMode={} | enchantmentStrengthMode={} | fixedStrength={} | npcSupportEnabled={} | npcPreferBondOfMatrimonyOnLeftRingFinger={} | unequipAllClearsExtraRings={} | alwaysChooseFinger={} | fingerSelectModifierKey={} | fingerSelectModifierButton={} | enabledVirtualTargets={:04X}",
         userPath.string(),
         std::to_underlying(loaded.extraRingMode),
         std::to_underlying(loaded.enchantmentStrengthMode),
         loaded.fixedStrengthPercent,
         loaded.npcSupportEnabled,
+        loaded.npcPreferBondOfMatrimonyOnLeftRingFinger,
         loaded.unequipAllClearsExtraRings,
         loaded.alwaysChooseFinger,
         loaded.fingerSelectModifierKey,
@@ -480,6 +500,7 @@ Settings::ReloadResult Settings::Reload() {
         .extraRingModeChanged = extraRingModeChanged,
         .enchantmentStrengthChanged = enchantmentStrengthModeChanged || fixedStrengthChanged,
         .fingerSelectionChanged = alwaysChooseFingerChanged || modifierKeyChanged || modifierButtonChanged,
+        .npcBondOfMatrimonyLeftRingFingerPreferenceChanged = npcBondOfMatrimonyLeftRingFingerPreferenceChanged,
         .npcSupportChanged = npcSupportChanged,
         .npcSupportEnabled = loaded.npcSupportEnabled,
         .unequipAllClearsExtraRingsChanged = unequipAllClearsExtraRingsChanged,
@@ -506,6 +527,10 @@ std::uint32_t Settings::GetFingerSelectModifierButton() const {
 
 bool Settings::IsNpcSupportEnabled() const {
     return npcSupportEnabled_.load();
+}
+
+bool Settings::ShouldNpcPreferBondOfMatrimonyOnLeftRingFinger() const {
+    return npcPreferBondOfMatrimonyOnLeftRingFinger_.load();
 }
 
 bool Settings::IsActorVirtualRingSupportEnabled(const Core::ActorKey a_actor) const {

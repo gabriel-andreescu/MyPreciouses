@@ -82,6 +82,11 @@ struct RingInventoryState {
     const RE::ExtraDataList* a_extraList
 );
 [[nodiscard]] std::optional<RightWornRing> FindRightWornRing(RE::Actor& a_actor);
+[[nodiscard]] bool RightWornRingMatchesSource(
+    const RightWornRing& a_rightWorn,
+    const RE::TESObjectARMO& a_ring,
+    const Core::ItemSource& a_source
+);
 [[nodiscard]] bool HasProtectedRightWornRing(RE::Actor& a_actor);
 [[nodiscard]] RightWornRingUnequipResult UnequipRightWornRing(RE::Actor& a_actor);
 [[nodiscard]] std::optional<CustomEnchantmentData> ReadCustomEnchantment(const RE::ExtraDataList& a_extraList);

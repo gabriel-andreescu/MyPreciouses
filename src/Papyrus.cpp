@@ -25,7 +25,7 @@ namespace {
         Equipment::RaceSwitchRestore::ClearNonPlayerState();
     }
 
-    void RefreshRingsAfterSettingsChanged(const Settings::ReloadResult a_reload) {
+    void RefreshRingsAfterSlotOrEffectSettingsChanged(const Settings::ReloadResult a_reload) {
         if (a_reload.virtualSlotsChanged) {
             static_cast<void>(Equipment::ClearDisabledVirtualSlotAssignments());
         }
@@ -40,7 +40,7 @@ namespace {
                 .reapplyEffects = true,
             }
         );
-        Equipment::AutoEquip::QueueRefreshStoredActors(Equipment::AutoEquip::RefreshReason::kSettingsChanged);
+        Equipment::AutoEquip::QueueRefreshKnownActors(Equipment::AutoEquip::RefreshReason::kSettingsChanged);
         UI::RefreshRingItemRows();
     }
 
@@ -55,13 +55,16 @@ namespace {
         }
 
         const auto npcSupportDisabled = reload.npcSupportChanged && !reload.npcSupportEnabled;
-        if (reload.extraRingModeChanged || reload.enchantmentStrengthChanged || reload.virtualSlotsChanged) {
+        const auto slotOrEffectSettingsChanged = reload.extraRingModeChanged
+                                                 || reload.enchantmentStrengthChanged
+                                                 || reload.virtualSlotsChanged;
+        if (slotOrEffectSettingsChanged) {
             logger::info(
                 "Papyrus: MCM ring settings changed | action=refreshRings | clearNonPlayer={}",
                 npcSupportDisabled
             );
             stl::add_task([reload] {
-                RefreshRingsAfterSettingsChanged(reload);
+                RefreshRingsAfterSlotOrEffectSettingsChanged(reload);
             });
             return;
         }
@@ -75,9 +78,19 @@ namespace {
             return;
         }
 
-        if (reload.npcSupportChanged) {
-            logger::info("Papyrus: MCM NPC support enabled | action=refreshUI");
-            stl::add_task(UI::RefreshRingItemRows);
+        const auto npcSupportEnabled = reload.npcSupportChanged && reload.npcSupportEnabled;
+        const auto npcAutoEquipRulesChanged = reload.npcBondOfMatrimonyLeftRingFingerPreferenceChanged
+                                              || npcSupportEnabled;
+        if (npcAutoEquipRulesChanged) {
+            logger::info("Papyrus: MCM NPC auto-equip rules changed | action=refreshActors");
+            stl::add_task([refreshFingerSelectionUi = reload.fingerSelectionChanged] {
+                Equipment::AutoEquip::QueueRefreshKnownActors(
+                    Equipment::AutoEquip::RefreshReason::kAutoEquipPlanRulesChanged
+                );
+                if (refreshFingerSelectionUi) {
+                    UI::RefreshRingItemRows();
+                }
+            });
             return;
         }
 

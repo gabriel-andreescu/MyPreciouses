@@ -69,17 +69,6 @@
         },
         {
           "position": 4,
-          "id": "bEnableNpcSupport:General",
-          "text": "Enable NPC support",
-          "type": "toggle",
-          "help": "Enable virtual ring support for actors other than the player, including followers and generic NPCs.",
-          "valueOptions": {
-            "sourceType": "ModSettingBool",
-            "defaultValue": true
-          }
-        },
-        {
-          "position": 5,
           "id": "iEnchantmentStrengthMode:General",
           "text": "Enchantment strength",
           "type": "enum",
@@ -99,11 +88,11 @@
           }
         },
         {
-          "position": 6,
+          "position": 5,
           "type": "empty"
         },
         {
-          "position": 7,
+          "position": 6,
           "id": "iFixedEnchantmentStrengthPercent:General",
           "text": "Fixed strength",
           "type": "slider",
@@ -124,6 +113,31 @@
             "max": 100,
             "step": 5,
             "formatString": "{0}%"
+          }
+        }
+      ]
+    },
+    {
+      "pageDisplayName": "NPCs",
+      "content": [
+        {
+          "id": "bEnableNpcSupport:NPCs",
+          "text": "Enable NPC support",
+          "type": "toggle",
+          "help": "Enable virtual ring support for actors other than the player, including followers and generic NPCs.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        },
+        {
+          "id": "bNpcPreferBondOfMatrimonyOnLeftRingFinger:NPCs",
+          "text": "Bond of Matrimony on left ring finger",
+          "type": "toggle",
+          "help": "NPCs with The Bond of Matrimony prefer wearing it on the left-hand ring finger.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
           }
         }
       ]

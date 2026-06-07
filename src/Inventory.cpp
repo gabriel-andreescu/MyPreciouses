@@ -323,6 +323,23 @@ bool IsRingSourceRightWorn(RE::Actor& a_actor, const RE::TESObjectARMO& a_ring, 
     return IsFormOnlyRightWorn(*entry);
 }
 
+bool RightWornRingMatchesSource(
+    const RightWornRing& a_rightWorn,
+    const RE::TESObjectARMO& a_ring,
+    const Core::ItemSource& a_source
+) {
+    if (!a_rightWorn.ring || a_rightWorn.ring->GetFormID() != a_ring.GetFormID()) {
+        return false;
+    }
+
+    if (a_source.IsFormOnly()) {
+        return !HasCustomEnchantment(a_rightWorn.extraList);
+    }
+
+    return a_source.IsCustomEnchantment()
+           && MatchesCustomSelection(a_rightWorn.extraList, a_source.customEnchantment, a_source.extraUniqueID);
+}
+
 std::optional<RightWornRing> FindRightWornRing(RE::Actor& a_actor) {
     auto* inventoryChanges = a_actor.GetInventoryChanges();
     if (!inventoryChanges || !inventoryChanges->entryList) {

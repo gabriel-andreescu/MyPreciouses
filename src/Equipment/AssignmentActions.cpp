@@ -168,7 +168,8 @@ namespace {
         const RE::TESObjectARMO& a_ring,
         const Core::ItemSource& a_source
     ) {
-        return FindSourceMatch(a_actor, a_ring, a_source).rightWorn;
+        const auto rightWorn = Inventory::FindRightWornRing(a_actor);
+        return rightWorn && Inventory::RightWornRingMatchesSource(*rightWorn, a_ring, a_source);
     }
 
     [[nodiscard]] std::optional<Core::ItemSource> ResolveEquippedSource(

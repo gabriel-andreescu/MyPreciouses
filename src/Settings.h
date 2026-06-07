@@ -41,6 +41,7 @@ public:
         bool extraRingModeChanged {false};
         bool enchantmentStrengthChanged {false};
         bool fingerSelectionChanged {false};
+        bool npcBondOfMatrimonyLeftRingFingerPreferenceChanged {false};
         bool npcSupportChanged {false};
         bool npcSupportEnabled {true};
         bool unequipAllClearsExtraRingsChanged {false};
@@ -51,6 +52,7 @@ public:
             return extraRingModeChanged
                    || enchantmentStrengthChanged
                    || fingerSelectionChanged
+                   || npcBondOfMatrimonyLeftRingFingerPreferenceChanged
                    || npcSupportChanged
                    || unequipAllClearsExtraRingsChanged
                    || virtualSlotsChanged;
@@ -67,6 +69,7 @@ public:
     [[nodiscard]] std::uint32_t GetFingerSelectModifierKey() const;
     [[nodiscard]] std::uint32_t GetFingerSelectModifierButton() const;
     [[nodiscard]] bool IsNpcSupportEnabled() const;
+    [[nodiscard]] bool ShouldNpcPreferBondOfMatrimonyOnLeftRingFinger() const;
     [[nodiscard]] bool IsActorVirtualRingSupportEnabled(Core::ActorKey a_actor) const;
     [[nodiscard]] bool ShouldUnequipAllClearExtraRings() const;
     [[nodiscard]] bool IsTargetEnabled(Core::Target a_target) const;
@@ -81,6 +84,7 @@ private:
     std::atomic<std::uint32_t> fingerSelectModifierKey_ {kDefaultFingerSelectModifierKey};
     std::atomic<std::uint32_t> fingerSelectModifierButton_ {kDefaultFingerSelectModifierButton};
     std::atomic_bool npcSupportEnabled_ {true};
+    std::atomic_bool npcPreferBondOfMatrimonyOnLeftRingFinger_ {true};
     std::atomic_bool unequipAllClearsExtraRings_ {true};
     std::atomic<std::uint16_t> enabledVirtualTargetBits_ {kDefaultEnabledVirtualTargetBits};
 };
