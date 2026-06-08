@@ -16,6 +16,9 @@
 
 namespace UI::ContainerMenu {
 namespace {
+    constexpr std::ptrdiff_t kRuntimeDataOffset = 0x30;
+    constexpr std::ptrdiff_t kVRRuntimeDataOffset = 0x50;
+
     constexpr auto kScaleformShowItemsListPatched = "lhrsContainerShowItemsListPatched";
     constexpr auto kSkyUIInventoryListsPath = "_root.Menu_mc.inventoryLists";
     constexpr auto kSkyUIContainerActiveSegmentPath = "_root.Menu_mc.inventoryLists.categoryList.activeSegment";
@@ -146,7 +149,12 @@ namespace {
 
     [[nodiscard]] bool RestampVisibleRingRows(RE::ContainerMenu& a_containerMenu) {
         auto* movie = a_containerMenu.uiMovie.get();
-        auto* itemList = a_containerMenu.GetRuntimeData().itemList;
+        auto& runtimeData = REL::RelocateMember<RE::ContainerMenu::RUNTIME_DATA>(
+            std::addressof(a_containerMenu),
+            kRuntimeDataOffset,
+            kVRRuntimeDataOffset
+        );
+        auto* itemList = runtimeData.itemList;
         if (!movie || !itemList || !itemList->entryList.IsArray()) {
             return false;
         }

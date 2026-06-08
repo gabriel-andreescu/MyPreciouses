@@ -7,10 +7,13 @@
 #include "UI/VanillaItemMenuControls.h"
 
 #include <RE/G/GFxFunctionHandler.h>
+#include <RE/I/InventoryMenu.h>
+#include <RE/I/ItemList.h>
 #include <RE/S/SendUIMessage.h>
 
 #include <array>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <initializer_list>
 #include <optional>
@@ -23,6 +26,9 @@ namespace {
         kSkyUI,
         kVanilla,
     };
+
+    constexpr std::ptrdiff_t kRuntimeDataOffset = 0x30;
+    constexpr std::ptrdiff_t kVRRuntimeDataOffset = 0x58;
 
     constexpr auto kScaleformInventoryEquipHintPatched = "lhrsInventoryEquipHintPatched";
     constexpr auto kScaleformInventoryFingerSelectHintPatched = "lhrsInventoryFingerSelectHintPatched";
@@ -135,7 +141,12 @@ namespace {
         RE::InventoryMenu& a_inventoryMenu,
         const std::uint32_t a_postUpdateWork
     ) {
-        auto* itemList = a_inventoryMenu.GetRuntimeData().itemList;
+        auto& runtimeData = REL::RelocateMember<RE::InventoryMenu::RUNTIME_DATA>(
+            std::addressof(a_inventoryMenu),
+            kRuntimeDataOffset,
+            kVRRuntimeDataOffset
+        );
+        auto* itemList = runtimeData.itemList;
         auto* player = RE::PlayerCharacter::GetSingleton();
         if (itemList && player) {
             AddPendingInventoryUpdateRefresh(a_postUpdateWork);
@@ -511,7 +522,12 @@ namespace {
     }
 
     [[nodiscard]] std::optional<bool> RestampInventoryRingRows(RE::InventoryMenu& a_inventoryMenu) {
-        auto* itemList = a_inventoryMenu.GetRuntimeData().itemList;
+        auto& runtimeData = REL::RelocateMember<RE::InventoryMenu::RUNTIME_DATA>(
+            std::addressof(a_inventoryMenu),
+            kRuntimeDataOffset,
+            kVRRuntimeDataOffset
+        );
+        auto* itemList = runtimeData.itemList;
         if (!itemList || !itemList->entryList.IsArray()) {
             return std::nullopt;
         }

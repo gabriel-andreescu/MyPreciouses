@@ -1,6 +1,10 @@
 # Changelog
 
-## 0.4.0 - Unreleased
+## 0.4.1 - 2026-06-08
+
+- fix: prevent crashes and freezes in Skyrim VR when opening containers or refreshing inventory ring rows
+
+## 0.4.0 - 2026-06-07
 
 - feat: improve MCM organization and preserve existing settings during updates
 - feat: support vanilla UI
