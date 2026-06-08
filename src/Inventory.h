@@ -32,6 +32,11 @@ enum class SourceResolveMode : std::uint8_t {
     kEnsureCustomUniqueID,
 };
 
+enum class EntryResolveScope : std::uint8_t {
+    kActorInventory,
+    kMenuRow,
+};
+
 struct CustomSourceMatch {
     RE::ExtraDataList* firstExtraList {nullptr};
     RE::ExtraDataList* rightWornExtraList {nullptr};
@@ -103,7 +108,8 @@ struct RingInventoryState {
 [[nodiscard]] std::optional<EntryRingSource> ResolveEntryRingSource(
     RE::Actor& a_actor,
     RE::InventoryEntryData& a_entry,
-    SourceResolveMode a_mode = SourceResolveMode::kEnsureCustomUniqueID
+    SourceResolveMode a_mode = SourceResolveMode::kEnsureCustomUniqueID,
+    EntryResolveScope a_scope = EntryResolveScope::kActorInventory
 );
 [[nodiscard]] RE::TESObjectARMO* AsRing(RE::TESBoundObject* a_object);
 [[nodiscard]] RE::TESObjectARMO* AsRing(RE::TESForm* a_form);

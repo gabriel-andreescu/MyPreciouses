@@ -54,7 +54,6 @@ namespace {
         Core::ActorKey itemActor;
         RE::TESObjectARMO* ring {nullptr};
         Core::ItemSource itemSource;
-        RE::ExtraDataList* sourceExtraList {nullptr};
         bool blocked {false};
     };
 
@@ -152,9 +151,24 @@ namespace {
             return std::nullopt;
         }
 
-        auto source = Inventory::ResolveEntryRingSource(*actor, a_entry);
+        auto* entryObject = Inventory::AsRing(a_entry.GetObject());
+        auto source = Inventory::ResolveEntryRingSource(
+            *actor,
+            a_entry,
+            Inventory::SourceResolveMode::kEnsureCustomUniqueID,
+            Inventory::EntryResolveScope::kMenuRow
+        );
         if (!source) {
-            return std::nullopt;
+            if (!entryObject) {
+                return std::nullopt;
+            }
+
+            return MenuRingSource {
+                .hostMenu = a_hostMenu,
+                .itemActor = a_itemActor,
+                .ring = entryObject,
+                .blocked = true,
+            };
         }
 
         return MenuRingSource {
@@ -162,7 +176,6 @@ namespace {
             .itemActor = a_itemActor,
             .ring = source->ring,
             .itemSource = source->source,
-            .sourceExtraList = source->sourceExtraList,
             .blocked = source->ring == nullptr || !source->source.IsAssigned(),
         };
     }
@@ -171,7 +184,6 @@ namespace {
         return Equipment::SourceSelection {
             .actor = a_source.itemActor,
             .itemSource = a_source.itemSource,
-            .preferredExtraList = a_source.sourceExtraList,
         };
     }
 

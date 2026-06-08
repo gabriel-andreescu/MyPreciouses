@@ -18,7 +18,6 @@ enum class ActionBlockReason : std::uint8_t {
 struct SourceSelection {
     Core::ActorKey actor;
     Core::ItemSource itemSource;
-    RE::ExtraDataList* preferredExtraList {nullptr};
 };
 
 struct ActionResult {

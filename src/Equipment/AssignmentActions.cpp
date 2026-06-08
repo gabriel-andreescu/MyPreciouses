@@ -827,14 +827,6 @@ namespace {
         auto source = a_selection.itemSource;
         auto sourceMatches = FindSourceMatch(*actor, a_ring, source);
         auto* sourceExtraList = sourceMatches.equipExtraList;
-        if (a_selection.preferredExtraList
-            && Inventory::MatchesCustomSelection(
-                a_selection.preferredExtraList,
-                a_selection.itemSource.customEnchantment,
-                a_selection.itemSource.extraUniqueID
-            )) {
-            sourceExtraList = a_selection.preferredExtraList;
-        }
         if (!sourceExtraList || !sourceMatches.HasMatch()) {
             return result;
         }

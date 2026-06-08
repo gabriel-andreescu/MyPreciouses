@@ -464,7 +464,12 @@ namespace {
             return std::nullopt;
         }
 
-        auto source = Inventory::ResolveEntryRingSource(*actor, a_entry, Inventory::SourceResolveMode::kReadOnly);
+        auto source = Inventory::ResolveEntryRingSource(
+            *actor,
+            a_entry,
+            Inventory::SourceResolveMode::kReadOnly,
+            Inventory::EntryResolveScope::kMenuRow
+        );
         if (!source) {
             return std::nullopt;
         }

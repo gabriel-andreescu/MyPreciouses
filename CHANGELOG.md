@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2 - 2026-06-08
+
+- fix: prevent crashes when opening follower or container inventories with rings recently added or removed by another mod
+
 ## 0.4.1 - 2026-06-08
 
 - fix: prevent crashes and freezes in Skyrim VR when opening containers or refreshing inventory ring rows
