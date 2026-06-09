@@ -151,7 +151,6 @@ namespace {
             return std::nullopt;
         }
 
-        auto* entryObject = Inventory::AsRing(a_entry.GetObject());
         auto source = Inventory::ResolveEntryRingSource(
             *actor,
             a_entry,
@@ -159,16 +158,7 @@ namespace {
             Inventory::EntryResolveScope::kMenuRow
         );
         if (!source) {
-            if (!entryObject) {
-                return std::nullopt;
-            }
-
-            return MenuRingSource {
-                .hostMenu = a_hostMenu,
-                .itemActor = a_itemActor,
-                .ring = entryObject,
-                .blocked = true,
-            };
+            return std::nullopt;
         }
 
         return MenuRingSource {

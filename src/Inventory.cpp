@@ -695,7 +695,16 @@ namespace {
         }
 
         if (!menuExtraLists.customSelection.HasCustomEnchantment()) {
-            return menuExtraLists.hasFormOnlySource ? std::make_optional(source) : std::nullopt;
+            if (menuExtraLists.hasFormOnlySource) {
+                return source;
+            }
+
+            const auto actorFormOnlySource = FindFormOnlySourceMatches(a_actor, a_ring);
+            if (actorFormOnlySource.HasMatch() && CountCustomCopies(actorEntry) == 0) {
+                return MakeFormOnlyEntryRingSource(a_ring, actorFormOnlySource.rightWorn);
+            }
+
+            return std::nullopt;
         }
 
         auto& customSelection = menuExtraLists.customSelection;

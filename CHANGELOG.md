@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.3 - 2026-06-09
+
+- fix: restore ring equip and left equip actions in inventory menus after the 0.4.2 crash fix
+
 ## 0.4.2 - 2026-06-08
 
 - fix: prevent crashes when opening follower or container inventories with rings recently added or removed by another mod
