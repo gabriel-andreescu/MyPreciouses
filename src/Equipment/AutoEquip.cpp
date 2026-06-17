@@ -35,6 +35,19 @@ namespace {
         .hand = Core::Hand::kLeft,
         .finger = Core::Finger::kRing,
     };
+    constexpr std::array kNpcAutoEquipTargetPriority {
+        Core::Target {.hand = Core::Hand::kRight, .finger = Core::Finger::kIndex},
+        Core::Target {.hand = Core::Hand::kRight, .finger = Core::Finger::kMiddle},
+        Core::Target {.hand = Core::Hand::kRight, .finger = Core::Finger::kRing},
+        Core::Target {.hand = Core::Hand::kRight, .finger = Core::Finger::kPinky},
+        Core::Target {.hand = Core::Hand::kRight, .finger = Core::Finger::kThumb},
+        Core::Target {.hand = Core::Hand::kLeft, .finger = Core::Finger::kIndex},
+        Core::Target {.hand = Core::Hand::kLeft, .finger = Core::Finger::kMiddle},
+        Core::Target {.hand = Core::Hand::kLeft, .finger = Core::Finger::kRing},
+        Core::Target {.hand = Core::Hand::kLeft, .finger = Core::Finger::kPinky},
+        Core::Target {.hand = Core::Hand::kLeft, .finger = Core::Finger::kThumb},
+    };
+    static_assert(kNpcAutoEquipTargetPriority.size() == Core::kAllTargets.size());
 
     struct RefreshState {
         bool queued {false};
@@ -412,7 +425,7 @@ namespace {
     [[nodiscard]] std::array<Core::Target, Core::kAllTargets.size()> BuildTargetOrder(
         const bool a_preferBondOnLeftRingFinger
     ) {
-        auto targets = Core::kAllTargets;
+        auto targets = kNpcAutoEquipTargetPriority;
         if (!a_preferBondOnLeftRingFinger) {
             return targets;
         }
