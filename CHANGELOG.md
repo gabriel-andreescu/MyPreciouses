@@ -2,6 +2,7 @@
 
 ## 0.4.4 - 2026-06-17
 
+- feat: add player Bond of Matrimony left hand ring finger support when the left hand ring finger slot is disabled
 - fix: prevent Vanilla UI player inventory rows from becoming undefined
 
 ## 0.4.3 - 2026-06-09

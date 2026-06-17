@@ -1,6 +1,7 @@
 #include "UI/RingItemRows.h"
 
 #include "Equipment/AssignmentStore.h"
+#include "Equipment/SpecialRingRules.h"
 #include "Inventory.h"
 #include "Localization.h"
 #include "Settings.h"
@@ -572,6 +573,13 @@ RingHintState GetRingEntryHintState(RE::InventoryEntryData& a_entry, const Core:
     }
 
     const auto sourceTargets = SourceModelFootprints::GetSourceTargets(presentation->ring);
+    if (Equipment::SpecialRingRules::ShouldUseBondOfMatrimonyLeftRingFingerAction(a_actor, presentation->ring)) {
+        return RingHintState {
+            .canUseEquip = true,
+            .canShowFingerSelect = false,
+        };
+    }
+
     return RingHintState {
         .canUseEquip = true,
         .canShowFingerSelect = HasMultipleSelectableTargetsOnHand(sourceTargets, Core::Hand::kLeft)
@@ -609,6 +617,10 @@ bool CanShowFingerSelectHint(const RE::GFxValue& a_entryObject) {
     const auto formID = Scaleform::ReadUInt32Member(a_entryObject, kScaleformItemFormID);
     auto* ring = formID ? Inventory::AsRing(RE::TESForm::LookupByID<RE::TESObjectARMO>(*formID)) : nullptr;
     if (!ring) {
+        return false;
+    }
+
+    if (Equipment::SpecialRingRules::ShouldUseBondOfMatrimonyLeftRingFingerAction(Core::GetPlayerActorKey(), *ring)) {
         return false;
     }
 

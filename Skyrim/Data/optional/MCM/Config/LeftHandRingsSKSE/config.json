@@ -132,7 +132,7 @@
         },
         {
           "id": "bNpcPreferBondOfMatrimonyOnLeftRingFinger:NPCs",
-          "text": "Bond of Matrimony on left ring finger",
+          "text": "Bond of Matrimony on left hand ring finger",
           "type": "toggle",
           "help": "NPCs with The Bond of Matrimony prefer wearing it on the left-hand ring finger.",
           "valueOptions": {
@@ -208,6 +208,15 @@
           }
         },
         {
+          "type": "hiddenToggle",
+          "text": "Left hand ring finger slot disabled",
+          "groupControl": 5,
+          "valueOptions": {
+            "sourceType": "PropertyValueBool",
+            "propertyName": "bLeftHandRingFingerSlotDisabled"
+          }
+        },
+        {
           "position": 0,
           "text": "Virtual Rings Preset",
           "type": "enum",
@@ -236,16 +245,42 @@
         },
         {
           "position": 2,
-          "text": "Left hand",
+          "text": "Special Rings",
           "type": "header"
         },
         {
           "position": 3,
+          "type": "empty"
+        },
+        {
+          "position": 4,
+          "id": "bBondOfMatrimonyOnLeftRingFinger:VirtualSlots",
+          "text": "Bond of Matrimony on left hand ring finger",
+          "type": "toggle",
+          "groupCondition": 5,
+          "groupBehavior": "disable",
+          "help": "Only applies when the left hand ring finger slot is disabled. Equip or Left Equip on The Bond of Matrimony toggles the left hand ring finger.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": false
+          }
+        },
+        {
+          "position": 5,
+          "type": "empty"
+        },
+        {
+          "position": 6,
+          "text": "Left hand",
+          "type": "header"
+        },
+        {
+          "position": 7,
           "text": "Right hand",
           "type": "header"
         },
         {
-          "position": 4,
+          "position": 8,
           "id": "bEnableLeftThumb:VirtualSlots",
           "text": "Left thumb",
           "type": "toggle",
@@ -256,7 +291,7 @@
           }
         },
         {
-          "position": 6,
+          "position": 10,
           "id": "bEnableLeftIndex:VirtualSlots",
           "text": "Left index",
           "type": "toggle",
@@ -267,7 +302,7 @@
           }
         },
         {
-          "position": 8,
+          "position": 12,
           "id": "bEnableLeftMiddle:VirtualSlots",
           "text": "Left middle",
           "type": "toggle",
@@ -278,7 +313,7 @@
           }
         },
         {
-          "position": 10,
+          "position": 14,
           "id": "bEnableLeftRing:VirtualSlots",
           "text": "Left ring",
           "type": "toggle",
@@ -289,7 +324,7 @@
           }
         },
         {
-          "position": 12,
+          "position": 16,
           "id": "bEnableLeftPinky:VirtualSlots",
           "text": "Left pinky",
           "type": "toggle",
@@ -300,7 +335,7 @@
           }
         },
         {
-          "position": 5,
+          "position": 9,
           "id": "bEnableRightThumb:VirtualSlots",
           "text": "Right thumb",
           "type": "toggle",
@@ -311,7 +346,7 @@
           }
         },
         {
-          "position": 7,
+          "position": 11,
           "text": "Right index",
           "type": "toggle",
           "groupCondition": 4,
@@ -324,7 +359,7 @@
           }
         },
         {
-          "position": 9,
+          "position": 13,
           "id": "bEnableRightMiddle:VirtualSlots",
           "text": "Right middle",
           "type": "toggle",
@@ -335,7 +370,7 @@
           }
         },
         {
-          "position": 11,
+          "position": 15,
           "id": "bEnableRightRing:VirtualSlots",
           "text": "Right ring",
           "type": "toggle",
@@ -346,7 +381,7 @@
           }
         },
         {
-          "position": 13,
+          "position": 17,
           "id": "bEnableRightPinky:VirtualSlots",
           "text": "Right pinky",
           "type": "toggle",

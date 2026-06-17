@@ -5,6 +5,7 @@ Bool Property bCosmeticExtraRingsSelected Auto Hidden
 Bool Property bControllerInputSelected Auto Hidden
 Bool Property bRightIndexSlotConfigurable = False Auto Hidden
 Bool Property bRightIndexSlotDisplayed = True Auto Hidden
+Bool Property bLeftHandRingFingerSlotDisabled Auto Hidden
 Int Property VirtualSlotPreset Auto Hidden
 
 Bool Function SyncVirtualSlotDisplay()
@@ -23,21 +24,32 @@ Bool Function SyncVirtualSlotDisplay()
     Return changed
 EndFunction
 
-Bool Function SyncSettings()
+Int Function SyncSettings()
     Bool wasFixedStrengthSelected = bFixedStrengthSelected
     Bool wasCosmeticExtraRingsSelected = bCosmeticExtraRingsSelected
     Bool wasControllerInputSelected = bControllerInputSelected
+    Bool wasLeftHandRingFingerSlotDisabled = bLeftHandRingFingerSlotDisabled
 
     Int enchantmentStrengthMode = GetModSettingInt("iEnchantmentStrengthMode:General")
     Int extraRingMode = GetModSettingInt("iExtraRingMode:General")
     bFixedStrengthSelected = enchantmentStrengthMode == 1
     bCosmeticExtraRingsSelected = extraRingMode == 1
     bControllerInputSelected = Game.UsingGamepad()
+    bLeftHandRingFingerSlotDisabled = !GetModSettingBool("bEnableLeftRing:VirtualSlots")
 
     Bool fixedStrengthChanged = bFixedStrengthSelected != wasFixedStrengthSelected
     Bool extraRingModeChanged = bCosmeticExtraRingsSelected != wasCosmeticExtraRingsSelected
     Bool inputDeviceChanged = bControllerInputSelected != wasControllerInputSelected
-    Return fixedStrengthChanged || extraRingModeChanged || inputDeviceChanged
+    Bool leftHandRingFingerSlotChanged = bLeftHandRingFingerSlotDisabled != wasLeftHandRingFingerSlotDisabled
+    If inputDeviceChanged
+        Return 2
+    EndIf
+
+    If fixedStrengthChanged || extraRingModeChanged || leftHandRingFingerSlotChanged
+        Return 1
+    EndIf
+
+    Return 0
 EndFunction
 
 Bool Function SyncVirtualSlotPreset()
@@ -113,10 +125,12 @@ Bool Function ApplyVirtualSlotPreset(Int aiPreset)
 
     If aiPreset == 0
         SetVirtualSlots(True, True, True, True, True, True, True, True, True)
+        SyncSettings()
         RefreshMenu()
         Return True
     ElseIf aiPreset == 1
         SetVirtualSlots(False, True, False, False, False, False, False, False, False)
+        SyncSettings()
         RefreshMenu()
         Return True
     EndIf
@@ -150,9 +164,10 @@ Event OnSettingChange(String a_ID)
         menuNeedsRefresh = SyncVirtualSlotPreset()
     EndIf
 
-    If SyncSettings()
+    Int settingsRefreshMode = SyncSettings()
+    If settingsRefreshMode == 2
         ForcePageReset()
-    ElseIf menuNeedsRefresh
+    ElseIf settingsRefreshMode == 1 || menuNeedsRefresh
         RefreshMenu()
     EndIf
 EndEvent

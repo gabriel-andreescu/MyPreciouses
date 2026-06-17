@@ -13,6 +13,7 @@ struct RecordInfo;
 }
 
 namespace Compatibility::Vanilla {
+[[nodiscard]] bool IsBondOfMatrimony(const RE::TESObjectARMO* a_ring);
 void RefreshFrostmoonVirtualRings(Core::ActorKey a_actor, std::span<const RE::FormID> a_virtualRingSourceFormIDs);
 void HandleSpellCast(RE::Actor& a_actor, RE::FormID a_spellFormID);
 void HandleRaceSwitchComplete(RE::Actor& a_actor);

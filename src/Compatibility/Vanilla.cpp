@@ -19,6 +19,8 @@ namespace {
     constexpr std::string_view kSkyrimPlugin {"Skyrim.esm"};
     constexpr std::string_view kDragonbornPlugin {"Dragonborn.esm"};
 
+    constexpr RE::FormID kBondOfMatrimonyFormID {0x000C5809};
+
     constexpr RE::FormID kWerewolfBeastRaceFormID {0x0CDD84};
     constexpr RE::FormID kWerewolfChangeFormID {0x092C48};
     constexpr RE::FormID kWerewolfChangeRingOfHircineFormID {0x0F8306};
@@ -463,6 +465,10 @@ namespace {
             g_transformState.appliedRingIDs = std::move(reconciledRingIDs);
         }
     }
+}
+
+bool IsBondOfMatrimony(const RE::TESObjectARMO* a_ring) {
+    return a_ring && a_ring->GetFormID() == kBondOfMatrimonyFormID;
 }
 
 void RefreshFrostmoonVirtualRings(

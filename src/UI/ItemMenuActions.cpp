@@ -2,6 +2,7 @@
 
 #include "Equipment/AssignmentActions.h"
 #include "Equipment/AssignmentStore.h"
+#include "Equipment/SpecialRingRules.h"
 #include "Inventory.h"
 #include "Localization.h"
 #include "Settings.h"
@@ -276,6 +277,22 @@ namespace {
         }
 
         return Equipment::IsSelected(ToEquipmentSourceSelection(a_source), a_target);
+    }
+
+    [[nodiscard]] std::optional<Core::Target> FindSelectedVirtualTarget(const MenuRingSource& a_source) {
+        if (!a_source.itemSource.IsAssigned()) {
+            return std::nullopt;
+        }
+
+        const auto snapshot = Equipment::AssignmentStore::GetSnapshot(a_source.itemActor);
+        for (const auto target : Core::kVirtualTargets) {
+            const auto& assignment = snapshot.byTarget[Core::ToIndex(target)];
+            if (assignment.source.Matches(a_source.itemSource)) {
+                return target;
+            }
+        }
+
+        return std::nullopt;
     }
 
     [[nodiscard]] bool ShouldOpenFingerSelectorForHand(const MenuRingSource& a_source, const Core::Hand a_hand) {
@@ -886,6 +903,20 @@ bool HandleRingUseFromMenuEntry(
     }
 
     if (source->blocked) {
+        return true;
+    }
+
+    if (source->ring
+        && Equipment::SpecialRingRules::ShouldUseBondOfMatrimonyLeftRingFingerAction(
+            source->itemActor,
+            *source->ring
+        )) {
+        const auto moveSourceTarget = FindSelectedVirtualTarget(*source);
+        static_cast<void>(ToggleMenuRingForTarget(
+            *source,
+            Equipment::SpecialRingRules::kBondOfMatrimonyLeftRingFingerTarget,
+            moveSourceTarget
+        ));
         return true;
     }
 

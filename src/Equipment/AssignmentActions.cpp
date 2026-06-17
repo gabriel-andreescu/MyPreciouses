@@ -2,6 +2,7 @@
 
 #include "Audio/EquipSounds.h"
 #include "Equipment/AssignmentStore.h"
+#include "Equipment/SpecialRingRules.h"
 #include "Inventory.h"
 #include "Settings.h"
 #include "SourceModelFootprints.h"
@@ -35,12 +36,13 @@ namespace {
     }
 
     [[nodiscard]] bool CanUseEnabledTargets(
+        const Core::ActorKey a_actor,
         const Core::TargetMask& a_occupiedTargets,
         const Core::Target a_target,
         const RE::TESObjectARMO& a_ring,
         const std::string_view a_action
     ) {
-        if (Settings::GetSingleton()->AreTargetsEnabled(a_occupiedTargets)) {
+        if (SpecialRingRules::AreTargetsEnabledForSource(a_actor, a_ring, a_occupiedTargets)) {
             return true;
         }
 
@@ -597,7 +599,7 @@ namespace {
             return ClearVirtualAssignment(a_actor, a_target);
         }
 
-        if (!Settings::GetSingleton()->AreTargetsEnabled(occupiedTargets)) {
+        if (!SpecialRingRules::AreTargetsEnabledForSource(actorKey, *ring, occupiedTargets)) {
             return ClearVirtualAssignment(a_actor, a_target);
         }
 
@@ -700,7 +702,7 @@ namespace {
         }
 
         const auto occupiedTargets = SourceModelFootprints::GetProjectedTargets(*ring, a_target);
-        if (!CanUseEnabledTargets(occupiedTargets, a_target, *ring, "moveVanillaRingSlotToVirtual"sv)) {
+        if (!CanUseEnabledTargets(a_actor, occupiedTargets, a_target, *ring, "moveVanillaRingSlotToVirtual"sv)) {
             return result;
         }
 
@@ -861,7 +863,7 @@ namespace {
         }
 
         const auto occupiedTargets = SourceModelFootprints::GetProjectedTargets(a_ring, a_target);
-        if (!CanUseEnabledTargets(occupiedTargets, a_target, a_ring, "assignCustomTarget"sv)) {
+        if (!CanUseEnabledTargets(a_selection.actor, occupiedTargets, a_target, a_ring, "assignCustomTarget"sv)) {
             return result;
         }
 
@@ -930,7 +932,7 @@ namespace {
         }
 
         const auto occupiedTargets = SourceModelFootprints::GetProjectedTargets(a_ring, a_target);
-        if (!CanUseEnabledTargets(occupiedTargets, a_target, a_ring, "assignFormTarget"sv)) {
+        if (!CanUseEnabledTargets(a_selection.actor, occupiedTargets, a_target, a_ring, "assignFormTarget"sv)) {
             return result;
         }
 
@@ -1017,14 +1019,21 @@ ActionResult ClearDisabledVirtualSlotAssignments(const RefreshMode a_refreshMode
             }
 
             auto occupiedTargets = Core::TargetMask {};
-            if (auto* ring = LookupSourceRing(assignment.source.sourceFormID)) {
+            auto* ring = LookupSourceRing(assignment.source.sourceFormID);
+            if (ring) {
                 occupiedTargets = SourceModelFootprints::GetProjectedTargets(*ring, target);
             }
             if (occupiedTargets.Empty()) {
                 occupiedTargets.Add(target);
             }
 
-            if (Settings::GetSingleton()->AreTargetsEnabled(occupiedTargets)) {
+            const auto targetsEnabled = ring ? SpecialRingRules::AreTargetsEnabledForSource(
+                                                   actorSnapshot.actor,
+                                                   *ring,
+                                                   occupiedTargets
+                                               )
+                                             : Settings::GetSingleton()->AreTargetsEnabled(occupiedTargets);
+            if (targetsEnabled) {
                 continue;
             }
 

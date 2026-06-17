@@ -1,5 +1,6 @@
 #include "Equipment/AutoEquip.h"
 
+#include "Compatibility/Vanilla.h"
 #include "Equipment/AssignmentStore.h"
 #include "Inventory.h"
 #include "Settings.h"
@@ -30,7 +31,6 @@ namespace Equipment::AutoEquip {
 namespace {
     using ReasonMask = std::uint32_t;
     constexpr RE::FormID kRightHandEquipSlotFormID {0x00013F42};
-    constexpr RE::FormID kBondOfMatrimonyFormID {0x000C5809};
     constexpr Core::Target kNpcBondOfMatrimonyLeftRingFingerTarget {
         .hand = Core::Hand::kLeft,
         .finger = Core::Finger::kRing,
@@ -271,14 +271,6 @@ namespace {
         return a_candidate.sourceTargets.Count() == 1;
     }
 
-    [[nodiscard]] bool IsBondOfMatrimony(const RE::TESObjectARMO* a_ring) {
-        return a_ring && a_ring->GetFormID() == kBondOfMatrimonyFormID;
-    }
-
-    [[nodiscard]] bool IsBondOfMatrimony(const Candidate& a_candidate) {
-        return IsBondOfMatrimony(a_candidate.ring);
-    }
-
     [[nodiscard]] bool ShouldApplyBondOfMatrimonyLeftRingFingerPreference(
         const Core::ActorKey a_actor,
         const bool a_hasBondCandidate
@@ -290,7 +282,7 @@ namespace {
 
     [[nodiscard]] bool HasBondOfMatrimonyCandidate(const std::vector<Candidate>& a_candidates) {
         return std::ranges::any_of(a_candidates, [](const Candidate& a_candidate) {
-            return IsBondOfMatrimony(a_candidate);
+            return Compatibility::Vanilla::IsBondOfMatrimony(a_candidate.ring);
         });
     }
 
@@ -323,8 +315,8 @@ namespace {
         const bool a_prioritizeBondOfMatrimony
     ) {
         if (a_prioritizeBondOfMatrimony) {
-            const auto lhsBond = IsBondOfMatrimony(a_lhs);
-            const auto rhsBond = IsBondOfMatrimony(a_rhs);
+            const auto lhsBond = Compatibility::Vanilla::IsBondOfMatrimony(a_lhs.ring);
+            const auto rhsBond = Compatibility::Vanilla::IsBondOfMatrimony(a_rhs.ring);
             if (lhsBond != rhsBond) {
                 return lhsBond;
             }
@@ -588,7 +580,7 @@ namespace {
             return false;
         }
 
-        return IsBondOfMatrimony(a_candidates[plannedLeftRing->candidateIndex]);
+        return Compatibility::Vanilla::IsBondOfMatrimony(a_candidates[plannedLeftRing->candidateIndex].ring);
     }
 
     [[nodiscard]] RE::ExtraDataList* ResolveCustomSourceExtraList(
@@ -701,7 +693,7 @@ namespace {
         const NativeRingSlotClearPolicy& a_clearPolicy
     ) {
         return a_clearPolicy.allowCannotWearBondOfMatrimonyRelocation
-               && IsBondOfMatrimony(a_rightWorn.ring)
+               && Compatibility::Vanilla::IsBondOfMatrimony(a_rightWorn.ring)
                && a_rightWorn.extraList
                && a_rightWorn.extraList->HasType(RE::ExtraDataType::kCannotWear)
                && !a_rightWorn.extraList->HasQuestObjectAlias();

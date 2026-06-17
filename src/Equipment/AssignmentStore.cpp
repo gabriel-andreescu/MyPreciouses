@@ -1,7 +1,7 @@
 #include "Equipment/AssignmentStore.h"
 
+#include "Equipment/SpecialRingRules.h"
 #include "Inventory.h"
-#include "Settings.h"
 #include "SourceModelFootprints.h"
 
 #include <algorithm>
@@ -114,12 +114,13 @@ namespace {
     }
 
     [[nodiscard]] bool CanUseEnabledTargets(
+        const Core::ActorKey a_actor,
         const Core::TargetMask& a_occupiedTargets,
         const Core::Target a_target,
         const RE::TESObjectARMO& a_ring,
         const std::string_view a_action
     ) {
-        if (Settings::GetSingleton()->AreTargetsEnabled(a_occupiedTargets)) {
+        if (SpecialRingRules::AreTargetsEnabledForSource(a_actor, a_ring, a_occupiedTargets)) {
             return true;
         }
 
@@ -188,7 +189,7 @@ namespace {
 
         const auto occupiedTargets = SourceModelFootprints::GetProjectedTargets(a_ring, a_target);
         if (!CanOccupyTargets(occupiedTargets, a_target, a_ring, a_action)
-            || !CanUseEnabledTargets(occupiedTargets, a_target, a_ring, a_action)) {
+            || !CanUseEnabledTargets(a_actor, occupiedTargets, a_target, a_ring, a_action)) {
             return false;
         }
 

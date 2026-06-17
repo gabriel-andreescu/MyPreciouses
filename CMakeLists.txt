@@ -85,6 +85,8 @@ set(SOURCES
         src/Equipment/AssignmentActions.h
         src/Equipment/RaceSwitchRestore.cpp
         src/Equipment/RaceSwitchRestore.h
+        src/Equipment/SpecialRingRules.cpp
+        src/Equipment/SpecialRingRules.h
         src/Papyrus/ScriptEventMirror.cpp
         src/Papyrus/ScriptEventMirror.h
         src/EventListener.cpp
