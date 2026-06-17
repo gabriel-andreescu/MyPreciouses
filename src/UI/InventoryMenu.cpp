@@ -36,13 +36,11 @@ namespace {
     constexpr auto kSkyUISelectedEntryPath = "_root.Menu_mc.inventoryLists.itemList.selectedEntry";
     constexpr auto kSkyUIUpdateBottomBarPath = "_root.Menu_mc.updateBottomBar";
     constexpr auto kSkyUINavPanelAddButtonPath = "_root.Menu_mc.navPanel.addButton";
-    constexpr auto kVanillaSelectedEntryPath = "_root.Menu_mc.InventoryLists_mc.ItemsList.selectedEntry";
     constexpr auto kVanillaUpdateBottomBarPath = "_root.Menu_mc.UpdateBottomBarButtons";
     constexpr auto kVanillaAltButtonArt = "AltButtonArt";
     constexpr auto kVanillaEquipButtonArt = "EquipButtonArt";
     constexpr auto kSkyUIInvalidateListDataPath = "_root.Menu_mc.inventoryLists.InvalidateListData";
     constexpr auto kVanillaInvalidateListDataPath = "_root.Menu_mc.InventoryLists_mc.InvalidateListData";
-    constexpr auto kSkseExtendDataPath = "_global.skse.ExtendData";
     constexpr auto kSkyUIItemMenuContext = 3;
     constexpr auto kInventoryFingerHintKey = "$LHRS_Inventory_FingerHint";
     constexpr auto kVanillaInventoryShiftedButtonCount = 3U;
@@ -64,6 +62,18 @@ namespace {
         return inventoryMenu.get();
     }
 
+    [[nodiscard]] RE::InventoryMenu::RUNTIME_DATA& GetRuntimeData(RE::InventoryMenu& a_inventoryMenu) {
+        return REL::RelocateMember<RE::InventoryMenu::RUNTIME_DATA>(
+            std::addressof(a_inventoryMenu),
+            kRuntimeDataOffset,
+            kVRRuntimeDataOffset
+        );
+    }
+
+    [[nodiscard]] bool IsVanillaInventoryMovie(const RE::GFxMovie& a_movie) {
+        return !a_movie.IsAvailable(kSkyUIUpdateBottomBarPath) && a_movie.IsAvailable(kVanillaUpdateBottomBarPath);
+    }
+
     [[nodiscard]] std::optional<RE::GFxValue> GetSelectedEntry(const RE::GFxMovie& a_movie, const char* a_path) {
         RE::GFxValue selectedEntry;
         if (!a_movie.GetVariable(std::addressof(selectedEntry), a_path) || !Scaleform::CanReadMembers(selectedEntry)) {
@@ -83,20 +93,23 @@ namespace {
         return selectedEntry && RingItemRows::CanShowFingerSelectHint(*selectedEntry);
     }
 
-    [[nodiscard]] std::optional<VanillaItemMenuControls::ButtonArt> GetVisibleVanillaFingerSelectHintArt(
-        const RE::GFxMovie& a_movie,
-        const RE::GFxValue& a_inventoryMenu
-    ) {
-        if (Settings::GetSingleton()->AlwaysChooseFinger()
-            || !IsSelectedFingerSelectHintRow(a_movie, kVanillaSelectedEntryPath)) {
-            return std::nullopt;
+    [[nodiscard]] RE::ItemList::Item* GetSelectedVanillaInventoryItem(const RE::GFxMovie& a_movie) {
+        if (!IsVanillaInventoryMovie(a_movie)) {
+            return nullptr;
         }
 
-        return VanillaItemMenuControls::ResolveModifierArt(
-            a_inventoryMenu,
-            Settings::GetSingleton()->GetFingerSelectModifierKey(),
-            Settings::GetSingleton()->GetFingerSelectModifierButton()
-        );
+        auto* inventoryMenu = GetOpenInventoryMenu();
+        if (!inventoryMenu) {
+            return nullptr;
+        }
+
+        auto* movie = inventoryMenu->uiMovie.get();
+        if (!movie || static_cast<RE::GFxMovie*>(movie) != std::addressof(a_movie)) {
+            return nullptr;
+        }
+
+        auto* itemList = GetRuntimeData(*inventoryMenu).itemList;
+        return itemList ? itemList->GetSelectedItem() : nullptr;
     }
 
     [[nodiscard]] std::optional<std::vector<VanillaItemMenuControls::ButtonArt>> BuildVanillaInventoryShiftedButtonArt(
@@ -120,19 +133,6 @@ namespace {
         return result;
     }
 
-    [[nodiscard]] bool TryEnableVanillaExtendedInventoryData(RE::InventoryMenu& a_inventoryMenu) {
-        auto* movie = a_inventoryMenu.uiMovie.get();
-        if (!movie
-            || movie->IsAvailable(kSkyUIUpdateBottomBarPath)
-            || !movie->IsAvailable(kVanillaUpdateBottomBarPath)) {
-            return false;
-        }
-
-        std::array<RE::GFxValue, 1> args;
-        args[0].SetBoolean(true);
-        return movie->Invoke(kSkseExtendDataPath, nullptr, args.data(), static_cast<std::uint32_t>(args.size()));
-    }
-
     void AddPendingInventoryUpdateRefresh(const std::uint32_t a_work) {
         pendingInventoryUpdateRefresh.fetch_or(a_work);
     }
@@ -141,11 +141,7 @@ namespace {
         RE::InventoryMenu& a_inventoryMenu,
         const std::uint32_t a_postUpdateWork
     ) {
-        auto& runtimeData = REL::RelocateMember<RE::InventoryMenu::RUNTIME_DATA>(
-            std::addressof(a_inventoryMenu),
-            kRuntimeDataOffset,
-            kVRRuntimeDataOffset
-        );
+        auto& runtimeData = GetRuntimeData(a_inventoryMenu);
         auto* itemList = runtimeData.itemList;
         auto* player = RE::PlayerCharacter::GetSingleton();
         if (itemList && player) {
@@ -329,12 +325,25 @@ namespace {
             : originalFunction_(a_originalFunction) {}
 
         void Call(Params& a_params) override {
-            const auto useRingEquipArt = IsSelectedRingEquipHintRow(*a_params.movie, kVanillaSelectedEntryPath);
+            if (!a_params.movie || !IsVanillaInventoryMovie(*a_params.movie)) {
+                originalFunction_.Invoke(
+                    "call",
+                    a_params.retVal,
+                    a_params.argsWithThisRef,
+                    static_cast<std::size_t>(a_params.argCount) + 1
+                );
+                return;
+            }
+
+            RingItemRows::RingHintState hintState;
+            if (auto* item = GetSelectedVanillaInventoryItem(*a_params.movie); item && item->data.objDesc) {
+                hintState = RingItemRows::GetRingEntryHintState(*item->data.objDesc, Core::GetPlayerActorKey());
+            }
 
             RE::GFxValue originalAltButtonArt;
             auto restoreAltButtonArt = false;
 
-            if (useRingEquipArt && a_params.thisPtr && Scaleform::CanReadMembers(*a_params.thisPtr)) {
+            if (hintState.canUseEquip && a_params.thisPtr && Scaleform::CanReadMembers(*a_params.thisPtr)) {
                 RE::GFxValue equipButtonArt;
                 if (a_params.thisPtr->GetMember(kVanillaAltButtonArt, std::addressof(originalAltButtonArt))
                     && originalAltButtonArt.IsObject()
@@ -377,7 +386,15 @@ namespace {
                     return;
                 }
 
-                const auto fingerArt = GetVisibleVanillaFingerSelectHintArt(*a_params.movie, *a_params.thisPtr);
+                auto fingerArt = std::optional<VanillaItemMenuControls::ButtonArt> {};
+                if (!Settings::GetSingleton()->AlwaysChooseFinger() && hintState.canShowFingerSelect) {
+                    fingerArt = VanillaItemMenuControls::ResolveModifierArt(
+                        *a_params.thisPtr,
+                        Settings::GetSingleton()->GetFingerSelectModifierKey(),
+                        Settings::GetSingleton()->GetFingerSelectModifierButton()
+                    );
+                }
+
                 if (fingerArt) {
                     const auto shiftedButtonArt = BuildVanillaInventoryShiftedButtonArt(
                         *a_params.thisPtr,
@@ -469,15 +486,15 @@ namespace {
                         {kSkyUIUpdateBottomBarPath, kSkyUINavPanelAddButtonPath}
                     )
                     || installed;
-        installed = InstallScaleformFunctionPatch<VanillaBottomBarUpdateHandler>(
-                        *movie,
-                        inventoryMenu,
-                        kScaleformInventoryEquipHintPatched,
-                        "UpdateBottomBarButtons",
-                        {kVanillaUpdateBottomBarPath}
-                    )
-                    || installed;
-        if (!movie->IsAvailable(kSkyUIUpdateBottomBarPath) && movie->IsAvailable(kVanillaUpdateBottomBarPath)) {
+        if (IsVanillaInventoryMovie(*movie)) {
+            installed = InstallScaleformFunctionPatch<VanillaBottomBarUpdateHandler>(
+                            *movie,
+                            inventoryMenu,
+                            kScaleformInventoryEquipHintPatched,
+                            "UpdateBottomBarButtons",
+                            {kVanillaUpdateBottomBarPath}
+                        )
+                        || installed;
             lastOpenedMenuFlavor.store(InventoryMenuFlavor::kVanilla);
         }
 
@@ -499,8 +516,7 @@ namespace {
             return;
         }
 
-        if (movie->IsAvailable(kVanillaUpdateBottomBarPath)
-            && GetSelectedEntry(*movie, kVanillaSelectedEntryPath).has_value()) {
+        if (IsVanillaInventoryMovie(*movie) && GetSelectedVanillaInventoryItem(*movie)) {
             static_cast<void>(movie->Invoke(kVanillaUpdateBottomBarPath, nullptr, nullptr, 0));
         }
     }
@@ -516,40 +532,68 @@ namespace {
             return;
         }
 
-        if (movie->IsAvailable(kVanillaInvalidateListDataPath)) {
+        if (IsVanillaInventoryMovie(*movie) && movie->IsAvailable(kVanillaInvalidateListDataPath)) {
             static_cast<void>(movie->Invoke(kVanillaInvalidateListDataPath, nullptr, nullptr, 0));
         }
     }
 
     [[nodiscard]] std::optional<bool> RestampInventoryRingRows(RE::InventoryMenu& a_inventoryMenu) {
-        auto& runtimeData = REL::RelocateMember<RE::InventoryMenu::RUNTIME_DATA>(
-            std::addressof(a_inventoryMenu),
-            kRuntimeDataOffset,
-            kVRRuntimeDataOffset
-        );
-        auto* itemList = runtimeData.itemList;
-        if (!itemList || !itemList->entryList.IsArray()) {
+        auto* movie = a_inventoryMenu.uiMovie.get();
+        if (!movie) {
             return std::nullopt;
         }
 
-        std::uint32_t changedEntryRows = 0;
-        for (std::uint32_t index = 0; index < itemList->entryList.GetArraySize(); ++index) {
-            RE::GFxValue entryObject;
-            if (!itemList->entryList.GetElement(index, std::addressof(entryObject))
-                || !Scaleform::CanReadMembers(entryObject)) {
-                continue;
-            }
-
-            const auto result = RingItemRows::RefreshStampedRingEntry(entryObject, Core::GetPlayerActorKey());
-            if (result != RingItemRows::RowStampResult::kChanged) {
-                continue;
-            }
-
-            ++changedEntryRows;
-            static_cast<void>(itemList->entryList.SetElement(index, entryObject));
+        auto& runtimeData = GetRuntimeData(a_inventoryMenu);
+        auto* itemList = runtimeData.itemList;
+        if (!itemList) {
+            return std::nullopt;
         }
 
-        return changedEntryRows > 0;
+        if (movie->IsAvailable(kSkyUIUpdateBottomBarPath)) {
+            if (!itemList->entryList.IsArray()) {
+                return std::nullopt;
+            }
+
+            std::uint32_t changedEntryRows = 0;
+            for (std::uint32_t index = 0; index < itemList->entryList.GetArraySize(); ++index) {
+                RE::GFxValue entryObject;
+                if (!itemList->entryList.GetElement(index, std::addressof(entryObject))
+                    || !Scaleform::CanReadMembers(entryObject)) {
+                    continue;
+                }
+
+                const auto result = RingItemRows::RefreshStampedRingEntry(entryObject, Core::GetPlayerActorKey());
+                if (result != RingItemRows::RowStampResult::kChanged) {
+                    continue;
+                }
+
+                ++changedEntryRows;
+                static_cast<void>(itemList->entryList.SetElement(index, entryObject));
+            }
+
+            return changedEntryRows > 0;
+        }
+
+        if (!IsVanillaInventoryMovie(*movie)) {
+            return std::nullopt;
+        }
+
+        if (itemList->unk50) {
+            return std::nullopt;
+        }
+
+        auto changed = false;
+        const auto actor = Core::GetPlayerActorKey();
+        for (auto* item : itemList->items) {
+            if (!item || !item->data.objDesc || !Scaleform::CanReadMembers(item->obj)) {
+                continue;
+            }
+
+            const auto result = RingItemRows::StampRingEntry(item->obj, *item->data.objDesc, actor, true);
+            changed = result == RingItemRows::RowStampResult::kChanged || changed;
+        }
+
+        return changed;
     }
 
     void ApplyImmediateInventoryRowRefresh(
@@ -575,11 +619,6 @@ namespace {
 
     void InitializeOpenInventoryMenu(RE::InventoryMenu& a_inventoryMenu) {
         const auto buttonHintPatchesInstalled = InstallButtonHintFunctionPatches(a_inventoryMenu);
-        if (TryEnableVanillaExtendedInventoryData(a_inventoryMenu)
-            && RequestInventoryListUpdate(a_inventoryMenu, kPendingRestampRingRows | kPendingRefreshButtonHints)) {
-            return;
-        }
-
         ApplyImmediateInventoryRowRefresh(a_inventoryMenu, buttonHintPatchesInstalled);
     }
 
@@ -623,7 +662,6 @@ bool TryRefreshOpenMenuRows() {
         return false;
     }
 
-    static_cast<void>(TryEnableVanillaExtendedInventoryData(*inventoryMenu));
     static_cast<void>(RequestInventoryListUpdate(*inventoryMenu, kPendingRestampRingRows | kPendingRefreshButtonHints));
     return true;
 }

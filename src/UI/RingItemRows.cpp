@@ -561,6 +561,24 @@ RowStampResult RefreshStampedRingEntry(RE::GFxValue& a_entryObject, const Core::
     return previousEquipState != equipState || textChanged ? RowStampResult::kChanged : RowStampResult::kUnchanged;
 }
 
+RingHintState GetRingEntryHintState(RE::InventoryEntryData& a_entry, const Core::ActorKey a_actor) {
+    const auto presentation = ResolveRingRowPresentation(a_entry, a_actor);
+    if (!presentation || !presentation->source.IsAssigned()) {
+        return {};
+    }
+
+    if (presentation->customFailure != Inventory::EntryCustomFailure::kNone) {
+        return {};
+    }
+
+    const auto sourceTargets = SourceModelFootprints::GetSourceTargets(presentation->ring);
+    return RingHintState {
+        .canUseEquip = true,
+        .canShowFingerSelect = HasMultipleSelectableTargetsOnHand(sourceTargets, Core::Hand::kLeft)
+                               || HasMultipleSelectableTargetsOnHand(sourceTargets, Core::Hand::kRight),
+    };
+}
+
 bool CanUseRingEquipHint(const RE::GFxValue& a_entryObject) {
     if (!Scaleform::CanReadMembers(a_entryObject)) {
         return false;

@@ -1,12 +1,17 @@
 # Changelog
 
+## 0.4.4 - 2026-06-17
+
+- fix: prevent Vanilla UI player inventory rows from becoming undefined
+
 ## 0.4.3 - 2026-06-09
 
 - fix: restore ring equip and left equip actions in inventory menus after the 0.4.2 crash fix
 
 ## 0.4.2 - 2026-06-08
 
-- fix: prevent crashes when opening follower or container inventories with rings recently added or removed by another mod
+- fix: prevent crashes when opening follower or container inventories with rings recently added or removed by another
+  mod
 
 ## 0.4.1 - 2026-06-08
 
@@ -24,8 +29,10 @@
 - fix: refresh inventory ring rows after vanilla slot swaps
 - fix: hide redundant index finger labels on inventory ring rows
 - fix: account for both hands when placing, replacing, and rendering multi-finger rings
-- fix: keep existing ring labels visible in finger selector replacement previews and use negative coloring for occupied slots
-- fix: clear extra rings when UnequipAll runs, then restore them after race transformations such as werewolf or vampire lord
+- fix: keep existing ring labels visible in finger selector replacement previews and use negative coloring for occupied
+  slots
+- fix: clear extra rings when UnequipAll runs, then restore them after race transformations such as werewolf or vampire
+  lord
 
 ## 0.3.6 - 2026-06-01
 
