@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.5 - Unreleased
+
+- fix: ignore inactive outfit-managed ring copies when auto-equipping NPC rings
+
 ## 0.4.4 - 2026-06-17
 
 - feat: add player Bond of Matrimony left hand ring finger support when the left hand ring finger slot is disabled

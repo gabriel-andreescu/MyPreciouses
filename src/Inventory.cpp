@@ -3,6 +3,7 @@
 #include "SourceModelFootprints.h"
 
 #include <RE/E/ExtraCannotWear.h>
+#include <RE/E/ExtraOutfitItem.h>
 
 #include <algorithm>
 #include <utility>
@@ -105,6 +106,15 @@ namespace {
         return nullptr;
     }
 
+    [[nodiscard]] std::int32_t ExtraListCopyCount(const RE::ExtraDataList* a_extraList) {
+        return a_extraList ? std::max(a_extraList->GetCount(), 1) : 0;
+    }
+
+    [[nodiscard]] bool IsOutfitManagedCopy(const RE::ExtraDataList* a_extraList) {
+        const auto* outfitItem = a_extraList ? a_extraList->GetByType<RE::ExtraOutfitItem>() : nullptr;
+        return outfitItem && outfitItem->id != 0;
+    }
+
     [[nodiscard]] std::int32_t CountCustomCopies(const RE::InventoryEntryData* a_entry) {
         if (!a_entry || !a_entry->extraLists) {
             return 0;
@@ -113,10 +123,36 @@ namespace {
         auto count = std::int32_t {0};
         for (auto* extraList : *a_entry->extraLists) {
             if (Inventory::HasCustomEnchantment(extraList)) {
-                count += std::max(extraList->GetCount(), 1);
+                count += ExtraListCopyCount(extraList);
             }
         }
         return count;
+    }
+
+    [[nodiscard]] std::int32_t CountReservedOutfitManagedFormOnlyCopies(const RE::InventoryEntryData* a_entry) {
+        if (!a_entry || !a_entry->extraLists) {
+            return 0;
+        }
+
+        auto reserved = std::int32_t {0};
+        for (auto* extraList : *a_entry->extraLists) {
+            if (!extraList || Inventory::HasCustomEnchantment(extraList)) {
+                continue;
+            }
+
+            if (!IsOutfitManagedCopy(extraList)) {
+                continue;
+            }
+
+            const auto copyCount = ExtraListCopyCount(extraList);
+            if (HasRightWornFlag(extraList)) {
+                reserved += std::max(copyCount - 1, 0);
+            } else {
+                reserved += copyCount;
+            }
+        }
+
+        return reserved;
     }
 
     [[nodiscard]] RightWornRing MakeRightWornRing(RE::TESObjectARMO& a_ring, RE::ExtraDataList* a_extraList) {
@@ -546,7 +582,8 @@ FormOnlySourceMatch FindFormOnlySourceMatches(RE::Actor& a_actor, const RE::TESO
     auto* entry = FindEntry(a_actor, a_ring);
     const auto totalCount = GetCount(a_actor, a_ring);
     const auto customCount = CountCustomCopies(entry);
-    const auto formOnlyCount = std::max(totalCount - customCount, 0);
+    const auto reservedOutfitCount = CountReservedOutfitManagedFormOnlyCopies(entry);
+    const auto formOnlyCount = std::max(totalCount - customCount - reservedOutfitCount, 0);
     auto* rightWornExtraList = FindRightWornFormOnlyExtraList(entry);
 
     FormOnlySourceMatch state {
