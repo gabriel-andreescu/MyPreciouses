@@ -12,7 +12,12 @@ namespace Serialization {
 struct RecordInfo;
 }
 
+namespace RE {
+class TESFile;
+}
+
 namespace Compatibility::Vanilla {
+[[nodiscard]] bool IsOfficialRingDefiningFile(const RE::TESFile* a_file);
 [[nodiscard]] bool IsBondOfMatrimony(const RE::TESObjectARMO* a_ring);
 void RefreshFrostmoonVirtualRings(Core::ActorKey a_actor, std::span<const RE::FormID> a_virtualRingSourceFormIDs);
 void HandleSpellCast(RE::Actor& a_actor, RE::FormID a_spellFormID);

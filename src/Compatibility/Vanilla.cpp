@@ -4,6 +4,9 @@
 #include "Serialization.h"
 
 #include "RE/S/SpellsLearned.h"
+#include "RE/T/TESFile.h"
+
+#include <CLIBUtil/string.hpp>
 
 #include <algorithm>
 #include <array>
@@ -18,6 +21,17 @@ namespace Compatibility::Vanilla {
 namespace {
     constexpr std::string_view kSkyrimPlugin {"Skyrim.esm"};
     constexpr std::string_view kDragonbornPlugin {"Dragonborn.esm"};
+    constexpr std::array kOfficialRingDefiningPlugins {
+        kSkyrimPlugin,
+        std::string_view {"Dawnguard.esm"},
+        kDragonbornPlugin,
+        std::string_view {"ccbgssse001-fish.esm"},
+        std::string_view {"ccbgssse025-advdsgs.esm"},
+        std::string_view {"ccbgssse051-ba_daedricmail.esl"},
+        std::string_view {"ccedhsse001-norjewel.esl"},
+        std::string_view {"cckrtsse001_altar.esl"},
+        std::string_view {"ccpewsse002-armsofchaos.esl"},
+    };
 
     constexpr RE::FormID kBondOfMatrimonyFormID {0x000C5809};
 
@@ -465,6 +479,17 @@ namespace {
             g_transformState.appliedRingIDs = std::move(reconciledRingIDs);
         }
     }
+}
+
+bool IsOfficialRingDefiningFile(const RE::TESFile* a_file) {
+    if (!a_file) {
+        return false;
+    }
+
+    const auto filename = a_file->GetFilename();
+    return std::ranges::any_of(kOfficialRingDefiningPlugins, [filename](const std::string_view a_plugin) {
+        return clib_util::string::iequals(filename, a_plugin);
+    });
 }
 
 bool IsBondOfMatrimony(const RE::TESObjectARMO* a_ring) {

@@ -1,5 +1,6 @@
 #include "Inventory.h"
 
+#include "Compatibility/Vanilla.h"
 #include "SourceModelFootprints.h"
 
 #include <RE/E/ExtraCannotWear.h>
@@ -807,7 +808,8 @@ bool IsRing(const RE::TESObjectARMO* a_armor) {
     }
 
     if (a_armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing)) {
-        return true;
+        return Compatibility::Vanilla::IsOfficialRingDefiningFile(a_armor->GetFile(0))
+               || SourceModelFootprints::HasRingModelEvidence(*a_armor);
     }
 
     return IsClothingRingWithRingEvidence(*a_armor);
