@@ -4,6 +4,7 @@
 
 - fix: ignore inactive outfit-managed ring copies when auto-equipping NPC rings
 - fix: ignore mod-defined slot 36 accessories without wearable ring model evidence
+- fix: reject mixed accessory models during ring model classification
 
 ## 0.4.4 - 2026-06-17
 

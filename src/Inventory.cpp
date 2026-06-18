@@ -197,12 +197,12 @@ namespace {
         });
     }
 
-    [[nodiscard]] bool IsClothingRingWithRingEvidence(const RE::TESObjectARMO& a_armor) {
+    [[nodiscard]] bool IsClothingRingWithRingModel(const RE::TESObjectARMO& a_armor) {
         if (!a_armor.HasKeywordString(kClothingRingKeyword)) {
             return false;
         }
 
-        return HasRingArmorAddon(a_armor) || SourceModelFootprints::HasRingModelEvidence(a_armor);
+        return HasRingArmorAddon(a_armor) || SourceModelFootprints::IsRingModel(a_armor);
     }
 }
 
@@ -809,10 +809,10 @@ bool IsRing(const RE::TESObjectARMO* a_armor) {
 
     if (a_armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing)) {
         return Compatibility::Vanilla::IsOfficialRingDefiningFile(a_armor->GetFile(0))
-               || SourceModelFootprints::HasRingModelEvidence(*a_armor);
+               || SourceModelFootprints::IsRingModel(*a_armor);
     }
 
-    return IsClothingRingWithRingEvidence(*a_armor);
+    return IsClothingRingWithRingModel(*a_armor);
 }
 
 bool HasClothingRingKeyword(const RE::TESObjectARMO* a_armor) {

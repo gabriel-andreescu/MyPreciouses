@@ -501,7 +501,7 @@ namespace {
         ApplyTextureSwap(*model, *node);
         if (!SourceModelFootprints::IsRingModel(*node)) {
             logger::debug(
-                "Visuals: source skipped | target={} | source={:08X} | addon={:08X} | path='{}' | reason=noRingModelEvidence",
+                "Visuals: source skipped | target={} | source={:08X} | addon={:08X} | path='{}' | reason=notRingModel",
                 Core::TargetName(a_visual.target),
                 a_sourceFormID,
                 a_visual.sourceAddon ? a_visual.sourceAddon->GetFormID() : 0,

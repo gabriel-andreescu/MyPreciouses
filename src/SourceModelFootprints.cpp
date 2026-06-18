@@ -30,12 +30,6 @@ namespace {
     constexpr auto kMinimumSkinWeight = 0.000001F;
     constexpr auto kMeaningfulSkinWeightRatio = 0.10F;
 
-    enum class DismemberModelScan {
-        kNoDismemberPartitions,
-        kNonRingPartitions,
-        kRingPartitions,
-    };
-
     constexpr auto kNonTargetWeightBucket = Core::kAllTargets.size();
     constexpr auto kWeightBucketCount = Core::kAllTargets.size() + 1;
 
@@ -62,7 +56,7 @@ namespace {
 
     struct SourceModelFootprint {
         Core::TargetMask sourceTargets;
-        bool hasRingEvidence {false};
+        bool isRingModel {false};
     };
 
     std::mutex g_cacheLock;
@@ -382,20 +376,6 @@ namespace {
         return result;
     }
 
-    void CollectSourceTargetsFromSkin(const RE::NiSkinInstance& a_skin, Core::TargetMask& a_sourceTargets) {
-        const auto scan = ScanSkinInfluences(a_skin);
-        if (!scan.hasWeightedInfluence) {
-            CollectSourceTargetsFromBoneNames(a_skin, a_sourceTargets);
-            return;
-        }
-
-        for (const auto target : Core::kAllTargets) {
-            if (scan.sourceTargets.Contains(target)) {
-                a_sourceTargets.Add(target);
-            }
-        }
-    }
-
     [[nodiscard]] bool HasRingPartition(RE::BSDismemberSkinInstance& a_skin) {
         auto& runtimeData = a_skin.GetRuntimeData();
         if (!runtimeData.partitions || runtimeData.numPartitions <= 0) {
@@ -404,6 +384,26 @@ namespace {
 
         for (auto index = 0; index < runtimeData.numPartitions; ++index) {
             if (runtimeData.partitions[index].slot == kRingBodyPart) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    [[nodiscard]] bool HasDismemberPartition(RE::BSDismemberSkinInstance& a_skin) {
+        const auto& runtimeData = a_skin.GetRuntimeData();
+        return runtimeData.partitions && runtimeData.numPartitions > 0;
+    }
+
+    [[nodiscard]] bool HasNonRingPartition(RE::BSDismemberSkinInstance& a_skin) {
+        auto& runtimeData = a_skin.GetRuntimeData();
+        if (!runtimeData.partitions || runtimeData.numPartitions <= 0) {
+            return false;
+        }
+
+        for (auto index = 0; index < runtimeData.numPartitions; ++index) {
+            if (runtimeData.partitions[index].slot != kRingBodyPart) {
                 return true;
             }
         }
@@ -431,49 +431,6 @@ namespace {
         return sawFingerBone;
     }
 
-    [[nodiscard]] DismemberModelScan ScanDismemberPartitions(
-        RE::NiAVObject& a_root,
-        Core::TargetMask* a_sourceTargets
-    ) {
-        auto sawDismemberPartitions = false;
-        auto foundRingPartitions = false;
-
-        RE::BSVisit::TraverseScenegraphGeometries(std::addressof(a_root), [&](RE::BSGeometry* a_geometry) {
-            if (!a_geometry) {
-                return RE::BSVisit::BSVisitControl::kContinue;
-            }
-
-            auto& geometryData = a_geometry->GetGeometryRuntimeData();
-            auto* skin = geometryData.skinInstance.get();
-            auto* dismemberSkin = skin ? netimmerse_cast<RE::BSDismemberSkinInstance*>(skin) : nullptr;
-            if (!dismemberSkin) {
-                return RE::BSVisit::BSVisitControl::kContinue;
-            }
-
-            auto& runtimeData = dismemberSkin->GetRuntimeData();
-            if (!runtimeData.partitions || runtimeData.numPartitions <= 0) {
-                return RE::BSVisit::BSVisitControl::kContinue;
-            }
-
-            sawDismemberPartitions = true;
-            if (HasRingPartition(*dismemberSkin) || HasOnlyMeaningfulFingerWeights(*skin)) {
-                foundRingPartitions = true;
-                if (a_sourceTargets) {
-                    CollectSourceTargetsFromSkin(*skin, *a_sourceTargets);
-                }
-            }
-
-            return RE::BSVisit::BSVisitControl::kContinue;
-        });
-
-        if (foundRingPartitions) {
-            return DismemberModelScan::kRingPartitions;
-        }
-
-        return sawDismemberPartitions ? DismemberModelScan::kNonRingPartitions
-                                      : DismemberModelScan::kNoDismemberPartitions;
-    }
-
     void CollectSourceTargetsFromNodeNames(RE::NiAVObject& a_root, Core::TargetMask& a_sourceTargets) {
         RE::BSVisit::TraverseScenegraphObjects(std::addressof(a_root), [&](RE::NiAVObject* a_object) {
             const auto* nodeName = a_object ? a_object->name.c_str() : nullptr;
@@ -481,21 +438,6 @@ namespace {
                 if (const auto parsedBone = ParseFingerBoneName(nodeName)) {
                     a_sourceTargets.Add(ToTarget(*parsedBone));
                 }
-            }
-
-            return RE::BSVisit::BSVisitControl::kContinue;
-        });
-    }
-
-    void CollectSourceTargetsFromAllSkins(RE::NiAVObject& a_root, Core::TargetMask& a_sourceTargets) {
-        RE::BSVisit::TraverseScenegraphGeometries(std::addressof(a_root), [&](RE::BSGeometry* a_geometry) {
-            if (!a_geometry) {
-                return RE::BSVisit::BSVisitControl::kContinue;
-            }
-
-            auto& geometryData = a_geometry->GetGeometryRuntimeData();
-            if (auto* skin = geometryData.skinInstance.get()) {
-                CollectSourceTargetsFromSkin(*skin, a_sourceTargets);
             }
 
             return RE::BSVisit::BSVisitControl::kContinue;
@@ -510,17 +452,83 @@ namespace {
         }
     }
 
-    [[nodiscard]] SourceModelFootprint ScanModelFootprint(RE::NiAVObject& a_root) {
-        SourceModelFootprint footprint;
-        const auto dismemberScan = ScanDismemberPartitions(a_root, std::addressof(footprint.sourceTargets));
-        if (dismemberScan != DismemberModelScan::kNoDismemberPartitions) {
-            footprint.hasRingEvidence = dismemberScan == DismemberModelScan::kRingPartitions;
-            return footprint;
+    [[nodiscard]] bool ScanSkinAsStandaloneRing(
+        const RE::NiSkinInstance& a_skin,
+        Core::TargetMask& a_sourceTargets,
+        bool& a_hasNonRingEvidence
+    ) {
+        const auto scan = ScanSkinInfluences(a_skin);
+        if (!scan.hasWeightedInfluence) {
+            if (!HasOnlyFingerBoneNames(a_skin)) {
+                a_hasNonRingEvidence = GetSkinBoneCount(a_skin) > 0;
+                return false;
+            }
+
+            CollectSourceTargetsFromBoneNames(a_skin, a_sourceTargets);
+            return true;
         }
 
-        CollectSourceTargetsFromNodeNames(a_root, footprint.sourceTargets);
-        CollectSourceTargetsFromAllSkins(a_root, footprint.sourceTargets);
-        footprint.hasRingEvidence = !footprint.sourceTargets.Empty();
+        if (!scan.hasMeaningfulFingerInfluence || scan.hasMeaningfulNonFingerInfluence) {
+            a_hasNonRingEvidence = true;
+            return false;
+        }
+
+        MergeSourceTargets(a_sourceTargets, scan.sourceTargets);
+        return true;
+    }
+
+    [[nodiscard]] SourceModelFootprint ScanModelFootprint(RE::NiAVObject& a_root) {
+        SourceModelFootprint footprint;
+        auto foundRingGeometry = false;
+        auto foundNonRingGeometry = false;
+
+        RE::BSVisit::TraverseScenegraphGeometries(std::addressof(a_root), [&](RE::BSGeometry* a_geometry) {
+            if (!a_geometry) {
+                return RE::BSVisit::BSVisitControl::kContinue;
+            }
+
+            auto& geometryData = a_geometry->GetGeometryRuntimeData();
+            auto* skin = geometryData.skinInstance.get();
+            if (!skin) {
+                return RE::BSVisit::BSVisitControl::kContinue;
+            }
+
+            Core::TargetMask skinTargets;
+            auto hasNonRingEvidence = false;
+            const auto skinIsRing = ScanSkinAsStandaloneRing(*skin, skinTargets, hasNonRingEvidence);
+
+            auto* dismemberSkin = netimmerse_cast<RE::BSDismemberSkinInstance*>(skin);
+            if (dismemberSkin && HasDismemberPartition(*dismemberSkin)) {
+                if (HasNonRingPartition(*dismemberSkin) || hasNonRingEvidence) {
+                    foundNonRingGeometry = true;
+                    return RE::BSVisit::BSVisitControl::kContinue;
+                }
+
+                if (HasRingPartition(*dismemberSkin) || skinIsRing) {
+                    foundRingGeometry = true;
+                    MergeSourceTargets(footprint.sourceTargets, skinTargets);
+                    return RE::BSVisit::BSVisitControl::kContinue;
+                }
+            }
+
+            if (skinIsRing) {
+                foundRingGeometry = true;
+                MergeSourceTargets(footprint.sourceTargets, skinTargets);
+            } else if (hasNonRingEvidence) {
+                foundNonRingGeometry = true;
+            }
+
+            return RE::BSVisit::BSVisitControl::kContinue;
+        });
+
+        Core::TargetMask nodeTargets;
+        CollectSourceTargetsFromNodeNames(a_root, nodeTargets);
+        if (!nodeTargets.Empty()) {
+            foundRingGeometry = true;
+            MergeSourceTargets(footprint.sourceTargets, nodeTargets);
+        }
+
+        footprint.isRingModel = foundRingGeometry && !foundNonRingGeometry;
         return footprint;
     }
 
@@ -542,7 +550,7 @@ namespace {
         return paths;
     }
 
-    void MergeModelFootprint(const std::string& a_path, SourceModelFootprint& a_footprint) {
+    [[nodiscard]] std::optional<SourceModelFootprint> LoadModelFootprint(const std::string& a_path) {
         RE::NiPointer<RE::NiNode> sourceRoot;
         const RE::BSModelDB::DBTraits::ArgsType args;
         const auto loadResult = RE::BSModelDB::Demand(a_path.c_str(), sourceRoot, args);
@@ -552,20 +560,32 @@ namespace {
                 a_path,
                 std::to_underlying(loadResult)
             );
-            return;
+            return std::nullopt;
         }
 
-        const auto modelFootprint = ScanModelFootprint(*sourceRoot);
-        MergeSourceTargets(a_footprint.sourceTargets, modelFootprint.sourceTargets);
-        a_footprint.hasRingEvidence = a_footprint.hasRingEvidence || modelFootprint.hasRingEvidence;
+        return ScanModelFootprint(*sourceRoot);
     }
 
     [[nodiscard]] SourceModelFootprint DetectSourceModelFootprint(const RE::TESObjectARMO& a_ring) {
         SourceModelFootprint footprint;
+        auto foundLoadedModel = false;
+
         for (const auto& path : GetSourceModelPaths(a_ring)) {
-            MergeModelFootprint(path, footprint);
+            const auto modelFootprint = LoadModelFootprint(path);
+            if (!modelFootprint) {
+                continue;
+            }
+
+            foundLoadedModel = true;
+            if (!modelFootprint->isRingModel) {
+                footprint.isRingModel = false;
+                return footprint;
+            }
+
+            MergeSourceTargets(footprint.sourceTargets, modelFootprint->sourceTargets);
         }
 
+        footprint.isRingModel = foundLoadedModel;
         return footprint;
     }
 
@@ -656,7 +676,7 @@ bool HasOnlyMeaningfulFingerWeights(const RE::NiSkinInstance& a_skin) {
 }
 
 bool IsRingModel(RE::NiAVObject& a_root) {
-    return ScanModelFootprint(a_root).hasRingEvidence;
+    return ScanModelFootprint(a_root).isRingModel;
 }
 
 namespace {
@@ -676,8 +696,8 @@ namespace {
     }
 }
 
-bool HasRingModelEvidence(const RE::TESObjectARMO& a_ring) {
-    return GetSourceModelFootprint(a_ring).hasRingEvidence;
+bool IsRingModel(const RE::TESObjectARMO& a_ring) {
+    return GetSourceModelFootprint(a_ring).isRingModel;
 }
 
 Core::TargetMask GetSourceTargets(const RE::TESObjectARMO& a_ring) {
