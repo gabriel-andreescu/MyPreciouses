@@ -305,7 +305,10 @@ namespace {
             return result;
         }
 
-        const auto occupiedTargets = SourceModelFootprints::GetProjectedTargets(*ring, Core::kVanillaRingSlotTarget);
+        const auto occupiedTargets = SourceModelFootprints::GetProjectedRingGeometryTargets(
+            *ring,
+            Core::kVanillaRingSlotTarget
+        );
         if (occupiedTargets.Empty()) {
             return result;
         }
@@ -441,7 +444,7 @@ namespace {
             return false;
         }
 
-        const auto rightWornTargets = SourceModelFootprints::GetProjectedTargets(
+        const auto rightWornTargets = SourceModelFootprints::GetProjectedRingGeometryTargets(
             *rightWorn->ring,
             Core::kVanillaRingSlotTarget
         );
@@ -480,7 +483,10 @@ namespace {
         const RE::TESObjectARMO& a_ring,
         const std::optional<Core::Target> a_selectedTarget
     ) {
-        const auto occupiedTargets = SourceModelFootprints::GetProjectedTargets(a_ring, Core::kVanillaRingSlotTarget);
+        const auto occupiedTargets = SourceModelFootprints::GetProjectedRingGeometryTargets(
+            a_ring,
+            Core::kVanillaRingSlotTarget
+        );
         const auto snapshot = AssignmentStore::GetSnapshot(a_actor);
         std::vector<Core::Target> conflicts;
         for (const auto target : Core::kVirtualTargets) {
@@ -494,7 +500,9 @@ namespace {
                 continue;
             }
 
-            if (occupiedTargets.Intersects(SourceModelFootprints::GetProjectedTargets(*assignedRing, target))) {
+            if (occupiedTargets.Intersects(
+                    SourceModelFootprints::GetProjectedRingGeometryTargets(*assignedRing, target)
+                )) {
                 conflicts.push_back(target);
             }
         }
@@ -538,7 +546,10 @@ namespace {
         }
 
         const auto target = FindVirtualTargetForVanillaRingSlotEquip(a_actor, *actor, *ring, a_source);
-        const auto occupiedTargets = SourceModelFootprints::GetProjectedTargets(*ring, Core::kVanillaRingSlotTarget);
+        const auto occupiedTargets = SourceModelFootprints::GetProjectedRingGeometryTargets(
+            *ring,
+            Core::kVanillaRingSlotTarget
+        );
         if (occupiedTargets.Empty()) {
             return result;
         }
@@ -594,7 +605,7 @@ namespace {
             return false;
         }
 
-        const auto occupiedTargets = SourceModelFootprints::GetProjectedTargets(*ring, a_target);
+        const auto occupiedTargets = SourceModelFootprints::GetProjectedRingGeometryTargets(*ring, a_target);
         if (occupiedTargets.Empty()) {
             return ClearVirtualAssignment(a_actor, a_target);
         }
@@ -701,7 +712,7 @@ namespace {
             return result;
         }
 
-        const auto occupiedTargets = SourceModelFootprints::GetProjectedTargets(*ring, a_target);
+        const auto occupiedTargets = SourceModelFootprints::GetProjectedRingGeometryTargets(*ring, a_target);
         if (!CanUseEnabledTargets(a_actor, occupiedTargets, a_target, *ring, "moveVanillaRingSlotToVirtual"sv)) {
             return result;
         }
@@ -862,7 +873,7 @@ namespace {
             return result;
         }
 
-        const auto occupiedTargets = SourceModelFootprints::GetProjectedTargets(a_ring, a_target);
+        const auto occupiedTargets = SourceModelFootprints::GetProjectedRingGeometryTargets(a_ring, a_target);
         if (!CanUseEnabledTargets(a_selection.actor, occupiedTargets, a_target, a_ring, "assignCustomTarget"sv)) {
             return result;
         }
@@ -931,7 +942,7 @@ namespace {
             return result;
         }
 
-        const auto occupiedTargets = SourceModelFootprints::GetProjectedTargets(a_ring, a_target);
+        const auto occupiedTargets = SourceModelFootprints::GetProjectedRingGeometryTargets(a_ring, a_target);
         if (!CanUseEnabledTargets(a_selection.actor, occupiedTargets, a_target, a_ring, "assignFormTarget"sv)) {
             return result;
         }
@@ -1021,7 +1032,7 @@ ActionResult ClearDisabledVirtualSlotAssignments(const RefreshMode a_refreshMode
             auto occupiedTargets = Core::TargetMask {};
             auto* ring = LookupSourceRing(assignment.source.sourceFormID);
             if (ring) {
-                occupiedTargets = SourceModelFootprints::GetProjectedTargets(*ring, target);
+                occupiedTargets = SourceModelFootprints::GetProjectedRingGeometryTargets(*ring, target);
             }
             if (occupiedTargets.Empty()) {
                 occupiedTargets.Add(target);

@@ -499,7 +499,7 @@ namespace {
         }
 
         ApplyTextureSwap(*model, *node);
-        if (!SourceModelFootprints::IsRingModel(*node)) {
+        if (!SourceModelFootprints::HasOnlyRingGeometry(*node)) {
             logger::debug(
                 "Visuals: source skipped | target={} | source={:08X} | addon={:08X} | path='{}' | reason=notRingModel",
                 Core::TargetName(a_visual.target),
@@ -746,7 +746,7 @@ bool RetargetVanillaRingClone(RE::BipedAnim* a_biped, RE::NiAVObject* a_object, 
         return false;
     }
 
-    const auto sourceTargets = SourceModelFootprints::GetSourceTargets(*ring);
+    const auto sourceTargets = SourceModelFootprints::GetRingGeometrySourceTargets(*ring);
     if (!NeedsVanillaRingCloneRetarget(*ring, sourceTargets)) {
         return false;
     }

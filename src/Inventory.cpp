@@ -202,7 +202,7 @@ namespace {
             return false;
         }
 
-        return HasRingArmorAddon(a_armor) || SourceModelFootprints::IsRingModel(a_armor);
+        return HasRingArmorAddon(a_armor) || SourceModelFootprints::HasOnlyRingGeometry(a_armor);
     }
 }
 
@@ -809,7 +809,7 @@ bool IsRing(const RE::TESObjectARMO* a_armor) {
 
     if (a_armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kRing)) {
         return Compatibility::Vanilla::IsOfficialRingDefiningFile(a_armor->GetFile(0))
-               || SourceModelFootprints::IsRingModel(*a_armor);
+               || SourceModelFootprints::HasOnlyRingGeometry(*a_armor);
     }
 
     return IsClothingRingWithRingModel(*a_armor);

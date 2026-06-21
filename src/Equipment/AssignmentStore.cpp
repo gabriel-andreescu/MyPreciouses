@@ -62,7 +62,7 @@ namespace {
         const Core::Target a_target
     ) {
         if (const auto* ring = LookupAssignedRing(a_assignment.source.sourceFormID)) {
-            return SourceModelFootprints::GetProjectedTargets(*ring, a_target);
+            return SourceModelFootprints::GetProjectedRingGeometryTargets(*ring, a_target);
         }
 
         Core::TargetMask mask;
@@ -187,7 +187,7 @@ namespace {
             return false;
         }
 
-        const auto occupiedTargets = SourceModelFootprints::GetProjectedTargets(a_ring, a_target);
+        const auto occupiedTargets = SourceModelFootprints::GetProjectedRingGeometryTargets(a_ring, a_target);
         if (!CanOccupyTargets(occupiedTargets, a_target, a_ring, a_action)
             || !CanUseEnabledTargets(a_actor, occupiedTargets, a_target, a_ring, a_action)) {
             return false;

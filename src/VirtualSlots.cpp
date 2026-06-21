@@ -758,7 +758,7 @@ namespace {
         state.activeAssignment = assignment;
         state.mode = mode;
         state.active = true;
-        state.sourceTargets = SourceModelFootprints::GetSourceTargets(*ring);
+        state.sourceTargets = SourceModelFootprints::GetRingGeometrySourceTargets(*ring);
 
         if (mode == ExtraRingMode::kFunctional && changedAssignment && !preserveLoadedEffect) {
             plan.apply = MakeApplyAction(

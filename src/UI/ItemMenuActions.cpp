@@ -234,7 +234,7 @@ namespace {
             .hostMenu = a_source.hostMenu,
             .itemActor = a_source.itemActor,
             .itemSource = a_source.itemSource,
-            .sourceTargets = a_source.ring ? SourceModelFootprints::GetSourceTargets(*a_source.ring)
+            .sourceTargets = a_source.ring ? SourceModelFootprints::GetRingGeometrySourceTargets(*a_source.ring)
                                            : Core::TargetMask {},
             .moveSourceTarget = a_moveSourceTarget,
         };
@@ -365,7 +365,8 @@ namespace {
             }
 
             const auto* ring = Inventory::AsRing(RE::TESForm::LookupByID(assignment.source.sourceFormID));
-            if (!ring || !SourceModelFootprints::GetProjectedTargets(*ring, sourceTarget).Contains(a_target)) {
+            if (!ring
+                || !SourceModelFootprints::GetProjectedRingGeometryTargets(*ring, sourceTarget).Contains(a_target)) {
                 continue;
             }
 
@@ -461,7 +462,7 @@ namespace {
             return std::nullopt;
         }
 
-        return SourceModelFootprints::GetProjectedTargets(*rightWorn->ring, Core::kVanillaRingSlotTarget)
+        return SourceModelFootprints::GetProjectedRingGeometryTargets(*rightWorn->ring, Core::kVanillaRingSlotTarget)
                        .Contains(a_target)
                    ? std::make_optional(rightWorn->label)
                    : std::nullopt;
@@ -544,7 +545,7 @@ namespace {
             return false;
         }
 
-        const auto rightWornTargets = SourceModelFootprints::GetProjectedTargets(
+        const auto rightWornTargets = SourceModelFootprints::GetProjectedRingGeometryTargets(
             *rightWorn->ring,
             Core::kVanillaRingSlotTarget
         );
@@ -731,7 +732,7 @@ namespace {
             return true;
         }
 
-        const auto sourceTargets = SourceModelFootprints::GetSourceTargets(*ring);
+        const auto sourceTargets = SourceModelFootprints::GetRingGeometrySourceTargets(*ring);
         if (!FindFirstSelectableTargetOnHand(sourceTargets, a_hand)) {
             return false;
         }
@@ -920,7 +921,7 @@ bool HandleRingUseFromMenuEntry(
         return true;
     }
 
-    const auto sourceTargets = SourceModelFootprints::GetSourceTargets(*source->ring);
+    const auto sourceTargets = SourceModelFootprints::GetRingGeometrySourceTargets(*source->ring);
     const auto trigger = GetFingerSelectTrigger();
     if (trigger.requested && HasMultipleSelectableTargetsOnHand(sourceTargets, a_hand)) {
         const auto opened = ShowFingerSelector(*source, a_hand, trigger.inputDevice);

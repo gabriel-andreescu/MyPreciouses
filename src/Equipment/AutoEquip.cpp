@@ -246,7 +246,7 @@ namespace {
                 continue;
             }
 
-            const auto sourceTargets = SourceModelFootprints::GetSourceTargets(*source->ring);
+            const auto sourceTargets = SourceModelFootprints::GetRingGeometrySourceTargets(*source->ring);
             if (sourceTargets.Empty()) {
                 continue;
             }
@@ -1034,7 +1034,7 @@ namespace {
         if (a_rightWorn && a_rightWorn->ring) {
             AddTargets(
                 occupiedTargets,
-                SourceModelFootprints::GetProjectedTargets(*a_rightWorn->ring, Core::kVanillaRingSlotTarget)
+                SourceModelFootprints::GetProjectedRingGeometryTargets(*a_rightWorn->ring, Core::kVanillaRingSlotTarget)
             );
         }
         return occupiedTargets;

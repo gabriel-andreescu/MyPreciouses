@@ -108,12 +108,14 @@ namespace {
         };
 
         if (a_vanillaRingSlotEquipped) {
-            addOccupiedTargets(SourceModelFootprints::GetProjectedTargets(a_ring, Core::kVanillaRingSlotTarget));
+            addOccupiedTargets(
+                SourceModelFootprints::GetProjectedRingGeometryTargets(a_ring, Core::kVanillaRingSlotTarget)
+            );
         }
 
         for (const auto target : Core::kVirtualTargets) {
             if (Equipment::AssignmentStore::Get(a_actor, target).source.Matches(a_source)) {
-                addOccupiedTargets(SourceModelFootprints::GetProjectedTargets(a_ring, target));
+                addOccupiedTargets(SourceModelFootprints::GetProjectedRingGeometryTargets(a_ring, target));
             }
         }
 
@@ -572,7 +574,7 @@ RingHintState GetRingEntryHintState(RE::InventoryEntryData& a_entry, const Core:
         return {};
     }
 
-    const auto sourceTargets = SourceModelFootprints::GetSourceTargets(presentation->ring);
+    const auto sourceTargets = SourceModelFootprints::GetRingGeometrySourceTargets(presentation->ring);
     if (Equipment::SpecialRingRules::ShouldUseBondOfMatrimonyLeftRingFingerAction(a_actor, presentation->ring)) {
         return RingHintState {
             .canUseEquip = true,
@@ -624,7 +626,7 @@ bool CanShowFingerSelectHint(const RE::GFxValue& a_entryObject) {
         return false;
     }
 
-    const auto sourceTargets = SourceModelFootprints::GetSourceTargets(*ring);
+    const auto sourceTargets = SourceModelFootprints::GetRingGeometrySourceTargets(*ring);
     return HasMultipleSelectableTargetsOnHand(sourceTargets, Core::Hand::kLeft)
            || HasMultipleSelectableTargetsOnHand(sourceTargets, Core::Hand::kRight);
 }

@@ -54,15 +54,25 @@ namespace {
         bool hasMeaningfulNonFingerInfluence {false};
     };
 
-    struct SourceModelFootprint {
+    struct ModelGeometryScan {
         Core::TargetMask sourceTargets;
-        bool isRingModel {false};
+        bool hasRingGeometry {false};
+        bool hasNonRingGeometry {false};
+
+        [[nodiscard]] bool HasOnlyRingGeometry() const {
+            return hasRingGeometry && !hasNonRingGeometry;
+        }
+    };
+
+    struct ArmorGeometryFootprint {
+        Core::TargetMask ringGeometrySourceTargets;
+        bool hasOnlyRingGeometry {false};
     };
 
     std::mutex g_cacheLock;
 
-    [[nodiscard]] std::unordered_map<RE::FormID, SourceModelFootprint>& SourceModelFootprints() {
-        static auto* footprints = new std::unordered_map<RE::FormID, SourceModelFootprint>();
+    [[nodiscard]] std::unordered_map<RE::FormID, ArmorGeometryFootprint>& ArmorGeometryFootprints() {
+        static auto* footprints = new std::unordered_map<RE::FormID, ArmorGeometryFootprint>();
         return *footprints;
     }
 
@@ -477,8 +487,8 @@ namespace {
         return true;
     }
 
-    [[nodiscard]] SourceModelFootprint ScanModelFootprint(RE::NiAVObject& a_root) {
-        SourceModelFootprint footprint;
+    [[nodiscard]] ModelGeometryScan ScanModelGeometry(RE::NiAVObject& a_root) {
+        ModelGeometryScan scan;
         auto foundRingGeometry = false;
         auto foundNonRingGeometry = false;
 
@@ -506,14 +516,14 @@ namespace {
 
                 if (HasRingPartition(*dismemberSkin) || skinIsRing) {
                     foundRingGeometry = true;
-                    MergeSourceTargets(footprint.sourceTargets, skinTargets);
+                    MergeSourceTargets(scan.sourceTargets, skinTargets);
                     return RE::BSVisit::BSVisitControl::kContinue;
                 }
             }
 
             if (skinIsRing) {
                 foundRingGeometry = true;
-                MergeSourceTargets(footprint.sourceTargets, skinTargets);
+                MergeSourceTargets(scan.sourceTargets, skinTargets);
             } else if (hasNonRingEvidence) {
                 foundNonRingGeometry = true;
             }
@@ -525,11 +535,12 @@ namespace {
         CollectSourceTargetsFromNodeNames(a_root, nodeTargets);
         if (!nodeTargets.Empty()) {
             foundRingGeometry = true;
-            MergeSourceTargets(footprint.sourceTargets, nodeTargets);
+            MergeSourceTargets(scan.sourceTargets, nodeTargets);
         }
 
-        footprint.isRingModel = foundRingGeometry && !foundNonRingGeometry;
-        return footprint;
+        scan.hasRingGeometry = foundRingGeometry;
+        scan.hasNonRingGeometry = foundNonRingGeometry;
+        return scan;
     }
 
     [[nodiscard]] std::vector<std::string> GetSourceModelPaths(const RE::TESObjectARMO& a_ring) {
@@ -550,7 +561,7 @@ namespace {
         return paths;
     }
 
-    [[nodiscard]] std::optional<SourceModelFootprint> LoadModelFootprint(const std::string& a_path) {
+    [[nodiscard]] std::optional<ModelGeometryScan> LoadModelGeometry(const std::string& a_path) {
         RE::NiPointer<RE::NiNode> sourceRoot;
         const RE::BSModelDB::DBTraits::ArgsType args;
         const auto loadResult = RE::BSModelDB::Demand(a_path.c_str(), sourceRoot, args);
@@ -563,29 +574,30 @@ namespace {
             return std::nullopt;
         }
 
-        return ScanModelFootprint(*sourceRoot);
+        return ScanModelGeometry(*sourceRoot);
     }
 
-    [[nodiscard]] SourceModelFootprint DetectSourceModelFootprint(const RE::TESObjectARMO& a_ring) {
-        SourceModelFootprint footprint;
+    [[nodiscard]] ArmorGeometryFootprint DetectArmorGeometryFootprint(const RE::TESObjectARMO& a_armor) {
+        ArmorGeometryFootprint footprint;
         auto foundLoadedModel = false;
+        auto allLoadedModelsHaveOnlyRingGeometry = true;
 
-        for (const auto& path : GetSourceModelPaths(a_ring)) {
-            const auto modelFootprint = LoadModelFootprint(path);
-            if (!modelFootprint) {
+        for (const auto& path : GetSourceModelPaths(a_armor)) {
+            const auto modelScan = LoadModelGeometry(path);
+            if (!modelScan) {
                 continue;
             }
 
             foundLoadedModel = true;
-            if (!modelFootprint->isRingModel) {
-                footprint.isRingModel = false;
-                return footprint;
+            if (!modelScan->HasOnlyRingGeometry()) {
+                allLoadedModelsHaveOnlyRingGeometry = false;
+                continue;
             }
 
-            MergeSourceTargets(footprint.sourceTargets, modelFootprint->sourceTargets);
+            MergeSourceTargets(footprint.ringGeometrySourceTargets, modelScan->sourceTargets);
         }
 
-        footprint.isRingModel = foundLoadedModel;
+        footprint.hasOnlyRingGeometry = foundLoadedModel && allLoadedModelsHaveOnlyRingGeometry;
         return footprint;
     }
 
@@ -675,37 +687,37 @@ bool HasOnlyMeaningfulFingerWeights(const RE::NiSkinInstance& a_skin) {
     return scan.hasMeaningfulFingerInfluence && !scan.hasMeaningfulNonFingerInfluence;
 }
 
-bool IsRingModel(RE::NiAVObject& a_root) {
-    return ScanModelFootprint(a_root).isRingModel;
+bool HasOnlyRingGeometry(RE::NiAVObject& a_root) {
+    return ScanModelGeometry(a_root).HasOnlyRingGeometry();
 }
 
 namespace {
-    [[nodiscard]] SourceModelFootprint GetSourceModelFootprint(const RE::TESObjectARMO& a_ring) {
-        const auto formID = a_ring.GetFormID();
+    [[nodiscard]] ArmorGeometryFootprint GetArmorGeometryFootprint(const RE::TESObjectARMO& a_armor) {
+        const auto formID = a_armor.GetFormID();
         {
             std::scoped_lock lock(g_cacheLock);
-            const auto& sourceModelFootprints = SourceModelFootprints();
-            if (const auto cached = sourceModelFootprints.find(formID); cached != sourceModelFootprints.end()) {
+            const auto& armorGeometryFootprints = ArmorGeometryFootprints();
+            if (const auto cached = armorGeometryFootprints.find(formID); cached != armorGeometryFootprints.end()) {
                 return cached->second;
             }
         }
 
-        const auto footprint = DetectSourceModelFootprint(a_ring);
+        const auto footprint = DetectArmorGeometryFootprint(a_armor);
         std::scoped_lock lock(g_cacheLock);
-        return SourceModelFootprints().try_emplace(formID, footprint).first->second;
+        return ArmorGeometryFootprints().try_emplace(formID, footprint).first->second;
     }
 }
 
-bool IsRingModel(const RE::TESObjectARMO& a_ring) {
-    return GetSourceModelFootprint(a_ring).isRingModel;
+bool HasOnlyRingGeometry(const RE::TESObjectARMO& a_armor) {
+    return GetArmorGeometryFootprint(a_armor).hasOnlyRingGeometry;
 }
 
-Core::TargetMask GetSourceTargets(const RE::TESObjectARMO& a_ring) {
-    return GetSourceModelFootprint(a_ring).sourceTargets;
+Core::TargetMask GetRingGeometrySourceTargets(const RE::TESObjectARMO& a_armor) {
+    return GetArmorGeometryFootprint(a_armor).ringGeometrySourceTargets;
 }
 
-Core::TargetMask GetProjectedTargets(const RE::TESObjectARMO& a_ring, const Core::Target a_target) {
-    return GetProjectedTargets(GetSourceTargets(a_ring), a_target);
+Core::TargetMask GetProjectedRingGeometryTargets(const RE::TESObjectARMO& a_armor, const Core::Target a_target) {
+    return GetProjectedTargets(GetRingGeometrySourceTargets(a_armor), a_target);
 }
 
 Core::TargetMask GetProjectedTargets(const Core::TargetMask a_sourceTargets, const Core::Target a_target) {
