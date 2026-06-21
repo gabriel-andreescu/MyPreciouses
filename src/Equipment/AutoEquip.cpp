@@ -2,6 +2,7 @@
 
 #include "Compatibility/Vanilla.h"
 #include "Equipment/AssignmentStore.h"
+#include "Equipment/SpecialRingRules.h"
 #include "Inventory.h"
 #include "Settings.h"
 #include "SourceModelFootprints.h"
@@ -31,10 +32,6 @@ namespace Equipment::AutoEquip {
 namespace {
     using ReasonMask = std::uint32_t;
     constexpr RE::FormID kRightHandEquipSlotFormID {0x00013F42};
-    constexpr Core::Target kNpcBondOfMatrimonyLeftRingFingerTarget {
-        .hand = Core::Hand::kLeft,
-        .finger = Core::Finger::kRing,
-    };
     constexpr std::array kNpcAutoEquipTargetPriority {
         Core::Target {.hand = Core::Hand::kRight, .finger = Core::Finger::kIndex},
         Core::Target {.hand = Core::Hand::kRight, .finger = Core::Finger::kMiddle},
@@ -284,13 +281,13 @@ namespace {
         return a_candidate.sourceTargets.Count() == 1;
     }
 
-    [[nodiscard]] bool ShouldApplyBondOfMatrimonyLeftRingFingerPreference(
+    [[nodiscard]] bool ShouldApplyBondOfMatrimonyLeftRingFingerRule(
         const Core::ActorKey a_actor,
         const bool a_hasBondCandidate
     ) {
         return a_hasBondCandidate
                && CanAutoEquipActor(a_actor)
-               && Settings::GetSingleton()->ShouldNpcPreferBondOfMatrimonyOnLeftRingFinger();
+               && Settings::GetSingleton()->ShouldNpcAlwaysEquipBondOfMatrimonyOnLeftRingFinger();
     }
 
     [[nodiscard]] bool HasBondOfMatrimonyCandidate(const std::vector<Candidate>& a_candidates) {
@@ -387,17 +384,20 @@ namespace {
     }
 
     [[nodiscard]] bool CanPlaceCandidate(
+        const Core::ActorKey a_actor,
         const Candidate& a_candidate,
         const Core::Target a_target,
         const Core::TargetMask& a_occupiedTargets
     ) {
         const auto projectedTargets = SourceModelFootprints::GetProjectedTargets(a_candidate.sourceTargets, a_target);
-        return !projectedTargets.Empty()
-               && Settings::GetSingleton()->AreTargetsEnabled(projectedTargets)
+        return a_candidate.ring
+               && !projectedTargets.Empty()
+               && SpecialRingRules::AreTargetsEnabledForSource(a_actor, *a_candidate.ring, projectedTargets)
                && !a_occupiedTargets.Intersects(projectedTargets);
     }
 
     [[nodiscard]] std::optional<std::size_t> SelectCandidateForTarget(
+        const Core::ActorKey a_actor,
         const std::vector<Candidate>& a_candidates,
         const std::vector<std::uint32_t>& a_usedCopies,
         const Core::Target a_target,
@@ -409,7 +409,9 @@ namespace {
         for (std::size_t index = 0; index < a_candidates.size(); ++index) {
             const auto& candidate = a_candidates[index];
             const auto availableCopies = EffectiveAvailableCopies(candidate, a_reservedNativeRing);
-            if (a_usedCopies[index] >= availableCopies || !CanPlaceCandidate(candidate, a_target, a_occupiedTargets)) {
+            if (a_usedCopies[index]
+                >= availableCopies
+                || !CanPlaceCandidate(a_actor, candidate, a_target, a_occupiedTargets)) {
                 continue;
             }
 
@@ -423,14 +425,14 @@ namespace {
     }
 
     [[nodiscard]] std::array<Core::Target, Core::kAllTargets.size()> BuildTargetOrder(
-        const bool a_preferBondOnLeftRingFinger
+        const bool a_alwaysEquipBondOnLeftRingFinger
     ) {
         auto targets = kNpcAutoEquipTargetPriority;
-        if (!a_preferBondOnLeftRingFinger) {
+        if (!a_alwaysEquipBondOnLeftRingFinger) {
             return targets;
         }
 
-        const auto preferred = std::ranges::find(targets, kNpcBondOfMatrimonyLeftRingFingerTarget);
+        const auto preferred = std::ranges::find(targets, SpecialRingRules::kBondOfMatrimonyLeftRingFingerTarget);
         if (preferred != targets.end()) {
             std::rotate(targets.begin(), preferred, std::next(preferred));
         }
@@ -447,12 +449,13 @@ namespace {
 
         auto occupiedTargets = a_constraints.preoccupiedTargets;
         std::vector<std::uint32_t> usedCopies(a_candidates.size(), 0);
+        const auto actor = Core::MakeActorKey(a_actor);
         const auto hasBondCandidate = HasBondOfMatrimonyCandidate(a_candidates);
-        const auto preferBondOnLeftRingFinger = ShouldApplyBondOfMatrimonyLeftRingFingerPreference(
-            Core::MakeActorKey(a_actor),
+        const auto alwaysEquipBondOnLeftRingFinger = ShouldApplyBondOfMatrimonyLeftRingFingerRule(
+            actor,
             hasBondCandidate
         );
-        const auto targetOrder = BuildTargetOrder(preferBondOnLeftRingFinger);
+        const auto targetOrder = BuildTargetOrder(alwaysEquipBondOnLeftRingFinger);
 
         for (const auto target : targetOrder) {
             if (!a_constraints.allowNativeRingSlot && target == Core::kVanillaRingSlotTarget) {
@@ -460,11 +463,12 @@ namespace {
             }
 
             const auto candidateIndex = SelectCandidateForTarget(
+                actor,
                 a_candidates,
                 usedCopies,
                 target,
                 occupiedTargets,
-                preferBondOnLeftRingFinger && target == kNpcBondOfMatrimonyLeftRingFingerTarget,
+                alwaysEquipBondOnLeftRingFinger && target == SpecialRingRules::kBondOfMatrimonyLeftRingFingerTarget,
                 a_constraints.reservedNativeRing
             );
             if (!candidateIndex) {
@@ -584,11 +588,14 @@ namespace {
         const std::vector<PlannedAssignment>& a_plan
     ) {
         if (!CanAutoEquipActor(a_actor)
-            || !Settings::GetSingleton()->ShouldNpcPreferBondOfMatrimonyOnLeftRingFinger()) {
+            || !Settings::GetSingleton()->ShouldNpcAlwaysEquipBondOfMatrimonyOnLeftRingFinger()) {
             return false;
         }
 
-        const auto plannedLeftRing = FindPlannedAssignment(a_plan, kNpcBondOfMatrimonyLeftRingFingerTarget);
+        const auto plannedLeftRing = FindPlannedAssignment(
+            a_plan,
+            SpecialRingRules::kBondOfMatrimonyLeftRingFingerTarget
+        );
         if (!plannedLeftRing || plannedLeftRing->candidateIndex >= a_candidates.size()) {
             return false;
         }
@@ -1152,7 +1159,7 @@ namespace {
 
         if (!nativeSlotResult.removedCannotWearExtraLists.empty()
             && nativeSlotClearPolicy.allowCannotWearBondOfMatrimonyRelocation) {
-            const auto leftRingIndex = Core::ToIndex(kNpcBondOfMatrimonyLeftRingFingerTarget);
+            const auto leftRingIndex = Core::ToIndex(SpecialRingRules::kBondOfMatrimonyLeftRingFingerTarget);
             const auto& desiredLeftRing = appliedPlan[leftRingIndex];
             if (!desiredLeftRing || !StoredAssignmentMatches(a_actor, *desiredLeftRing)) {
                 RestoreRemovedCannotWear(a_actorRef, nativeSlotResult.removedCannotWearExtraLists);

@@ -129,12 +129,34 @@
             "sourceType": "ModSettingBool",
             "defaultValue": true
           }
+        }
+      ]
+    },
+    {
+      "pageDisplayName": "Special Rings",
+      "content": [
+        {
+          "position": 0,
+          "text": "Bond of Matrimony on left ring finger",
+          "type": "header"
         },
         {
-          "id": "bNpcPreferBondOfMatrimonyOnLeftRingFinger:NPCs",
-          "text": "Bond of Matrimony on left hand ring finger",
+          "position": 1,
+          "id": "bPlayerAlwaysEquipBondOfMatrimonyOnLeftRingFinger:SpecialRings",
+          "text": "Player",
           "type": "toggle",
-          "help": "NPCs with The Bond of Matrimony prefer wearing it on the left-hand ring finger.",
+          "help": "Always equip The Bond of Matrimony on the player's left ring finger. This works even when that virtual slot is disabled, and Equip/Left Equip will not open the finger selector for this ring.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": false
+          }
+        },
+        {
+          "position": 2,
+          "id": "bNpcAlwaysEquipBondOfMatrimonyOnLeftRingFinger:SpecialRings",
+          "text": "NPCs",
+          "type": "toggle",
+          "help": "Always equip The Bond of Matrimony on the left ring finger for NPCs, including followers, when NPC support auto-equips rings. This works even when that virtual slot is disabled.",
           "valueOptions": {
             "sourceType": "ModSettingBool",
             "defaultValue": true
@@ -208,15 +230,6 @@
           }
         },
         {
-          "type": "hiddenToggle",
-          "text": "Left hand ring finger slot disabled",
-          "groupControl": 5,
-          "valueOptions": {
-            "sourceType": "PropertyValueBool",
-            "propertyName": "bLeftHandRingFingerSlotDisabled"
-          }
-        },
-        {
           "position": 0,
           "text": "Virtual Rings Preset",
           "type": "enum",
@@ -245,42 +258,16 @@
         },
         {
           "position": 2,
-          "text": "Special Rings",
-          "type": "header"
-        },
-        {
-          "position": 3,
-          "type": "empty"
-        },
-        {
-          "position": 4,
-          "id": "bBondOfMatrimonyOnLeftRingFinger:VirtualSlots",
-          "text": "Bond of Matrimony on left hand ring finger",
-          "type": "toggle",
-          "groupCondition": 5,
-          "groupBehavior": "disable",
-          "help": "Only applies when the left hand ring finger slot is disabled. Equip or Left Equip on The Bond of Matrimony toggles the left hand ring finger.",
-          "valueOptions": {
-            "sourceType": "ModSettingBool",
-            "defaultValue": false
-          }
-        },
-        {
-          "position": 5,
-          "type": "empty"
-        },
-        {
-          "position": 6,
           "text": "Left hand",
           "type": "header"
         },
         {
-          "position": 7,
+          "position": 3,
           "text": "Right hand",
           "type": "header"
         },
         {
-          "position": 8,
+          "position": 4,
           "id": "bEnableLeftThumb:VirtualSlots",
           "text": "Left thumb",
           "type": "toggle",
@@ -291,7 +278,7 @@
           }
         },
         {
-          "position": 10,
+          "position": 6,
           "id": "bEnableLeftIndex:VirtualSlots",
           "text": "Left index",
           "type": "toggle",
@@ -302,7 +289,7 @@
           }
         },
         {
-          "position": 12,
+          "position": 8,
           "id": "bEnableLeftMiddle:VirtualSlots",
           "text": "Left middle",
           "type": "toggle",
@@ -313,7 +300,7 @@
           }
         },
         {
-          "position": 14,
+          "position": 10,
           "id": "bEnableLeftRing:VirtualSlots",
           "text": "Left ring",
           "type": "toggle",
@@ -324,7 +311,7 @@
           }
         },
         {
-          "position": 16,
+          "position": 12,
           "id": "bEnableLeftPinky:VirtualSlots",
           "text": "Left pinky",
           "type": "toggle",
@@ -335,7 +322,7 @@
           }
         },
         {
-          "position": 9,
+          "position": 5,
           "id": "bEnableRightThumb:VirtualSlots",
           "text": "Right thumb",
           "type": "toggle",
@@ -346,7 +333,7 @@
           }
         },
         {
-          "position": 11,
+          "position": 7,
           "text": "Right index",
           "type": "toggle",
           "groupCondition": 4,
@@ -359,7 +346,7 @@
           }
         },
         {
-          "position": 13,
+          "position": 9,
           "id": "bEnableRightMiddle:VirtualSlots",
           "text": "Right middle",
           "type": "toggle",
@@ -370,7 +357,7 @@
           }
         },
         {
-          "position": 15,
+          "position": 11,
           "id": "bEnableRightRing:VirtualSlots",
           "text": "Right ring",
           "type": "toggle",
@@ -381,7 +368,7 @@
           }
         },
         {
-          "position": 17,
+          "position": 13,
           "id": "bEnableRightPinky:VirtualSlots",
           "text": "Right pinky",
           "type": "toggle",

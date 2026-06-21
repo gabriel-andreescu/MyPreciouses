@@ -5,7 +5,6 @@ Bool Property bCosmeticExtraRingsSelected Auto Hidden
 Bool Property bControllerInputSelected Auto Hidden
 Bool Property bRightIndexSlotConfigurable = False Auto Hidden
 Bool Property bRightIndexSlotDisplayed = True Auto Hidden
-Bool Property bLeftHandRingFingerSlotDisabled Auto Hidden
 Int Property VirtualSlotPreset Auto Hidden
 
 Bool Function SyncVirtualSlotDisplay()
@@ -28,24 +27,21 @@ Int Function SyncSettings()
     Bool wasFixedStrengthSelected = bFixedStrengthSelected
     Bool wasCosmeticExtraRingsSelected = bCosmeticExtraRingsSelected
     Bool wasControllerInputSelected = bControllerInputSelected
-    Bool wasLeftHandRingFingerSlotDisabled = bLeftHandRingFingerSlotDisabled
 
     Int enchantmentStrengthMode = GetModSettingInt("iEnchantmentStrengthMode:General")
     Int extraRingMode = GetModSettingInt("iExtraRingMode:General")
     bFixedStrengthSelected = enchantmentStrengthMode == 1
     bCosmeticExtraRingsSelected = extraRingMode == 1
     bControllerInputSelected = Game.UsingGamepad()
-    bLeftHandRingFingerSlotDisabled = !GetModSettingBool("bEnableLeftRing:VirtualSlots")
 
     Bool fixedStrengthChanged = bFixedStrengthSelected != wasFixedStrengthSelected
     Bool extraRingModeChanged = bCosmeticExtraRingsSelected != wasCosmeticExtraRingsSelected
     Bool inputDeviceChanged = bControllerInputSelected != wasControllerInputSelected
-    Bool leftHandRingFingerSlotChanged = bLeftHandRingFingerSlotDisabled != wasLeftHandRingFingerSlotDisabled
     If inputDeviceChanged
         Return 2
     EndIf
 
-    If fixedStrengthChanged || extraRingModeChanged || leftHandRingFingerSlotChanged
+    If fixedStrengthChanged || extraRingModeChanged
         Return 1
     EndIf
 

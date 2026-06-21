@@ -26,7 +26,7 @@ namespace {
     }
 
     void RefreshRingsAfterSlotOrEffectSettingsChanged(const Settings::ReloadResult a_reload) {
-        if (a_reload.virtualSlotsChanged || a_reload.bondOfMatrimonyLeftRingFingerChanged) {
+        if (a_reload.virtualSlotsChanged || a_reload.playerAlwaysEquipBondOfMatrimonyLeftRingFingerChanged) {
             static_cast<void>(Equipment::ClearDisabledVirtualSlotAssignments());
         }
 
@@ -57,7 +57,7 @@ namespace {
         const auto npcSupportDisabled = reload.npcSupportChanged && !reload.npcSupportEnabled;
         const auto slotOrEffectSettingsChanged = reload.extraRingModeChanged
                                                  || reload.enchantmentStrengthChanged
-                                                 || reload.bondOfMatrimonyLeftRingFingerChanged
+                                                 || reload.playerAlwaysEquipBondOfMatrimonyLeftRingFingerChanged
                                                  || reload.virtualSlotsChanged;
         if (slotOrEffectSettingsChanged) {
             logger::info(
@@ -80,7 +80,7 @@ namespace {
         }
 
         const auto npcSupportEnabled = reload.npcSupportChanged && reload.npcSupportEnabled;
-        const auto npcAutoEquipRulesChanged = reload.npcBondOfMatrimonyLeftRingFingerPreferenceChanged
+        const auto npcAutoEquipRulesChanged = reload.npcAlwaysEquipBondOfMatrimonyLeftRingFingerChanged
                                               || npcSupportEnabled;
         if (npcAutoEquipRulesChanged) {
             logger::info("Papyrus: MCM NPC auto-equip rules changed | action=refreshActors");
