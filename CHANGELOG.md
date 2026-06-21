@@ -1,8 +1,9 @@
 # Changelog
 
-## 0.4.5 - Unreleased
+## 0.4.5 - 2026-06-21
 
-- feat: move Bond of Matrimony left ring finger controls to a Special Rings MCM page and support always equipping it for players and NPCs
+- feat: move Bond of Matrimony left ring finger controls to a Special Rings MCM page and support always equipping it for
+  players and NPCs
 - fix: ignore inactive outfit-managed ring copies when auto-equipping NPC rings
 - fix: ignore mod-defined slot 36 accessories without wearable ring model evidence
 - fix: reject mixed accessory models during ring model classification
