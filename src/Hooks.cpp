@@ -215,16 +215,44 @@ namespace {
         static inline RE::SCRIPT_FUNCTION::Condition_t* func {nullptr};
     };
 
-    void InstallGetEquippedConditionHook() {
-        auto* command = RE::SCRIPT_FUNCTION::LocateScriptCommand("GetEquipped"sv);
+    struct WornHasKeywordConditionHook {
+        static bool thunk(RE::TESObjectREFR* a_thisObj, void* a_param1, void* a_param2, double& a_result) {
+            const auto result = func(a_thisObj, a_param1, a_param2, a_result);
+            if (!result || a_result != 0.0 || !a_thisObj || !a_param1) {
+                return result;
+            }
+
+            auto* actor = a_thisObj->As<RE::Actor>();
+            auto* wornHasKeywordArgument = static_cast<RE::BGSKeyword*>(a_param1);
+            if (actor && VirtualSlots::MatchesWornHasKeywordCondition(*actor, *wornHasKeywordArgument)) {
+                a_result = 1.0;
+            }
+
+            return result;
+        }
+
+        static inline RE::SCRIPT_FUNCTION::Condition_t* func {nullptr};
+    };
+
+    template <class Hook>
+    void InstallScriptConditionHook(const std::string_view a_commandName) {
+        auto* command = RE::SCRIPT_FUNCTION::LocateScriptCommand(a_commandName);
         if (!command || !command->conditionFunction) {
-            logger::warn("Hooks: GetEquipped condition hook skipped | reason=commandUnavailable");
+            logger::warn("Hooks: {} condition hook skipped | reason=commandUnavailable", a_commandName);
             return;
         }
 
-        GetEquippedConditionHook::func = command->conditionFunction;
-        command->conditionFunction = GetEquippedConditionHook::thunk;
-        logger::info("Hooks: GetEquipped condition hook installed");
+        Hook::func = command->conditionFunction;
+        command->conditionFunction = Hook::thunk;
+        logger::info("Hooks: {} condition hook installed", a_commandName);
+    }
+
+    void InstallGetEquippedConditionHook() {
+        InstallScriptConditionHook<GetEquippedConditionHook>("GetEquipped"sv);
+    }
+
+    void InstallWornHasKeywordConditionHook() {
+        InstallScriptConditionHook<WornHasKeywordConditionHook>("WornHasKeyword"sv);
     }
 
     struct ActorSwitchRaceHook {
@@ -602,6 +630,7 @@ void Install() {
     InstallItemMenuHooks();
     InstallEquipObjectHook();
     InstallGetEquippedConditionHook();
+    InstallWornHasKeywordConditionHook();
     InstallActorSwitchRaceHook();
     InstallUnequipAllHelperHook();
     InstallEnchantmentStrengthHook();

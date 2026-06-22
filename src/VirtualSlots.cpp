@@ -144,6 +144,18 @@ namespace {
         return a_getEquippedArgument.GetFormID() == a_sourceFormID;
     }
 
+    [[nodiscard]] bool SourceMatchesWornHasKeywordArgument(
+        const RE::FormID a_sourceFormID,
+        RE::BGSKeyword& a_wornHasKeywordArgument
+    ) {
+        if (a_sourceFormID == 0) {
+            return false;
+        }
+
+        auto* source = Inventory::AsRing(RE::TESForm::LookupByID(a_sourceFormID));
+        return source && source->HasKeyword(std::addressof(a_wornHasKeywordArgument));
+    }
+
     [[nodiscard]] ExtraDataListPtr CreateExtraDataList() {
         constexpr auto kExtraDataListAllocationSize = std::size_t {0x20};
         auto* extraList = RE::calloc<RE::ExtraDataList>(1, kExtraDataListAllocationSize);
@@ -1024,22 +1036,17 @@ void Revert() {
 }
 
 bool MatchesGetEquippedCondition(RE::Actor& a_actor, RE::TESForm& a_getEquippedArgument) {
-    const auto actorKey = Core::MakeActorKey(a_actor);
-    std::scoped_lock lock(g_lock);
-    const auto* actorState = FindActorState(actorKey);
-    if (!actorState) {
-        return false;
-    }
+    const auto sourceFormIDs = SnapshotFunctionalVirtualSourceFormIDs(Core::MakeActorKey(a_actor));
+    return std::ranges::any_of(sourceFormIDs, [&a_getEquippedArgument](const RE::FormID a_sourceFormID) {
+        return SourceMatchesGetEquippedArgument(a_sourceFormID, a_getEquippedArgument);
+    });
+}
 
-    for (const auto target : Core::kVirtualTargets) {
-        const auto& state = actorState->targets[Core::ToIndex(target)];
-        const auto functional = state.mode == ExtraRingMode::kFunctional;
-        if (state.active && functional && SourceMatchesGetEquippedArgument(state.sourceFormID, a_getEquippedArgument)) {
-            return true;
-        }
-    }
-
-    return false;
+bool MatchesWornHasKeywordCondition(RE::Actor& a_actor, RE::BGSKeyword& a_wornHasKeywordArgument) {
+    const auto sourceFormIDs = SnapshotFunctionalVirtualSourceFormIDs(Core::MakeActorKey(a_actor));
+    return std::ranges::any_of(sourceFormIDs, [&a_wornHasKeywordArgument](const RE::FormID a_sourceFormID) {
+        return SourceMatchesWornHasKeywordArgument(a_sourceFormID, a_wornHasKeywordArgument);
+    });
 }
 
 float GetRingEnchantmentScaleForSource(RE::Actor& a_actor, const RE::TESObjectARMO* a_source) {

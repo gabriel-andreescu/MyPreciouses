@@ -33,6 +33,7 @@ void ClearTarget(
 void Revert();
 
 [[nodiscard]] bool MatchesGetEquippedCondition(RE::Actor& a_actor, RE::TESForm& a_getEquippedArgument);
+[[nodiscard]] bool MatchesWornHasKeywordCondition(RE::Actor& a_actor, RE::BGSKeyword& a_wornHasKeywordArgument);
 [[nodiscard]] float GetRingEnchantmentScaleForSource(RE::Actor& a_actor, const RE::TESObjectARMO* a_source);
 [[nodiscard]] std::vector<Papyrus::ScriptEventMirror::BindingRetentionKey> GetActiveBindingRetentionKeys();
 }
