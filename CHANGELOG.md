@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.6 - Unreleased
+## 0.4.6 - 2026-06-22
 
 - feat: let functional virtual rings satisfy worn keyword conditions
 
