@@ -1,5 +1,6 @@
 {
   "python.defaultInterpreterPath": "${workspaceFolder}/.venv",
+  "ruff.path": ["${workspaceFolder}/.venv/Scripts/ruff.exe"],
   "python.testing.pytestEnabled": true,
   "python.testing.unittestEnabled": false,
   "[python]": {
