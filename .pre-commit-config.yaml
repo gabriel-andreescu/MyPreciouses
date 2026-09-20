@@ -45,6 +45,7 @@ repos:
         args: [--verify]
       - id: clang-format
         name: clang-format
-        language: system
+        language: python
         entry: clang-format -i
+        additional_dependencies: [clang-format==23.1.1]
         types_or: [c, c++]
