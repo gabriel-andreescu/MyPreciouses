@@ -137,6 +137,7 @@ target("MyPreciouses", function()
             file_id = "7442558",
             category = "main",
             primary = true,
+            description = "Updating from an older version? Follow the Updating to 1.0.0 instructions in the mod description before installing.",
         },
     })
     add_installfiles("assets/(**)|optional/**")
@@ -152,6 +153,7 @@ target("MyPreciousesMCM", function()
             mod_id = "7318624452399",
             file_id = "7442579",
             category = "optional",
+            description = "MCM addon for MyPreciouses 1.0.0. Requires SkyUI and MCM Helper.",
         },
     })
     add_installfiles("$(builddir)/artifacts/Mutagen/mcm/(MyPreciouses.esp)")
@@ -163,6 +165,12 @@ target("DizietBathPatch", function()
     add_rules("@addon/bmk/skyrim.package", {
         targets = { "BathPatchScripts" },
         package_name = "MyPreciouses - Diziet Bath Patch",
+        nexus = {
+            mod_id = "7318624452399",
+            file_id = "7995933",
+            category = "optional",
+            description = "Restores extra rings after bathing. Requires MyPreciouses 1.0.0 and Diziet's Player Home Bath Undressing 7.1.2.7. Install after both mods and let this patch overwrite Diziet's script.",
+        },
     })
     add_installfiles("assets/optional/bath/(**)")
 end)
