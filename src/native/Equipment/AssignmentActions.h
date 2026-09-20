@@ -1,0 +1,91 @@
+#pragma once
+
+#include <RE/Skyrim.h> // IWYU pragma: keep
+
+#include "Core/Assignment.h"
+#include "Core/Target.h"
+#include "VirtualSlots.h"
+
+#include <cstdint>
+#include <functional>
+#include <optional>
+#include <vector>
+
+namespace Equipment {
+enum class ActionBlockReason : std::uint8_t {
+    kNone = 0,
+    kRightHandRingCannotBeUnequipped,
+};
+
+struct SourceSelection {
+    Core::ActorKey actor;
+    Core::ItemSource itemSource;
+};
+
+struct ActionResult {
+    bool selectionChanged {false};
+    bool inventoryChanged {false};
+    bool sourceUnavailable {false};
+    bool handled {false};
+    ActionBlockReason blockReason {ActionBlockReason::kNone};
+
+    [[nodiscard]] bool ChangedState() const {
+        return selectionChanged || inventoryChanged;
+    }
+
+    [[nodiscard]] bool WasHandled() const {
+        return handled || ChangedState() || sourceUnavailable;
+    }
+};
+
+using CompletionCallback = std::function<void(ActionResult)>;
+
+enum class QueueMode : std::uint8_t {
+    kImmediate = 0,
+    kQueued,
+};
+
+enum class RefreshMode : std::uint8_t {
+    kNone = 0,
+    kAffectedActors,
+};
+
+[[nodiscard]] bool IsSelected(const SourceSelection& a_selection, Core::Target a_target);
+[[nodiscard]] bool IsInVanillaRingSlot(const SourceSelection& a_selection);
+[[nodiscard]] bool IsProtectedInVanillaRingSlot(const SourceSelection& a_selection);
+[[nodiscard]] std::vector<Core::Target> CollectSelectedTargetsOnHand(
+    const SourceSelection& a_selection,
+    Core::Hand a_hand
+);
+[[nodiscard]] ActionResult ToggleTarget(
+    const SourceSelection& a_selection,
+    Core::Target a_target,
+    std::optional<Core::Target> a_moveSourceTarget = std::nullopt,
+    QueueMode a_queueMode = QueueMode::kImmediate,
+    CompletionCallback a_onQueuedComplete = {}
+);
+
+[[nodiscard]] bool InterceptRightEquip(
+    RE::Actor& a_actor,
+    const RE::TESObjectARMO& a_ring,
+    const RE::ObjectEquipParams& a_params,
+    CompletionCallback a_onQueuedComplete = {}
+);
+[[nodiscard]] ActionResult ClearVirtualAssignments(
+    RE::Actor const& a_actor,
+    VirtualSlots::ScriptBindingClearMode a_scriptBindings = VirtualSlots::ScriptBindingClearMode::kRelease
+);
+[[nodiscard]] ActionResult ClearNonPlayerVirtualAssignments(
+    VirtualSlots::ScriptBindingClearMode a_scriptBindings = VirtualSlots::ScriptBindingClearMode::kRelease
+);
+void QueueAssignmentReconciliation(Core::ActorKey a_actor, CompletionCallback a_onComplete = {});
+void RestoreAvailableVirtualAssignments(RE::Actor& a_actor, const Core::TargetAssignments& a_snapshot);
+[[nodiscard]] ActionResult ClearDisabledVirtualSlotAssignments(
+    RefreshMode a_refreshMode = RefreshMode::kAffectedActors
+);
+void HandleContainerChangedForAssignments(
+    Core::ActorKey a_actor,
+    const RE::TESContainerChangedEvent& a_event,
+    CompletionCallback a_onComplete = {}
+);
+}

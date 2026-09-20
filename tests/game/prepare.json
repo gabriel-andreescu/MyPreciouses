@@ -1,0 +1,14 @@
+{
+  "steps": [
+    { "tool": "console", "args": { "command": "coc QASmoke" } },
+    { "waitUntil": "playerLoaded", "timeoutMs": 30000 },
+    { "waitUntil": "noBlockingMenu", "timeoutMs": 30000 },
+    { "wait": 3000 },
+    {
+      "tool": "game",
+      "args": { "action": "save", "name": "MyPreciousesTest_QASmoke" }
+    },
+    { "waitFor": "saveGame", "timeoutMs": 15000 },
+    { "tool": "inspect", "args": { "kind": "scene" } }
+  ]
+}

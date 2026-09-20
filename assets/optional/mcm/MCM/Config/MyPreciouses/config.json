@@ -1,0 +1,377 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Exit-9B/MCM-Helper/main/docs/config.schema.json",
+  "modName": "MyPreciouses",
+  "displayName": "MyPreciouses",
+  "minMcmVersion": 13,
+  "customContent": {
+    "source": "MyPreciouses/logo.dds",
+    "x": 0,
+    "y": 11
+  },
+  "pages": [
+    {
+      "pageDisplayName": "General",
+      "cursorFillMode": "topToBottom",
+      "content": [
+        {
+          "type": "hiddenToggle",
+          "text": "Fixed strength selected",
+          "groupControl": 1,
+          "valueOptions": {
+            "sourceType": "PropertyValueBool",
+            "propertyName": "bFixedStrengthSelected"
+          }
+        },
+        {
+          "type": "hiddenToggle",
+          "text": "Cosmetic extra rings selected",
+          "groupControl": 2,
+          "valueOptions": {
+            "sourceType": "PropertyValueBool",
+            "propertyName": "bCosmeticExtraRingsSelected"
+          }
+        },
+        {
+          "position": 0,
+          "text": "General",
+          "type": "header"
+        },
+        {
+          "position": 1,
+          "text": "Balance",
+          "type": "header"
+        },
+        {
+          "position": 2,
+          "id": "bUnequipAllClearsExtraRings:General",
+          "text": "Respect UnequipAll",
+          "type": "toggle",
+          "help": "Clear extra rings when UnequipAll runs, then restore them after race transformations such as werewolf or vampire lord",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        },
+        {
+          "position": 3,
+          "id": "iExtraRingMode:General",
+          "text": "Extra ring mode",
+          "type": "enum",
+          "help": "Functional applies normal ring enchantments and scripts. Cosmetic only shows the ring model. Applies only to extra rings. The vanilla right-hand index finger ring is unaffected.",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 0,
+            "options": ["Functional", "Cosmetic"]
+          }
+        },
+        {
+          "position": 5,
+          "id": "iEnchantmentStrengthMode:General",
+          "text": "Enchantment strength",
+          "type": "enum",
+          "groupCondition": {
+            "NOT": 2
+          },
+          "groupBehavior": "disable",
+          "help": "Full keeps normal strength. Fixed uses the chosen strength. Split divides 100% evenly between counted rings. Only equipped rings with at least one non-zero-magnitude enchantment effect are counted, including the vanilla right-hand index finger.",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 0,
+            "options": ["Full strength", "Fixed strength", "Split strength"]
+          }
+        },
+        {
+          "position": 7,
+          "id": "iFixedEnchantmentStrengthPercent:General",
+          "text": "Fixed strength",
+          "type": "slider",
+          "groupCondition": {
+            "AND": [
+              1,
+              {
+                "NOT": 2
+              }
+            ]
+          },
+          "groupBehavior": "hide",
+          "help": "Used by Fixed strength mode. Only equipped rings with at least one non-zero-magnitude enchantment effect are counted, including the vanilla right-hand index finger.",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 50,
+            "min": 5,
+            "max": 100,
+            "step": 5,
+            "formatString": "{0}%"
+          }
+        },
+        {
+          "position": 4,
+          "id": "bDebugLogging:General",
+          "text": "Debug logging",
+          "type": "toggle",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": false
+          }
+        }
+      ]
+    },
+    {
+      "pageDisplayName": "NPCs",
+      "content": [
+        {
+          "id": "bEnableNpcSupport:NPCs",
+          "text": "Enable NPC support",
+          "type": "toggle",
+          "help": "Enable virtual ring support for actors other than the player, including followers and generic NPCs.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        }
+      ]
+    },
+    {
+      "pageDisplayName": "Special Rings",
+      "content": [
+        {
+          "position": 0,
+          "text": "Bond of Matrimony on left ring finger",
+          "type": "header"
+        },
+        {
+          "position": 1,
+          "id": "bPlayerAlwaysEquipBondOfMatrimonyOnLeftRingFinger:SpecialRings",
+          "text": "Player",
+          "type": "toggle",
+          "help": "Always equip The Bond of Matrimony and its Upgradable Bond variants on the player's left ring finger. This works even when that virtual slot is disabled, and Equip/Left Equip will not open the finger selector for this ring.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": false
+          }
+        },
+        {
+          "position": 2,
+          "id": "bNpcAlwaysEquipBondOfMatrimonyOnLeftRingFinger:SpecialRings",
+          "text": "NPCs",
+          "type": "toggle",
+          "help": "Always equip The Bond of Matrimony and its Upgradable Bond variants on the left ring finger for NPCs, including followers, when NPC support auto-equips rings. This works even when that virtual slot is disabled.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        }
+      ]
+    },
+    {
+      "pageDisplayName": "Finger Selector",
+      "content": [
+        {
+          "type": "hiddenToggle",
+          "text": "Controller input selected",
+          "groupControl": 3,
+          "valueOptions": {
+            "sourceType": "PropertyValueBool",
+            "propertyName": "bControllerInputSelected"
+          }
+        },
+        {
+          "id": "bAlwaysChooseFinger:FingerSelector",
+          "text": "Always choose finger",
+          "type": "toggle",
+          "help": "Always show the finger selection menu whenever you use Equip or Left Equip on a ring without pressing a modifier key.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": false
+          }
+        },
+        {
+          "id": "iFingerSelectModifierKey:FingerSelector",
+          "text": "Finger select modifier",
+          "type": "keymap",
+          "ignoreConflicts": true,
+          "groupCondition": {
+            "NOT": 3
+          },
+          "groupBehavior": "skip",
+          "help": "Hold this key while equipping a ring to choose a finger.",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 42
+          }
+        },
+        {
+          "id": "iFingerSelectModifierButton:FingerSelector",
+          "text": "Finger select modifier",
+          "type": "keymap",
+          "ignoreConflicts": true,
+          "groupCondition": 3,
+          "groupBehavior": "skip",
+          "help": "Hold this button while equipping a ring to choose a finger.",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 275
+          }
+        }
+      ]
+    },
+    {
+      "pageDisplayName": "Virtual Slots",
+      "cursorFillMode": "topToBottom",
+      "content": [
+        {
+          "type": "hiddenToggle",
+          "text": "Right index configurable",
+          "groupControl": 4,
+          "valueOptions": {
+            "sourceType": "PropertyValueBool",
+            "propertyName": "bRightIndexSlotConfigurable"
+          }
+        },
+        {
+          "position": 0,
+          "text": "Virtual Rings Preset",
+          "type": "enum",
+          "help": "All enables every virtual slot. Left index only keeps one extra left-hand ring slot. Custom uses the individual slot toggles below.",
+          "valueOptions": {
+            "sourceType": "PropertyValueInt",
+            "propertyName": "VirtualSlotPreset",
+            "defaultValue": 0,
+            "options": ["All", "Left index only", "Custom"]
+          },
+          "action": {
+            "type": "CallFunction",
+            "function": "ApplyVirtualSlotPreset",
+            "params": ["{value}"]
+          }
+        },
+        {
+          "position": 1,
+          "type": "empty"
+        },
+        {
+          "position": 2,
+          "text": "Left hand",
+          "type": "header"
+        },
+        {
+          "position": 3,
+          "text": "Right hand",
+          "type": "header"
+        },
+        {
+          "position": 4,
+          "id": "bEnableLeftThumb:VirtualSlots",
+          "text": "Left thumb",
+          "type": "toggle",
+          "help": "Enable the left thumb virtual ring slot.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        },
+        {
+          "position": 6,
+          "id": "bEnableLeftIndex:VirtualSlots",
+          "text": "Left index",
+          "type": "toggle",
+          "help": "Enable the left index virtual ring slot.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        },
+        {
+          "position": 8,
+          "id": "bEnableLeftMiddle:VirtualSlots",
+          "text": "Left middle",
+          "type": "toggle",
+          "help": "Enable the left middle virtual ring slot.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        },
+        {
+          "position": 10,
+          "id": "bEnableLeftRing:VirtualSlots",
+          "text": "Left ring",
+          "type": "toggle",
+          "help": "Enable the left ring virtual ring slot.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        },
+        {
+          "position": 12,
+          "id": "bEnableLeftPinky:VirtualSlots",
+          "text": "Left pinky",
+          "type": "toggle",
+          "help": "Enable the left pinky virtual ring slot.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        },
+        {
+          "position": 5,
+          "id": "bEnableRightThumb:VirtualSlots",
+          "text": "Right thumb",
+          "type": "toggle",
+          "help": "Enable the right thumb virtual ring slot.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        },
+        {
+          "position": 7,
+          "text": "Right index",
+          "type": "toggle",
+          "groupCondition": 4,
+          "groupBehavior": "disable",
+          "help": "The vanilla right-hand index finger is always available and cannot be disabled.",
+          "valueOptions": {
+            "sourceType": "PropertyValueBool",
+            "propertyName": "bRightIndexSlotDisplayed",
+            "defaultValue": true
+          }
+        },
+        {
+          "position": 9,
+          "id": "bEnableRightMiddle:VirtualSlots",
+          "text": "Right middle",
+          "type": "toggle",
+          "help": "Enable the right middle virtual ring slot.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        },
+        {
+          "position": 11,
+          "id": "bEnableRightRing:VirtualSlots",
+          "text": "Right ring",
+          "type": "toggle",
+          "help": "Enable the right ring virtual ring slot.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        },
+        {
+          "position": 13,
+          "id": "bEnableRightPinky:VirtualSlots",
+          "text": "Right pinky",
+          "type": "toggle",
+          "help": "Enable the right pinky virtual ring slot.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+_commit: v0.2.0
+_src_path: https://github.com/gabriel-andreescu/BethesdaModKit.git
+author: GabonZ
+bmk_repository: https://github.com/gabriel-andreescu/BethesdaModKit.git
+components:
+  - native
+  - papyrus
+  - interface
+description: Wear rings on every finger
+devbench_api: true
+devbench_tests: true
+game: skyrim
+interface_source: src/interface
+mcm: true
+mutagen_source: src/mutagen/MyPreciouses
+native_settings: true
+native_source: src/native
+pack_assets: false
+papyrus_source: src/papyrus
+pre_commit: true
+project_name: MyPreciouses

@@ -1,115 +1,227 @@
 # Changelog
 
-## 0.4.6 - 2026-06-22
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-- feat: let functional virtual rings satisfy worn keyword conditions
+## [Unreleased]
 
-## 0.4.5 - 2026-06-21
+### Added
 
-- feat: move Bond of Matrimony left ring finger controls to a Special Rings MCM page and support always equipping it for
-  players and NPCs
-- fix: ignore inactive outfit-managed ring copies when auto-equipping NPC rings
-- fix: ignore mod-defined slot 36 accessories without wearable ring model evidence
-- fix: reject mixed accessory models during ring model classification
-- fix: keep finger targeting working for rings that also include non-ring armor models
+- Apply the Bond of Matrimony placement settings to Upgradable Bond of Matrimony
+- Add an MCM toggle for debug logging
 
-## 0.4.4 - 2026-06-17
+### Changed
 
-- feat: add player Bond of Matrimony left hand ring finger support when the left hand ring finger slot is disabled
-- fix: prefer index fingers before thumb slots when auto-equipping NPC rings
-- fix: prevent Vanilla UI player inventory rows from becoming undefined
+- **Breaking change:** Rename the DLL, MCM plugin and settings paths from
+  LeftHandRingsSKSE to MyPreciouses
+- **Breaking change:** Rename the debug INI setting to `bDebugLogging`
+- Reduce generated ring records by reusing them across NPCs and when
+  re-equipping rings
+- Reduce CPU and memory overhead when equipping rings and updating inventory
+  labels
 
-## 0.4.3 - 2026-06-09
+### Fixed
 
-- fix: restore ring equip and left equip actions in inventory menus after the 0.4.2 crash fix
+- Support Skyrim 1.7.104
+- Preserve Frostmoon ring effects during werewolf transformations
+- Apply Beast and Erudite ring bonuses in Vampire Lord form
+- Preserve ring changes made during transformations
+- Prevent crashes when equipping scripted rings
+- Preserve scripted ring effects across finger changes and save/load
+- Clear scripted ring effects when dropping or transferring an extra ring
+- Prevent missing or duplicated NPC ring enchantments after loading a save or
+  returning to an area
+- Prevent freezes and excessive logging when an NPC cannot equip a ring
+- Keep extra rings invisible when changing equipment during Ghostwalk
+- Restore extra rings after bathing with the optional Diziet bath patch
+- Restore finger selection for valid ring models rejected since 0.4.5
+- Keep plain rings selectable alongside custom-enchanted copies
+- Allow a single ring to move between fingers on opposite hands
+- Honor finger selection when confirming a ring with the keyboard in Favorites
 
-## 0.4.2 - 2026-06-08
+## [0.4.6] - 2026-06-22
 
-- fix: prevent crashes when opening follower or container inventories with rings recently added or removed by another
-  mod
+### Added
 
-## 0.4.1 - 2026-06-08
+- Let functional virtual rings satisfy worn keyword conditions
 
-- fix: prevent crashes and freezes in Skyrim VR when opening containers or refreshing inventory ring rows
+## [0.4.5] - 2026-06-21
 
-## 0.4.0 - 2026-06-07
+### Changed
 
-- feat: improve MCM organization and preserve existing settings during updates
-- feat: support vanilla UI
-- feat: add MCM controls for choosing enabled virtual ring slots
-- feat: support follower and NPC virtual rings
-- fix: prevent virtual ring effects from replaying during load and inventory refreshes
-- fix: ignore non-ring ClothingRing items that have no wearable ring model
-- fix: clear custom inventory ring controls from non-ring rows
-- fix: refresh inventory ring rows after vanilla slot swaps
-- fix: hide redundant index finger labels on inventory ring rows
-- fix: account for both hands when placing, replacing, and rendering multi-finger rings
-- fix: keep existing ring labels visible in finger selector replacement previews and use negative coloring for occupied
-  slots
-- fix: clear extra rings when UnequipAll runs, then restore them after race transformations such as werewolf or vampire
-  lord
+- Move Bond of Matrimony left ring finger controls to a Special Rings MCM page
+  and support always equipping it for players and NPCs
 
-## 0.3.6 - 2026-06-01
+### Fixed
 
-- fix: place mod-added rings correctly when equipped on the vanilla right index finger
-- fix: prevent some mod-added rings from stacking on the vanilla right index finger instead of replacing each other
-- fix: prevent VR crashes when checking which fingers a ring model uses
+- Ignore inactive outfit-managed ring copies when auto-equipping NPC rings
+- Ignore mod-defined slot 36 accessories without wearable ring model evidence
+- Reject mixed accessory models during ring model classification
+- Keep finger targeting working for rings that also include non-ring armor
+  models
 
-## 0.3.5 - 2026-05-30
+## [0.4.4] - 2026-06-17
 
-- feat: improve finger selector menu previews, action labels, and multi-finger ring handling
-- feat: support mod-added rings with the ClothingRing keyword regardless of body slot
-- fix: ignore alternate-form body addons when checking ring finger coverage (eg: Alternate Forms Keep Utility)
-- fix: ignore negligible incidental skin weights when checking ring finger coverage
-- fix: allow multi-finger rings to start from valid fingers in the finger selector
-- fix: allow single-copy virtual rings to be moved between fingers in the finger selector
+### Added
 
-## 0.3.4 - 2026-05-30
+- Add player Bond of Matrimony left hand ring finger support when the left hand
+  ring finger slot is disabled
 
-- fix: properly refresh inventory ring equip markers on all runtimes
-- fix: show the finger selection modifier hint in the SkyUI VR inventory footer
+### Fixed
 
-## 0.3.3 - 2026-05-29
+- Prefer index fingers before thumb slots when auto-equipping NPC rings
+- Prevent Vanilla UI player inventory rows from becoming undefined
 
-- fix: support Frostmoon rings on virtual fingers
-- fix: ignore zero-magnitude enchantments in strength scaling
+## [0.4.3] - 2026-06-09
 
-## 0.3.2 - 2026-05-29
+### Fixed
 
-- fix: prevent inventory menu crashes when equipping rings through the finger selector
+- Restore ring equip and left equip actions in inventory menus after the 0.4.2
+  crash fix
 
-## 0.3.1 - 2026-05-28
+## [0.4.2] - 2026-06-08
 
-- fix: center the finger selector in wider inventory menus such as Dear Diary
-- fix: remove inactive virtual ring enchantment effects when unequipping
-- fix: prevent crashes when attaching virtual ring visuals
-- fix: prevent quest-locked rings from being unequipped from the vanilla right index finger
+### Fixed
 
-## 0.3.0 - 2026-05-28
+- Prevent crashes when opening follower or container inventories with rings
+  recently added or removed by another mod
 
-- feat: add translation support for UI text
-- feat: add configurable finger selection modifier keybinds
-- feat: show finger selection modifier hint in the SkyUI inventory footer
-- feat: improve unequip flow for assigned rings
-- feat: show left and right equip controls for rings in inventory
-- feat: show ring finger assignments in inventory
-- feat: add ring finger selection menu
-- feat: add ring enchantment strength modes
-- feat: add cosmetic mode for extra rings
-- feat: replace left-hand ring clones with slotless virtual rings
-- fix: prevent a crash when left-equipping rings from the inventory menu
-- fix: use unique inventory identity for player-enchanted virtual rings
+## [0.4.1] - 2026-06-08
 
-## 0.2.0 - 2026-05-22
+### Fixed
 
-- feat: add controller support
-- fix: flag MCM addon as ESPFE
-- fix: avoid overwriting MCM user settings during updates
-- fix: play left-hand ring equip sounds
-- fix: recognize left-hand ring clones in GetEquipped conditions (eg: Ring of Namira's Feed prompt)
-- fix: VR compatibility
-- fix: prevent duplicate body visuals from hybrid-slot rings (eg: CC's Ring of Disrobing)
+- Prevent crashes and freezes in Skyrim VR when opening containers or refreshing
+  inventory ring rows
 
-## 0.1.1 - 2026-05-21
+## [0.4.0] - 2026-06-07
+
+### Added
+
+- Support vanilla UI
+- Add MCM controls for choosing enabled virtual ring slots
+- Support follower and NPC virtual rings
+
+### Changed
+
+- Improve MCM organization and preserve existing settings during updates
+
+### Fixed
+
+- Prevent virtual ring effects from replaying during load and inventory
+  refreshes
+- Ignore non-ring ClothingRing items that have no wearable ring model
+- Clear custom inventory ring controls from non-ring rows
+- Refresh inventory ring rows after vanilla slot swaps
+- Hide redundant index finger labels on inventory ring rows
+- Account for both hands when placing, replacing, and rendering multi-finger
+  rings
+- Keep existing ring labels visible in finger selector replacement previews and
+  use negative coloring for occupied slots
+- Clear extra rings when UnequipAll runs, then restore them after race
+  transformations such as werewolf or vampire lord
+
+## [0.3.6] - 2026-06-01
+
+### Fixed
+
+- Place mod-added rings correctly when equipped on the vanilla right index
+  finger
+- Prevent some mod-added rings from stacking on the vanilla right index finger
+  instead of replacing each other
+- Prevent VR crashes when checking which fingers a ring model uses
+
+## [0.3.5] - 2026-05-30
+
+### Added
+
+- Support mod-added rings with the ClothingRing keyword regardless of body slot
+
+### Changed
+
+- Improve finger selector menu previews, action labels, and multi-finger ring
+  handling
+
+### Fixed
+
+- Ignore alternate-form body addons when checking ring finger coverage (eg:
+  Alternate Forms Keep Utility)
+- Ignore negligible incidental skin weights when checking ring finger coverage
+- Allow multi-finger rings to start from valid fingers in the finger selector
+- Allow single-copy virtual rings to be moved between fingers in the finger
+  selector
+
+## [0.3.4] - 2026-05-30
+
+### Fixed
+
+- Properly refresh inventory ring equip markers on all runtimes
+- Show the finger selection modifier hint in the SkyUI VR inventory footer
+
+## [0.3.3] - 2026-05-29
+
+### Fixed
+
+- Support Frostmoon rings on virtual fingers
+- Ignore zero-magnitude enchantments in strength scaling
+
+## [0.3.2] - 2026-05-29
+
+### Fixed
+
+- Prevent inventory menu crashes when equipping rings through the finger
+  selector
+
+## [0.3.1] - 2026-05-28
+
+### Fixed
+
+- Center the finger selector in wider inventory menus such as Dear Diary
+- Remove inactive virtual ring enchantment effects when unequipping
+- Prevent crashes when attaching virtual ring visuals
+- Prevent quest-locked rings from being unequipped from the vanilla right index
+  finger
+
+## [0.3.0] - 2026-05-28
+
+### Added
+
+- Add translation support for UI text
+- Add configurable finger selection modifier keybinds
+- Show finger selection modifier hint in the SkyUI inventory footer
+- Show left and right equip controls for rings in inventory
+- Show ring finger assignments in inventory
+- Add ring finger selection menu
+- Add ring enchantment strength modes
+- Add cosmetic mode for extra rings
+
+### Changed
+
+- Improve unequip flow for assigned rings
+- Replace left-hand ring clones with slotless virtual rings
+
+### Fixed
+
+- Prevent a crash when left-equipping rings from the inventory menu
+- Use unique inventory identity for player-enchanted virtual rings
+
+## [0.2.0] - 2026-05-22
+
+### Added
+
+- Add controller support
+
+### Fixed
+
+- Flag MCM addon as ESPFE
+- Avoid overwriting MCM user settings during updates
+- Play left-hand ring equip sounds
+- Recognize left-hand ring clones in GetEquipped conditions (eg: Ring of
+  Namira's Feed prompt)
+- VR compatibility
+- Prevent duplicate body visuals from hybrid-slot rings (eg: CC's Ring of
+  Disrobing)
+
+## [0.1.1] - 2026-05-21
+
+### Added
 
 - Initial release.

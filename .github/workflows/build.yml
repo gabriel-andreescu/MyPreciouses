@@ -1,0 +1,21 @@
+name: Build and release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v[0-9]*", "[0-9]*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    uses: gabriel-andreescu/BethesdaModKit/.github/workflows/build.yml@518c1acc454b6f5db48f6fe5dfaf942e1c3d7075
+    with:
+      publish-nexus: true
+    secrets:
+      NEXUSMODS_API_KEY: ${{ secrets.NEXUSMODS_API_KEY }}

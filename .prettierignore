@@ -1,0 +1,6 @@
+.xmake/
+build/
+dist/
+scratch/
+src/interface/fingerselect/swf/
+**/*.jinja

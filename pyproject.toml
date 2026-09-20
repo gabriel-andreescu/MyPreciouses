@@ -1,0 +1,29 @@
+[project]
+name = "mypreciouses-tests"
+version = "1.0.0"
+requires-python = ">=3.11"
+
+[dependency-groups]
+dev = [
+    "bethesda-mod-kit[test] @ git+https://github.com/gabriel-andreescu/BethesdaModKit.git@v0.3.0#subdirectory=python",
+    "ruff>=0.16.7",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/game/cases"]
+addopts = "-ra --strict-markers --import-mode=importlib"
+markers = [
+    "buffered_input: requires SKSE buffered input and foreground Skyrim",
+    "compatibility(name): requires the named optional fixture",
+    "vanilla: requires SkyUI Vanilla Menus",
+    "warlock: requires the Fishing Creation and a keyboard block binding",
+    "restart: a prepare or verify phase separated by a full game restart",
+]
+devbench_url = "http://127.0.0.1:8920"
+
+[tool.ruff]
+target-version = "py311"
+extend-exclude = ["scratch"]
+
+[tool.ruff.lint]
+extend-select = ["I"]

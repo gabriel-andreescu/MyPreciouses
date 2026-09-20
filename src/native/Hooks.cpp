@@ -1,0 +1,701 @@
+#include "Hooks.h"
+
+#include <RE/Skyrim.h> // IWYU pragma: keep
+#include <REL/Module.h>
+#include <REL/Relocation.h>
+#include <SKSE/SKSE.h> // IWYU pragma: keep
+
+#include "Core/ActorKey.h"
+#include "Core/Target.h"
+#include "Equipment/AssignmentActions.h"
+#include "Equipment/AutoEquip.h"
+#include "Equipment/RaceSwitchRestore.h"
+#include "HookUtil.h"
+#include "Inventory.h"
+#include "Settings.h"
+#include "UI.h"
+#include "UI/ContainerMenu.h"
+#include "UI/InventoryMenu.h"
+#include "UI/ItemMenuActions.h"
+#include "VirtualSlots.h"
+#include "Visuals/Attachments.h"
+
+#include <RE/C/Character.h>
+#include <RE/C/ContainerMenu.h>
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+
+namespace Hooks {
+namespace {
+    constexpr std::ptrdiff_t kActorSwitchRacePatchOffset {0x9};
+    constexpr std::size_t kActorSwitchRacePatchSizeAE {5};
+    constexpr std::size_t kActorSwitchRacePatchSizeSEVR {6};
+    constexpr std::size_t kUnequipAllHelperPatchSize {6};
+    constexpr RE::FormID kRightHandEquipSlotFormID {0x00013F42};
+    constexpr RE::FormID kLeftHandEquipSlotFormID {0x00013F43};
+
+    constexpr std::array<std::byte, kActorSwitchRacePatchSizeAE> kActorSwitchRacePrologueAE {
+        std::byte {0x48},
+        std::byte {0x89},
+        std::byte {0x5C},
+        std::byte {0x24},
+        std::byte {0x18},
+    };
+
+    constexpr std::array<std::byte, kActorSwitchRacePatchSizeSEVR> kActorSwitchRacePrologueSEVR {
+        std::byte {0x41},
+        std::byte {0x56},
+        std::byte {0x48},
+        std::byte {0x83},
+        std::byte {0xEC},
+        std::byte {0x40},
+    };
+
+    [[nodiscard]] std::string FormatBytes(std::span<const std::byte> a_bytes) {
+        if (a_bytes.empty()) {
+            return {};
+        }
+
+        constexpr std::array<char, 16> kHexDigits {
+            '0',
+            '1',
+            '2',
+            '3',
+            '4',
+            '5',
+            '6',
+            '7',
+            '8',
+            '9',
+            'A',
+            'B',
+            'C',
+            'D',
+            'E',
+            'F',
+        };
+
+        std::string formatted;
+        formatted.reserve((a_bytes.size() * 3) - 1);
+        for (const auto byte : a_bytes) {
+            if (!formatted.empty()) {
+                formatted.push_back(' ');
+            }
+
+            const auto value = std::to_integer<unsigned>(byte);
+            formatted.push_back(kHexDigits[(value >> 4U) & 0xFU]);
+            formatted.push_back(kHexDigits[value & 0xFU]);
+        }
+        return formatted;
+    }
+
+    template <class T>
+    [[nodiscard]] bool TryHookExistingBranch(const std::uintptr_t a_address, const std::string_view a_hookName) {
+        const auto existingBranch = HookUtil::DecodeBranch(a_address);
+        if (!existingBranch) {
+            return false;
+        }
+
+        const auto result = HookUtil::HookExistingBranch<T>(a_address, *existingBranch);
+        if (result == HookUtil::HookWriteResult::kSuccess) {
+            SKSE::log::warn(
+                "Hooks: {} hook chained | reason=existingBranch | branch={}",
+                a_hookName,
+                existingBranch->name
+            );
+        } else {
+            SKSE::log::error(
+                "Hooks: {} hook skipped | reason={} | branch={}",
+                a_hookName,
+                HookUtil::GetFailureReason(result),
+                existingBranch->name
+            );
+        }
+        return true;
+    }
+
+    [[nodiscard]] std::optional<Core::Hand> GetEquipHand(const RE::BGSEquipSlot* a_slot) {
+        if (!a_slot) {
+            return std::nullopt;
+        }
+
+        switch (a_slot->GetFormID()) {
+            case kRightHandEquipSlotFormID: return Core::Hand::kRight;
+            case kLeftHandEquipSlotFormID:  return Core::Hand::kLeft;
+            default:                        return std::nullopt;
+        }
+    }
+
+    void RefreshRingItemRowsAfterReconciliation(const Equipment::ActionResult a_result) {
+        if (a_result.selectionChanged) {
+            UI::RefreshRingItemRows();
+        }
+    }
+
+    void ClearExtraRingsAfterUnequipAll(RE::Actor const* a_actor) {
+        if (!a_actor) {
+            return;
+        }
+
+        if (!Settings::GetSingleton()->ShouldUnequipAllClearExtraRings()) {
+            return;
+        }
+
+        const auto restorePending = Equipment::RaceSwitchRestore::MarkClearedDuringRaceSwitch(*a_actor);
+        const auto scriptBindings = restorePending ? VirtualSlots::ScriptBindingClearMode::kSuspend
+                                                   : VirtualSlots::ScriptBindingClearMode::kRelease;
+        const auto result = Equipment::ClearVirtualAssignments(*a_actor, scriptBindings);
+        if (result.selectionChanged && a_actor->IsPlayerRef()) {
+            UI::RefreshRingItemRows();
+        }
+    }
+
+    struct ActiveEffectSetEffectivenessHook {
+        static void thunk(RE::ActiveEffect* a_effect, float a_power, bool a_onlyHostile) {
+            func(a_effect, a_power, a_onlyHostile);
+
+            auto* targetRef = a_effect && a_effect->target ? a_effect->target->GetTargetStatsObject() : nullptr;
+            auto* actor = targetRef ? targetRef->As<RE::Actor>() : nullptr;
+            if (!actor) {
+                return;
+            }
+
+            auto const* sourceArmor = a_effect && a_effect->source ? a_effect->source->As<RE::TESObjectARMO>()
+                                                                   : nullptr;
+            const auto scale = VirtualSlots::GetRingEnchantmentScaleForSource(*actor, sourceArmor);
+            if (scale >= 1.0F) {
+                return;
+            }
+
+            a_effect->magnitude *= scale;
+        }
+
+        static inline REL::Relocation<decltype(thunk)> func;
+    };
+
+    struct BipedAnimBuildObjectHook {
+        static RE::NiAVObject* thunk( // NOLINT(readability-function-size)
+            RE::BipedAnim* a_biped,
+            RE::NiAVObject* a_object,
+            RE::NiAVObject* a_parent,
+            const std::int32_t a_bipedObjectSlot,
+            const bool a_arg5,
+            const bool a_arg6,
+            RE::NiAVObject* a_arg7
+        ) {
+            static_cast<void>(Visuals::Attachments::RetargetVanillaRingClone(a_biped, a_object, a_bipedObjectSlot));
+            return func(a_biped, a_object, a_parent, a_bipedObjectSlot, a_arg5, a_arg6, a_arg7);
+        }
+
+        static inline REL::Relocation<decltype(thunk)> func;
+    };
+
+    void InstallEnchantmentStrengthHook() {
+        HookUtil::WriteThunkCall<ActiveEffectSetEffectivenessHook>(
+            REL::Relocation {RELOCATION_ID(33763, 34547), REL::Relocate(0x4A3, 0x656, 0x427)}
+        );
+        SKSE::log::info("Hooks: enchantment strength hook installed");
+    }
+
+    struct GetEquippedConditionHook {
+        static bool thunk(RE::TESObjectREFR* a_thisObj, void* a_param1, void* a_param2, double& a_result) {
+            const auto result = func(a_thisObj, a_param1, a_param2, a_result);
+            if (!result || a_result != 0.0 || !a_thisObj || !a_param1) {
+                return result;
+            }
+
+            auto const* actor = a_thisObj->As<RE::Actor>();
+            auto* getEquippedArgument = static_cast<RE::TESForm*>(a_param1);
+            if (actor && VirtualSlots::MatchesGetEquippedCondition(*actor, *getEquippedArgument)) {
+                a_result = 1.0;
+            }
+
+            return result;
+        }
+
+        static inline RE::SCRIPT_FUNCTION::Condition_t* func {nullptr};
+    };
+
+    struct WornHasKeywordConditionHook {
+        static bool thunk(RE::TESObjectREFR* a_thisObj, void* a_param1, void* a_param2, double& a_result) {
+            const auto result = func(a_thisObj, a_param1, a_param2, a_result);
+            if (!result || a_result != 0.0 || !a_thisObj || !a_param1) {
+                return result;
+            }
+
+            auto const* actor = a_thisObj->As<RE::Actor>();
+            auto* wornHasKeywordArgument = static_cast<RE::BGSKeyword*>(a_param1);
+            if (actor && VirtualSlots::MatchesWornHasKeywordCondition(*actor, *wornHasKeywordArgument)) {
+                a_result = 1.0;
+            }
+
+            return result;
+        }
+
+        static inline RE::SCRIPT_FUNCTION::Condition_t* func {nullptr};
+    };
+
+    template <class Hook>
+    void InstallScriptConditionHook(const std::string_view a_commandName) {
+        auto* command = RE::SCRIPT_FUNCTION::LocateScriptCommand(a_commandName);
+        if (!command || !command->conditionFunction) {
+            SKSE::log::warn("Hooks: {} condition hook skipped | reason=commandUnavailable", a_commandName);
+            return;
+        }
+
+        Hook::func = command->conditionFunction;
+        command->conditionFunction = Hook::thunk;
+        SKSE::log::info("Hooks: {} condition hook installed", a_commandName);
+    }
+
+    void InstallGetEquippedConditionHook() {
+        InstallScriptConditionHook<GetEquippedConditionHook>(std::string_view {"GetEquipped"});
+    }
+
+    void InstallWornHasKeywordConditionHook() {
+        InstallScriptConditionHook<WornHasKeywordConditionHook>(std::string_view {"WornHasKeyword"});
+    }
+
+    struct PapyrusIsEquippedHook {
+        static bool thunk(
+            RE::BSScript::IVirtualMachine* a_vm,
+            RE::VMStackID a_stackID,
+            RE::Actor* a_actor,
+            RE::TESForm* a_item
+        ) {
+            return func(a_vm, a_stackID, a_actor, a_item)
+                   || (a_actor
+                       != nullptr
+                       && a_item
+                       != nullptr
+                       && VirtualSlots::MatchesGetEquippedCondition(*a_actor, *a_item));
+        }
+
+        static inline REL::Relocation<decltype(thunk)> func;
+    };
+
+    void InstallPapyrusIsEquippedHook() {
+        // Actor.IsEquipped is a separate Papyrus native from the GetEquipped condition.
+        REL::Relocation<std::byte*> const target {REL::VariantID(53895, 54707, 0x985780)};
+        if (TryHookExistingBranch<PapyrusIsEquippedHook>(target.address(), "Actor.IsEquipped")) {
+            return;
+        }
+        const std::array<std::uint8_t, 6>
+            prologue {0x40, REL::Module::IsAE() ? std::uint8_t {0x57} : std::uint8_t {0x53}, 0x48, 0x83, 0xEC, 0x30};
+        if (std::memcmp(target.get(), prologue.data(), prologue.size()) != 0) {
+            SKSE::log::error("Hooks: Actor.IsEquipped hook skipped | reason=unexpectedPrologue");
+            return;
+        }
+        const auto result = HookUtil::HookFunctionPrologue<PapyrusIsEquippedHook, 6>(target.address(), target.get());
+        if (result != HookUtil::HookWriteResult::kSuccess) {
+            SKSE::log::error("Hooks: Actor.IsEquipped hook skipped | reason={}", HookUtil::GetFailureReason(result));
+            return;
+        }
+        SKSE::log::info("Hooks: Actor.IsEquipped hook installed");
+    }
+
+    struct ActorSwitchRaceHook {
+        using SwitchRaceT = void(RE::Actor* a_actor, RE::TESRace* a_race, bool a_player);
+
+        static void thunk(RE::Actor* a_actor, RE::TESRace* a_race, bool a_player) {
+            const auto captureEnabled = Settings::GetSingleton()->ShouldUnequipAllClearExtraRings();
+            if (captureEnabled && a_actor && a_race) {
+                Equipment::RaceSwitchRestore::BeginRaceSwitch(*a_actor, *a_race);
+            }
+
+            func(a_actor, a_race, a_player);
+        }
+
+        static inline REL::Relocation<SwitchRaceT> func;
+    };
+
+    void InstallActorSwitchRaceHook() {
+        // Patch after the initial null-race branch. The trampoline copies fixed prologue bytes.
+        REL::Relocation<std::byte*> const target {RELOCATION_ID(36901, 37925), kActorSwitchRacePatchOffset};
+        const auto address = target.address();
+        const auto* targetBytes = target.get();
+
+        if (TryHookExistingBranch<ActorSwitchRaceHook>(address, std::string_view {"Actor::SwitchRace"})) {
+            return;
+        }
+
+        if (REL::Module::IsSE() || REL::Module::IsVR()) {
+            if (std::memcmp(targetBytes, kActorSwitchRacePrologueSEVR.data(), kActorSwitchRacePrologueSEVR.size())
+                == 0) {
+                const auto result = HookUtil::HookFunctionPrologue<ActorSwitchRaceHook, kActorSwitchRacePatchSizeSEVR>(
+                    address,
+                    targetBytes
+                );
+                if (result == HookUtil::HookWriteResult::kSuccess) {
+                    SKSE::log::info("Hooks: Actor::SwitchRace hook installed");
+                } else {
+                    SKSE::log::error(
+                        "Hooks: Actor::SwitchRace hook skipped | reason={}",
+                        HookUtil::GetFailureReason(result)
+                    );
+                }
+                return;
+            }
+
+            SKSE::log::error(
+                "Hooks: Actor::SwitchRace hook skipped | reason=unexpectedPrologue | address={:X} | bytes={}",
+                address,
+                FormatBytes(std::span<const std::byte> {targetBytes, kActorSwitchRacePatchSizeSEVR})
+            );
+            return;
+        }
+
+        if (std::memcmp(targetBytes, kActorSwitchRacePrologueAE.data(), kActorSwitchRacePrologueAE.size()) == 0) {
+            const auto result = HookUtil::HookFunctionPrologue<ActorSwitchRaceHook, kActorSwitchRacePatchSizeAE>(
+                address,
+                targetBytes
+            );
+            if (result == HookUtil::HookWriteResult::kSuccess) {
+                SKSE::log::info("Hooks: Actor::SwitchRace hook installed");
+            } else {
+                SKSE::log::error(
+                    "Hooks: Actor::SwitchRace hook skipped | reason={}",
+                    HookUtil::GetFailureReason(result)
+                );
+            }
+            return;
+        }
+
+        SKSE::log::error(
+            "Hooks: Actor::SwitchRace hook skipped | reason=unexpectedPrologue | address={:X} | bytes={}",
+            address,
+            FormatBytes(std::span<const std::byte> {targetBytes, kActorSwitchRacePatchSizeAE})
+        );
+    }
+
+    struct UnequipAllHelperHook {
+        using HelperT = void(void* a_manager, RE::Actor* a_actor);
+
+        static void thunk(void* a_manager, RE::Actor* a_actor) {
+            func(a_manager, a_actor);
+            ClearExtraRingsAfterUnequipAll(a_actor);
+        }
+
+        static inline REL::Relocation<HelperT> func;
+    };
+
+    void InstallUnequipAllHelperHook() {
+        constexpr std::array<std::byte, kUnequipAllHelperPatchSize> kExpectedPrologue {
+            std::byte {0x40},
+            std::byte {0x57},
+            std::byte {0x48},
+            std::byte {0x83},
+            std::byte {0xEC},
+            std::byte {0x40},
+        };
+
+        // Shared engine UnequipAll helper reached by both the script/console command and Actor.UnequipAll.
+        REL::Relocation<std::byte*> const target {RELOCATION_ID(37943, 38899)};
+        const auto address = target.address();
+        const auto* targetBytes = target.get();
+
+        if (TryHookExistingBranch<UnequipAllHelperHook>(address, std::string_view {"UnequipAll helper"})) {
+            return;
+        }
+
+        if (std::memcmp(targetBytes, kExpectedPrologue.data(), kExpectedPrologue.size()) == 0) {
+            const auto result = HookUtil::HookFunctionPrologue<UnequipAllHelperHook, kUnequipAllHelperPatchSize>(
+                address,
+                targetBytes
+            );
+            if (result == HookUtil::HookWriteResult::kSuccess) {
+                SKSE::log::info("Hooks: UnequipAll helper hook installed");
+            } else {
+                SKSE::log::error(
+                    "Hooks: UnequipAll helper hook skipped | reason={}",
+                    HookUtil::GetFailureReason(result)
+                );
+            }
+            return;
+        }
+
+        SKSE::log::error(
+            "Hooks: UnequipAll helper hook skipped | reason=unexpectedPrologue | address={:X} | bytes={}",
+            address,
+            FormatBytes(std::span<const std::byte> {targetBytes, kUnequipAllHelperPatchSize})
+        );
+    }
+
+    struct EquipObjectHook {
+        static void thunk(
+            RE::ActorEquipManager* a_equipManager,
+            RE::Actor* a_actor,
+            RE::TESBoundObject* a_object,
+            const RE::ObjectEquipParams& a_params
+        ) {
+            if (!a_actor || !a_actor->IsPlayerRef()) {
+                func(a_equipManager, a_actor, a_object, a_params);
+                return;
+            }
+
+            auto const* ring = Inventory::AsRing(a_object);
+            const auto actorKey = Core::MakeActorKey(*a_actor);
+            if (ring
+                && Equipment::InterceptRightEquip(
+                    *a_actor,
+                    *ring,
+                    a_params,
+                    [actorKey, sourceFormID = ring->GetFormID()](const auto a_result) {
+                        UI::RefreshItemRowsAfterEquipmentAction(
+                            UI::ItemMenuHost::kInventory,
+                            actorKey,
+                            sourceFormID,
+                            a_result
+                        );
+                    }
+                )) {
+                return;
+            }
+
+            const auto equipHand = GetEquipHand(a_params.equipSlot);
+            const auto rightRingEquip = ring != nullptr && (!equipHand || *equipHand != Core::Hand::kLeft);
+            if (rightRingEquip && !Inventory::IsRingSourceRightWorn(*a_actor, *ring, a_params.extraDataList)) {
+                switch (Inventory::UnequipRightWornRing(*a_actor)) {
+                    case Inventory::RightWornRingUnequipResult::kNone:
+                    case Inventory::RightWornRingUnequipResult::kUnequipped: break;
+                    case Inventory::RightWornRingUnequipResult::kProtected:
+                    case Inventory::RightWornRingUnequipResult::kFailed:     UI::RefreshRingItemRows(); return;
+                }
+            }
+
+            func(a_equipManager, a_actor, a_object, a_params);
+            Equipment::QueueAssignmentReconciliation(actorKey, RefreshRingItemRowsAfterReconciliation);
+        }
+
+        static inline REL::Relocation<decltype(thunk)> func;
+    };
+
+    void InstallEquipObjectHook() {
+        HookUtil::WriteThunkCall<EquipObjectHook>(
+            REL::Relocation {RELOCATION_ID(37938, 38894), REL::Relocate(0xE5, 0x170)}
+        );
+        SKSE::log::info("Hooks: EquipObject hook installed");
+    }
+
+    [[nodiscard]] RE::ItemList* GetItemListFromItemSelectContext(void* a_menuContext) {
+        if (!a_menuContext) {
+            return nullptr;
+        }
+
+        return REL::RelocateMember<RE::ItemList*>(a_menuContext, 0x48, 0x70);
+    }
+
+    [[nodiscard]] RE::InventoryEntryData* GetSelectedEntryFromItemSelectContext(void* a_menuContext) {
+        auto* itemList = GetItemListFromItemSelectContext(a_menuContext);
+        auto const* selectedItem = itemList ? itemList->GetSelectedItem() : nullptr;
+        return selectedItem ? selectedItem->data.objDesc : nullptr;
+    }
+
+    struct InventoryItemSelectHook {
+        static void thunk(void* a_menuContext, RE::BGSEquipSlot* a_slot) {
+            if (const auto hand = GetEquipHand(a_slot)) {
+                auto* entry = GetSelectedEntryFromItemSelectContext(a_menuContext);
+                if (UI::ItemMenuActions::HandleRingUseFromMenuEntry(
+                        entry,
+                        *hand,
+                        UI::ItemMenuHost::kInventory,
+                        Core::GetPlayerActorKey()
+                    )) {
+                    return;
+                }
+            }
+
+            func(a_menuContext, a_slot);
+        }
+
+        static inline REL::Relocation<decltype(thunk)> func;
+    };
+
+    void InstallInventoryItemSelectHook() {
+        HookUtil::WriteThunkBranch<InventoryItemSelectHook>(
+            REL::Relocation {REL::VariantID(50977, 51856, 0x8BB9C0), 0x47}
+        );
+        HookUtil::WriteThunkBranch<InventoryItemSelectHook>(
+            REL::Relocation {REL::VariantID(50977, 51856, 0x8BB9C0), 0x66}
+        );
+        HookUtil::WriteThunkBranch<InventoryItemSelectHook>(
+            REL::Relocation {REL::VariantID(50977, 51856, 0x8BB9C0), 0x75}
+        );
+        SKSE::log::info("Hooks: InventoryMenu ItemSelect hook installed");
+    }
+
+    struct InventoryMenuProcessMessageHook {
+        static RE::UI_MESSAGE_RESULTS thunk(RE::InventoryMenu* a_menu, RE::UIMessage& a_message) {
+            const auto result = func(a_menu, a_message);
+
+            if (a_menu) {
+                switch (a_message.type.get()) {
+                    case RE::UI_MESSAGE_TYPE::kShow: UI::InventoryMenu::OnShown(*a_menu); break;
+                    case RE::UI_MESSAGE_TYPE::kInventoryUpdate:
+                        UI::InventoryMenu::OnInventoryUpdateProcessed(*a_menu);
+                        break;
+                    default: break;
+                }
+            }
+
+            return result;
+        }
+
+        static inline REL::Relocation<decltype(thunk)> func;
+    };
+
+    void InstallInventoryMenuProcessMessageHook() {
+        REL::Relocation<std::uintptr_t> vTable {RE::InventoryMenu::VTABLE[0]};
+        // InventoryMenu::ProcessMessage // 04
+        InventoryMenuProcessMessageHook::func = vTable.write_vfunc(0x4, InventoryMenuProcessMessageHook::thunk);
+        SKSE::log::info("Hooks: InventoryMenu ProcessMessage hook installed");
+    }
+
+    struct ContainerMenuProcessMessageHook {
+        static RE::UI_MESSAGE_RESULTS thunk(RE::ContainerMenu* a_menu, RE::UIMessage& a_message) {
+            const auto result = func(a_menu, a_message);
+
+            if (a_menu) {
+                switch (a_message.type.get()) {
+                    case RE::UI_MESSAGE_TYPE::kShow: UI::ContainerMenu::OnShown(*a_menu); break;
+                    case RE::UI_MESSAGE_TYPE::kInventoryUpdate:
+                        UI::ContainerMenu::OnInventoryUpdateProcessed(*a_menu);
+                        break;
+                    default: break;
+                }
+            }
+
+            return result;
+        }
+
+        static inline REL::Relocation<decltype(thunk)> func;
+    };
+
+    void InstallContainerMenuProcessMessageHook() {
+        REL::Relocation<std::uintptr_t> vTable {RE::ContainerMenu::VTABLE[0]};
+        // ContainerMenu::ProcessMessage // 04
+        ContainerMenuProcessMessageHook::func = vTable.write_vfunc(0x4, ContainerMenuProcessMessageHook::thunk);
+        SKSE::log::info("Hooks: ContainerMenu ProcessMessage hook installed");
+    }
+
+    struct FavoritesUseQuickslotItemHook {
+        static void thunk(
+            RE::ActorEquipManager* a_equipManager,
+            RE::Actor* a_actor,
+            RE::InventoryEntryData* a_entry,
+            RE::BGSEquipSlot* a_slot,
+            bool a_queueEquip
+        ) {
+            // Keyboard confirmation supplies no slot. Skyrim treats it as the default equip action.
+            const auto hand = a_slot ? GetEquipHand(a_slot) : std::optional {Core::Hand::kRight};
+            if (a_actor
+                && a_actor->IsPlayerRef()
+                && hand
+                && UI::ItemMenuActions::HandleRingUseFromMenuEntry(
+                    a_entry,
+                    *hand,
+                    UI::ItemMenuHost::kFavorites,
+                    Core::MakeActorKey(*a_actor)
+                )) {
+                return;
+            }
+
+            func(a_equipManager, a_actor, a_entry, a_slot, a_queueEquip);
+        }
+
+        static inline REL::Relocation<decltype(thunk)> func;
+    };
+
+    void InstallItemMenuHooks() {
+        InstallInventoryItemSelectHook();
+        InstallInventoryMenuProcessMessageHook();
+        InstallContainerMenuProcessMessageHook();
+        UI::RegisterItemMenuDataCallback();
+
+        HookUtil::WriteThunkCall<FavoritesUseQuickslotItemHook>(
+            REL::Relocation {REL::VariantID(50654, 51548, 0x8A5110), REL::Relocate(0xC4, 0xC2)}
+        );
+        SKSE::log::info("Hooks: FavoritesMenu quickslot hook installed");
+    }
+
+    void InstallVanillaRingCloneHook() {
+        constexpr auto kBuildObjectCaller = REL::VariantID(15534, 15711, 0x1DB680);
+
+        // BipedAnim reaches the object builder through two paths.
+        // Hook both so slot 36 ring models can be moved before they attach to the hand.
+        HookUtil::WriteThunkCall<BipedAnimBuildObjectHook>(
+            REL::Relocation {kBuildObjectCaller, REL::Relocate(0x1E4, 0x1F5, 0x1E4)}
+        );
+        HookUtil::WriteThunkCall<BipedAnimBuildObjectHook>(
+            REL::Relocation {kBuildObjectCaller, REL::Relocate(0x23E, 0x24B, 0x23E)}
+        );
+        SKSE::log::info("Hooks: BipedAnim object build hook installed");
+    }
+
+    struct PlayerLoad3DHook {
+        static RE::NiAVObject* thunk(RE::PlayerCharacter* a_player, bool a_backgroundLoading) {
+            auto* result = func(a_player, a_backgroundLoading);
+            if (a_player) {
+                VirtualSlots::RequestVisualRefresh(Core::MakeActorKey(*a_player));
+            }
+            return result;
+        }
+
+        static inline REL::Relocation<decltype(thunk)> func;
+    };
+
+    struct CharacterLoad3DHook {
+        static RE::NiAVObject* thunk(RE::Character* a_character, bool a_backgroundLoading) {
+            auto* result = func(a_character, a_backgroundLoading);
+            if (a_character) {
+                Equipment::AutoEquip::HandleActorLoad3D(*a_character);
+            }
+            return result;
+        }
+
+        static inline REL::Relocation<decltype(thunk)> func;
+    };
+
+    struct CharacterUpdateHook {
+        static void thunk(RE::Character* a_character, float a_delta) {
+            func(a_character, a_delta);
+            Equipment::AutoEquip::ResumeDeferredRefresh(Core::MakeActorKey(*a_character));
+        }
+
+        static inline REL::Relocation<decltype(thunk)> func;
+    };
+
+    void InstallActorHooks() {
+        REL::Relocation<std::uintptr_t> playerVTable {RE::PlayerCharacter::VTABLE[0]};
+        PlayerLoad3DHook::func = playerVTable.write_vfunc(0x6A, PlayerLoad3DHook::thunk);
+
+        REL::Relocation<std::uintptr_t> characterVTable {RE::Character::VTABLE[0]};
+        CharacterLoad3DHook::func = characterVTable.write_vfunc(0x6A, CharacterLoad3DHook::thunk);
+        CharacterUpdateHook::func = characterVTable.write_vfunc(
+            REL::Relocate(0xAD, 0xAD, 0xAF),
+            CharacterUpdateHook::thunk
+        );
+        SKSE::log::info("Hooks: actor loading and update hooks installed");
+    }
+}
+
+void Install() {
+    InstallItemMenuHooks();
+    InstallEquipObjectHook();
+    InstallGetEquippedConditionHook();
+    InstallWornHasKeywordConditionHook();
+    InstallPapyrusIsEquippedHook();
+    InstallActorSwitchRaceHook();
+    InstallUnequipAllHelperHook();
+    InstallEnchantmentStrengthHook();
+    InstallVanillaRingCloneHook();
+    InstallActorHooks();
+}
+}
