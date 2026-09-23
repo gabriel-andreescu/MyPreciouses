@@ -6,9 +6,14 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string_view>
+#include <vector>
 
 namespace Inventory {
+[[nodiscard]] std::uint64_t SelectionRevision(RE::FormID a_actor);
+void InvalidateSelections(RE::FormID a_actor);
+void RevertSelections();
 enum class EntryCustomFailure : std::uint32_t {
     kNone = 0,
     kMultipleCustomEnchantments = 1,
@@ -17,14 +22,9 @@ enum class EntryCustomFailure : std::uint32_t {
 struct EntryRingSource {
     RE::TESObjectARMO* ring {nullptr};
     Core::ItemSource source;
-    RE::ExtraDataList* sourceExtraList {nullptr};
     bool vanillaRingSlotEquipped {false};
     EntryCustomFailure customFailure {EntryCustomFailure::kNone};
-};
-
-enum class SourceResolveMode : std::uint8_t {
-    kReadOnly,
-    kEnsureCustomUniqueID,
+    std::vector<Core::ItemSource> rowSources;
 };
 
 enum class EntryResolveScope : std::uint8_t {
@@ -41,7 +41,7 @@ struct CustomSourceMatch {
     [[nodiscard]] bool HasMatch() const;
 };
 
-struct FormOnlySourceMatch {
+struct SourceMatch {
     RE::ExtraDataList* firstExtraList {nullptr};
     RE::ExtraDataList* rightWornExtraList {nullptr};
     std::int32_t count {0};
@@ -70,6 +70,11 @@ struct RingInventoryState {
 };
 
 [[nodiscard]] bool HasCustomEnchantment(const RE::ExtraDataList* a_extraList);
+[[nodiscard]] std::optional<Core::ExtraUniqueIDKey> EnsureExtraUniqueIDKey(
+    RE::Actor& a_actor,
+    const RE::TESBoundObject& a_object,
+    RE::ExtraDataList& a_extraList
+);
 [[nodiscard]] bool MatchesCustomSelection(
     const RE::ExtraDataList* a_extraList,
     const Core::CustomEnchantmentSignature& a_signature,
@@ -99,12 +104,24 @@ struct RingInventoryState {
     const Core::CustomEnchantmentSignature& a_signature,
     const std::optional<Core::ExtraUniqueIDKey>& a_uniqueID = std::nullopt
 );
-[[nodiscard]] FormOnlySourceMatch FindFormOnlySourceMatches(RE::Actor& a_actor, const RE::TESObjectARMO& a_ring);
+[[nodiscard]] SourceMatch FindFormOnlySourceMatches(RE::Actor& a_actor, const RE::TESObjectARMO& a_ring);
+[[nodiscard]] SourceMatch FindSourceMatches(RE::Actor& a_actor, const Core::ItemSource& a_source);
+[[nodiscard]] bool MatchesSource(const RE::ExtraDataList* a_extraList, const Core::ItemSource& a_source);
+[[nodiscard]] std::optional<Core::ItemSource> AcquireCopy(
+    RE::Actor& a_actor,
+    const Core::ItemSource& a_source,
+    std::span<const Core::ItemSource> a_claimed,
+    bool a_untrackedOnly = false
+);
 [[nodiscard]] std::optional<EntryRingSource> ResolveEntryRingSource(
     RE::Actor& a_actor,
     RE::InventoryEntryData& a_entry,
-    SourceResolveMode a_mode = SourceResolveMode::kEnsureCustomUniqueID,
     EntryResolveScope a_scope = EntryResolveScope::kActorInventory
+);
+[[nodiscard]] std::optional<EntryRingSource> PrepareMenuRingSelection(
+    RE::Actor& a_actor,
+    RE::InventoryEntryData& a_entry,
+    std::span<const Core::ItemSource> a_claimed
 );
 [[nodiscard]] RE::TESObjectARMO* AsRing(RE::TESBoundObject* a_object);
 [[nodiscard]] RE::TESObjectARMO* AsRing(RE::TESForm* a_form);

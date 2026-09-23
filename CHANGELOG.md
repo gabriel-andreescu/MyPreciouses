@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - Allow the player to equip rings taken from NPC outfits on other fingers
+- Fix incorrect equipped markers and finger selection when carrying identical
+  rings
 
 ## [1.0.0] - 2026-09-20
 

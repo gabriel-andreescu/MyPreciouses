@@ -67,7 +67,10 @@ EventListener::Control EventListener::ProcessEvent(
     [[maybe_unused]] RE::BSTEventSource<RE::TESUniqueIDChangeEvent>* a_eventSource
 ) {
     if (a_event) {
+        Inventory::InvalidateSelections(a_event->oldBaseID);
+        Inventory::InvalidateSelections(a_event->newBaseID);
         Papyrus::ScriptEventMirror::HandleUniqueIDChange(*a_event);
+        Equipment::HandleUniqueIDChange(*a_event);
     }
     return Control::kContinue;
 }
@@ -77,6 +80,8 @@ EventListener::Control EventListener::ProcessEvent(
     [[maybe_unused]] RE::BSTEventSource<RE::TESContainerChangedEvent>* a_eventSource
 ) {
     if (a_event) {
+        Inventory::InvalidateSelections(a_event->oldContainer);
+        Inventory::InvalidateSelections(a_event->newContainer);
         Equipment::AutoEquip::HandleContainerChanged(*a_event);
         Equipment::HandleContainerChangedForAssignments(
             Core::GetPlayerActorKey(),
@@ -100,6 +105,7 @@ EventListener::Control EventListener::ProcessEvent(
     if (!actor) {
         return Control::kContinue;
     }
+    Inventory::InvalidateSelections(actor->GetFormID());
 
     if (!Inventory::AsRing(RE::TESForm::LookupByID(a_event->baseObject))) {
         return Control::kContinue;

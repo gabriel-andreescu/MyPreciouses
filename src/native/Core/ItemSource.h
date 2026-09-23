@@ -85,10 +85,20 @@ struct ItemSource {
         }
 
         if (a_source.IsFormOnly()) {
-            return MatchesForm(a_source.sourceFormID);
+            return MatchesForm(a_source.sourceFormID) && (!extraUniqueID || extraUniqueID == a_source.extraUniqueID);
         }
 
         return false;
+    }
+
+    [[nodiscard]] bool IsSameCopy(const ItemSource& a_source) const {
+        return IsAssigned()
+               && a_source.IsAssigned()
+               && sourceFormID
+               == a_source.sourceFormID
+               && extraUniqueID
+               && extraUniqueID
+               == a_source.extraUniqueID;
     }
 
     [[nodiscard]] bool operator==(const ItemSource&) const = default;

@@ -74,7 +74,7 @@ class Inventory:
                 self.rings.keyboard.tap(15)
             wait_for(lambda: not self.is_open(), message="Inventory did not close")
 
-    def select(self, form_id, name="", enchantment_id=-1):
+    def select(self, form_id, name="", enchantment_id=-1, *, unique_id=None):
         self.open()
         if self.vanilla and not name:
             name = self.p("Form", "GetName", self_form=f"0x{form_id:08X}")
@@ -89,6 +89,11 @@ class Inventory:
             ):
                 continue
             if name and self.ui("GetString", f"{row}.myPreciousesBaseText") != name:
+                continue
+            if (
+                unique_id is not None
+                and self.ui("GetInt", f"{row}.myPreciousesCustomUniqueID") != unique_id
+            ):
                 continue
             if (
                 enchantment_id >= 0
@@ -121,8 +126,10 @@ class Inventory:
             return
         raise AssertionError(f"Inventory does not contain 0x{form_id:08X} {name}")
 
-    def open_selector(self, form_id, target, name="", enchantment_id=-1):
-        self.select(form_id, name, enchantment_id)
+    def open_selector(
+        self, form_id, target, name="", enchantment_id=-1, *, unique_id=None
+    ):
+        self.select(form_id, name, enchantment_id, unique_id=unique_id)
         self.ui("InvokeInt", "_root.Menu_mc.SetPlatform", 1)
         self.ui("InvokeIntA", "_root.Menu_mc.AttemptEquip", [1 if target < 5 else 0, 0])
         self.rings.wait(
@@ -140,10 +147,10 @@ class Inventory:
         )
         self.ui("InvokeInt", f"{self.selector}.SetSelectedIndex", row)
 
-    def equip(self, form_id, target, name="", enchantment_id=-1):
+    def equip(self, form_id, target, name="", enchantment_id=-1, *, unique_id=None):
         from .session import assigned
 
-        self.open_selector(form_id, target, name, enchantment_id)
+        self.open_selector(form_id, target, name, enchantment_id, unique_id=unique_id)
         self.ui("Invoke", f"{self.selector}.EquipSelection")
         self.rings.wait(
             lambda state: (

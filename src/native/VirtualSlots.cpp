@@ -662,7 +662,7 @@ namespace {
             return plan;
         }
 
-        if (state.active && state.mode != mode) {
+        if (state.active && (state.mode != mode || !state.activeAssignment.source.IsSameCopy(assignment.source))) {
             MergeClearAction(plan, ExtractClearAction(a_actorKey, std::addressof(a_actor), state, true));
         }
 
@@ -994,6 +994,17 @@ float GetRingEnchantmentScaleForSource(RE::Actor& a_actor, const RE::TESObjectAR
     const auto count = CountEquippedMagnitudeRings(a_actor);
     const auto scale = Settings::GetSingleton()->GetRingEnchantmentScale(count);
     return std::clamp(scale, 0.0F, 1.0F);
+}
+
+void RemapUniqueID(const Core::ExtraUniqueIDKey& a_previous, const Core::ExtraUniqueIDKey& a_next) {
+    std::scoped_lock const lock(g_lock);
+    for (auto& actorState : ActorStates() | std::views::values) {
+        for (auto& target : actorState.targets) {
+            if (target.activeAssignment.source.extraUniqueID == a_previous) {
+                target.activeAssignment.source.extraUniqueID = a_next;
+            }
+        }
+    }
 }
 
 std::vector<Papyrus::ScriptEventMirror::BindingRetentionKey> GetActiveBindingRetentionKeys() {

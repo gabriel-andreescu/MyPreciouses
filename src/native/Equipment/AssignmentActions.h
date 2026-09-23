@@ -20,6 +20,8 @@ enum class ActionBlockReason : std::uint8_t {
 struct SourceSelection {
     Core::ActorKey actor;
     Core::ItemSource itemSource;
+    std::optional<std::vector<Core::ItemSource>> rowSources;
+    std::optional<std::uint64_t> inventoryRevision;
 };
 
 struct ActionResult {
@@ -79,6 +81,12 @@ enum class RefreshMode : std::uint8_t {
     VirtualSlots::ScriptBindingClearMode a_scriptBindings = VirtualSlots::ScriptBindingClearMode::kRelease
 );
 void QueueAssignmentReconciliation(Core::ActorKey a_actor, CompletionCallback a_onComplete = {});
+void BindLegacyCopies(
+    RE::Actor& a_actor,
+    Core::TargetAssignments& a_snapshot,
+    const Core::TargetAssignments& a_current = {}
+);
+void HandleUniqueIDChange(const RE::TESUniqueIDChangeEvent& a_event);
 void RestoreAvailableVirtualAssignments(RE::Actor& a_actor, const Core::TargetAssignments& a_snapshot);
 [[nodiscard]] ActionResult ClearDisabledVirtualSlotAssignments(
     RefreshMode a_refreshMode = RefreshMode::kAffectedActors

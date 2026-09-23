@@ -1,6 +1,7 @@
 #include "Inventory.h"
 
 #include <RE/Skyrim.h> // IWYU pragma: keep
+#include <REL/Relocation.h>
 #include <SKSE/SKSE.h> // IWYU pragma: keep
 
 #include "Compatibility/Vanilla.h"
@@ -13,12 +14,24 @@
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 namespace Inventory {
 namespace {
+    bool RetainsInventoryIdentity(const RE::TESForm& a_form) {
+        return (a_form.formFlags & RE::TESForm::RecordFlags::kFormRetainsID) != 0;
+    }
+
+    std::mutex selectionLock;
+    std::uint64_t nextSelectionRevision {0};
+    auto& SelectionRevisions() {
+        static std::unordered_map<RE::FormID, std::uint64_t> revisions;
+        return revisions;
+    }
     constexpr auto kClothingRingKeyword = std::string_view {"ClothingRing"};
     constexpr auto kMaxRightWornRingUnequipAttempts = std::uint8_t {10};
 
@@ -32,10 +45,6 @@ namespace {
         std::optional<Core::CustomEnchantmentSignature> signature;
         std::optional<Core::ExtraUniqueIDKey> uniqueID;
         EntryCustomFailure failure {EntryCustomFailure::kNone};
-
-        [[nodiscard]] bool HasCustomEnchantment() const {
-            return extraList != nullptr && signature.has_value() && failure == EntryCustomFailure::kNone;
-        }
     };
 
     struct MenuEntryExtraListResolution {
@@ -212,11 +221,32 @@ namespace {
     }
 }
 
+std::uint64_t SelectionRevision(const RE::FormID a_actor) {
+    std::scoped_lock const lock(selectionLock);
+    const auto [entry, inserted] = SelectionRevisions().try_emplace(a_actor, 0);
+    if (inserted) {
+        entry->second = ++nextSelectionRevision;
+    }
+    return entry->second;
+}
+
+void InvalidateSelections(const RE::FormID a_actor) {
+    std::scoped_lock const lock(selectionLock);
+    if (const auto entry = SelectionRevisions().find(a_actor); entry != SelectionRevisions().end()) {
+        entry->second = ++nextSelectionRevision;
+    }
+}
+
+void RevertSelections() {
+    std::scoped_lock const lock(selectionLock);
+    SelectionRevisions().clear();
+}
+
 bool CustomSourceMatch::HasMatch() const {
     return firstExtraList != nullptr && count > 0;
 }
 
-bool FormOnlySourceMatch::HasMatch() const {
+bool SourceMatch::HasMatch() const {
     return count > 0;
 }
 
@@ -261,80 +291,74 @@ namespace {
         return uniqueID.IsValid() ? std::make_optional(uniqueID) : std::nullopt;
     }
 
-    std::optional<Core::ExtraUniqueIDKey> EnsureExtraUniqueIDKey(
-        RE::Actor& a_actor,
-        const RE::TESBoundObject& a_object,
-        RE::ExtraDataList& a_extraList
-    ) {
-        if (auto existing = ReadExtraUniqueIDKey(std::addressof(a_extraList))) {
-            return existing;
-        }
+}
 
-        auto* inventoryChanges = a_actor.GetInventoryChanges();
-        if (!inventoryChanges) {
-            SKSE::log::warn(
-                "Inventory: unique id assign skipped | form={:08X} | extraList={} | reason=noInventoryChanges",
-                a_object.GetFormID(),
-                static_cast<const void*>(std::addressof(a_extraList))
-            );
-            return std::nullopt;
-        }
+std::optional<Core::ExtraUniqueIDKey> EnsureExtraUniqueIDKey(
+    RE::Actor& a_actor,
+    const RE::TESBoundObject& a_object,
+    RE::ExtraDataList& a_extraList
+) {
+    if (const auto existing = ReadExtraUniqueIDKey(std::addressof(a_extraList))) {
+        return existing;
+    }
 
-        auto const* entry = FindEntry(a_actor, a_object);
-        if (!EntryContainsExtraList(entry, std::addressof(a_extraList))) {
-            SKSE::log::warn(
-                "Inventory: unique id assign skipped | form={:08X} | extraList={} | reason=extraListNotInInventory",
-                a_object.GetFormID(),
-                static_cast<const void*>(std::addressof(a_extraList))
-            );
-            return std::nullopt;
-        }
+    auto* inventoryChanges = a_actor.GetInventoryChanges();
+    if (!inventoryChanges) {
+        SKSE::log::warn(
+            "Inventory: unique id assign skipped | form={:08X} | extraList={} | reason=noInventoryChanges",
+            a_object.GetFormID(),
+            static_cast<const void*>(std::addressof(a_extraList))
+        );
+        return std::nullopt;
+    }
 
-        const auto uniqueID = inventoryChanges->GetNextUniqueID();
-        if (uniqueID == 0) {
-            SKSE::log::warn(
-                "Inventory: unique id assign skipped | form={:08X} | extraList={} | reason=noUniqueID",
-                a_object.GetFormID(),
-                static_cast<const void*>(std::addressof(a_extraList))
-            );
-            return std::nullopt;
-        }
+    auto const* entry = FindEntry(a_actor, a_object);
+    if (!EntryContainsExtraList(entry, std::addressof(a_extraList))) {
+        SKSE::log::warn(
+            "Inventory: unique id assign skipped | form={:08X} | extraList={} | reason=extraListNotInInventory",
+            a_object.GetFormID(),
+            static_cast<const void*>(std::addressof(a_extraList))
+        );
+        return std::nullopt;
+    }
 
-        const auto uniqueBaseID = a_actor.GetFormID();
-        auto* extraUniqueID = new RE::ExtraUniqueID(uniqueBaseID, uniqueID);
-        if (!a_extraList.Add(extraUniqueID)) {
-            delete extraUniqueID;
-            SKSE::log::warn(
-                "Inventory: unique id assign skipped | form={:08X} | extraList={} | uniqueBase={:08X} | uniqueID={} | reason=addFailed",
-                a_object.GetFormID(),
-                static_cast<const void*>(std::addressof(a_extraList)),
-                uniqueBaseID,
-                uniqueID
-            );
-            return std::nullopt;
-        }
+    const auto uniqueID = inventoryChanges->GetNextUniqueID();
+    if (uniqueID == 0) {
+        SKSE::log::warn(
+            "Inventory: unique id assign skipped | form={:08X} | extraList={} | reason=noUniqueID",
+            a_object.GetFormID(),
+            static_cast<const void*>(std::addressof(a_extraList))
+        );
+        return std::nullopt;
+    }
 
+    const auto uniqueBaseID = a_actor.GetFormID();
+    if (RetainsInventoryIdentity(a_object) && !a_extraList.HasType<RE::ExtraReferenceHandle>()) {
+        using SetUniqueID = void (*)(RE::InventoryChanges*, RE::ExtraDataList*, const RE::TESForm*, const RE::TESForm*);
+        // CommonLib's AE SetUniqueID relocation points to SendContainerChangedEvent.
+        static const REL::Relocation<SetUniqueID> setUniqueID {REL::VariantID(15907, 16147, 0x1FD7D0)};
+        setUniqueID(inventoryChanges, std::addressof(a_extraList), nullptr, std::addressof(a_object));
         inventoryChanges->changed = true;
         return ReadExtraUniqueIDKey(std::addressof(a_extraList));
     }
-
-    std::optional<Core::ExtraUniqueIDKey> EnsureEntryCustomSelectionUniqueID(
-        RE::Actor& a_actor,
-        const RE::TESBoundObject& a_object,
-        EntryCustomSelection& a_customSelection
-    ) {
-        if (!a_customSelection.HasCustomEnchantment() || !a_customSelection.extraList) {
-            return std::nullopt;
-        }
-
-        if (a_customSelection.uniqueID) {
-            return a_customSelection.uniqueID;
-        }
-
-        a_customSelection.uniqueID = EnsureExtraUniqueIDKey(a_actor, a_object, *a_customSelection.extraList);
-        return a_customSelection.uniqueID;
+    auto* extraUniqueID = new RE::ExtraUniqueID(uniqueBaseID, uniqueID);
+    if (!a_extraList.Add(extraUniqueID)) {
+        delete extraUniqueID;
+        SKSE::log::warn(
+            "Inventory: unique id assign skipped | form={:08X} | extraList={} | uniqueBase={:08X} | uniqueID={} | reason=addFailed",
+            a_object.GetFormID(),
+            static_cast<const void*>(std::addressof(a_extraList)),
+            uniqueBaseID,
+            uniqueID
+        );
+        return std::nullopt;
     }
 
+    inventoryChanges->changed = true;
+    return ReadExtraUniqueIDKey(std::addressof(a_extraList));
+}
+
+namespace {
     bool MatchesCustomEnchantmentSignature(
         const RE::ExtraDataList* a_extraList,
         const Core::CustomEnchantmentSignature& a_signature
@@ -370,6 +394,178 @@ bool MatchesCustomSelection(
     }
 
     return !a_uniqueID || MatchesExtraUniqueIDKey(a_extraList, *a_uniqueID);
+}
+
+bool MatchesSource(const RE::ExtraDataList* a_extraList, const Core::ItemSource& a_source) {
+    if (a_source.IsCustomEnchantment()) {
+        return MatchesCustomSelection(a_extraList, a_source.customEnchantment, a_source.extraUniqueID);
+    }
+    return a_source.IsFormOnly()
+           && !HasCustomEnchantment(a_extraList)
+           && (!a_source.extraUniqueID || ReadExtraUniqueIDKey(a_extraList) == a_source.extraUniqueID);
+}
+
+SourceMatch FindSourceMatches(RE::Actor& a_actor, const Core::ItemSource& a_source) {
+    auto const* ring = AsRing(RE::TESForm::LookupByID(a_source.sourceFormID));
+    if (!ring) {
+        return {};
+    }
+    if (a_source.IsFormOnly() && !a_source.extraUniqueID) {
+        return FindFormOnlySourceMatches(a_actor, *ring);
+    }
+    SourceMatch result;
+    const auto* entry = FindEntry(a_actor, *ring);
+    if (!entry || !entry->extraLists) {
+        return result;
+    }
+    for (auto* extraList : *entry->extraLists) {
+        if (!extraList || !MatchesSource(extraList, a_source) || IsOutfitManagedCopy(a_actor, extraList)) {
+            continue;
+        }
+        result.count += ExtraListCopyCount(extraList);
+        if (!result.firstExtraList) {
+            result.firstExtraList = extraList;
+        }
+        if (HasRightWornFlag(extraList)) {
+            result.rightWorn = true;
+            result.rightWornExtraList = extraList;
+            result.rightWornProtected = IsUnequipProtectedRingStack(extraList);
+            result.firstExtraList = extraList;
+        }
+    }
+    return result;
+}
+
+namespace {
+    struct AvailableCopy {
+        RE::ExtraDataList* extraList {nullptr};
+        std::int32_t represented {0};
+    };
+
+    AvailableCopy FindAvailableCopy(
+        const RE::Actor& a_actor,
+        const RE::InventoryEntryData* a_entry,
+        const Core::ItemSource& a_source,
+        const std::span<const Core::ItemSource> a_claimed,
+        const bool a_untrackedOnly
+    ) {
+        AvailableCopy result;
+        if (!a_entry || !a_entry->extraLists) {
+            return result;
+        }
+        for (auto* extraList : *a_entry->extraLists) {
+            result.represented += ExtraListCopyCount(extraList);
+            if (!extraList
+                || HasRightWornFlag(extraList)
+                || IsOutfitManagedCopy(a_actor, extraList)
+                || !MatchesSource(extraList, a_source)) {
+                continue;
+            }
+            // DeepCopy preserves ExtraReferenceHandle, so split copies would share the original reference.
+            if (ExtraListCopyCount(extraList) > 1 && extraList->HasType<RE::ExtraReferenceHandle>()) {
+                continue;
+            }
+            auto candidate = a_source;
+            candidate.extraUniqueID = ReadExtraUniqueIDKey(extraList);
+            if ((a_untrackedOnly && candidate.extraUniqueID)
+                || std::ranges::any_of(a_claimed, [&](const auto& a_claim) { return a_claim.IsSameCopy(candidate); })) {
+                continue;
+            }
+            result.extraList = extraList;
+            break;
+        }
+        return result;
+    }
+
+    std::optional<Core::ExtraUniqueIDKey> PrepareCopyIdentity(
+        RE::Actor& a_actor,
+        const RE::TESObjectARMO& a_ring,
+        RE::ExtraDataList& a_extraList,
+        const std::span<const Core::ItemSource> a_claimed
+    ) {
+        const auto identity = ReadExtraUniqueIDKey(std::addressof(a_extraList));
+        if (!identity) {
+            return EnsureExtraUniqueIDKey(a_actor, a_ring, a_extraList);
+        }
+        const auto* entry = FindEntry(a_actor, a_ring);
+        const auto duplicate = std::ranges::any_of(*entry->extraLists, [&](const auto* a_other) {
+            return a_other != std::addressof(a_extraList) && ReadExtraUniqueIDKey(a_other) == identity;
+        });
+        if (!duplicate) {
+            return identity;
+        }
+        const auto claimed = std::ranges::any_of(a_claimed, [&](const auto& a_source) {
+            return a_source.sourceFormID == a_ring.GetFormID() && a_source.extraUniqueID == identity;
+        });
+        if (claimed || RetainsInventoryIdentity(a_ring) || a_extraList.HasType<RE::ExtraReferenceHandle>()) {
+            return std::nullopt;
+        }
+        auto* changes = a_actor.GetInventoryChanges();
+        const auto next = changes->GetNextUniqueID();
+        if (next == 0) {
+            return std::nullopt;
+        }
+        auto* uniqueID = a_extraList.GetByType<RE::ExtraUniqueID>();
+        uniqueID->baseID = a_actor.GetFormID();
+        uniqueID->uniqueID = next;
+        changes->changed = true;
+        return ReadExtraUniqueIDKey(std::addressof(a_extraList));
+    }
+
+    void SplitCopy(RE::TESObjectARMO& a_ring, RE::InventoryEntryData& a_entry, RE::ExtraDataList& a_selected) {
+        const auto count = ExtraListCopyCount(std::addressof(a_selected));
+        if (count <= 1) {
+            return;
+        }
+        RE::InventoryEntryData original(std::addressof(a_ring), 0);
+        original.AddExtraList(std::addressof(a_selected));
+        RE::InventoryEntryData copy(std::addressof(a_ring), 0);
+        copy.DeepCopy(original);
+        auto* remainder = copy.extraLists->front();
+        remainder->RemoveByType(RE::ExtraDataType::kUniqueID);
+        remainder->SetCount(static_cast<std::uint16_t>(count - 1));
+        a_selected.SetCount(1);
+        a_entry.AddExtraList(remainder);
+    }
+}
+
+std::optional<Core::ItemSource> AcquireCopy(
+    RE::Actor& a_actor,
+    const Core::ItemSource& a_source,
+    const std::span<const Core::ItemSource> a_claimed,
+    const bool a_untrackedOnly
+) {
+    auto* ring = AsRing(RE::TESForm::LookupByID(a_source.sourceFormID));
+    auto* changes = a_actor.GetInventoryChanges();
+    if (!ring || !changes || GetCount(a_actor, *ring) <= 0) {
+        return std::nullopt;
+    }
+    auto* entry = FindEntry(a_actor, *ring);
+    const auto available = FindAvailableCopy(a_actor, entry, a_source, a_claimed, a_untrackedOnly);
+    auto* selected = available.extraList;
+    if (!selected
+        && (!a_source.IsFormOnly() || a_source.extraUniqueID || available.represented >= GetCount(a_actor, *ring))) {
+        return std::nullopt;
+    }
+    if (!entry) {
+        entry = new RE::InventoryEntryData(ring, 0);
+        changes->AddEntryData(entry);
+    }
+    if (!selected) {
+        using Construct = RE::ExtraDataList* (*)(void*);
+        static const REL::Relocation<Construct> construct {REL::VariantID(11437, 11583, 0x117C80)};
+        selected = construct(RE::malloc(REL::Relocate<std::size_t>(0x18, 0x20, 0x18)));
+        entry->AddExtraList(selected);
+    }
+    const auto identity = PrepareCopyIdentity(a_actor, *ring, *selected, a_claimed);
+    if (!identity) {
+        return std::nullopt;
+    }
+    SplitCopy(*ring, *entry, *selected);
+    changes->changed = true;
+    auto result = a_source;
+    result.extraUniqueID = identity;
+    return result;
 }
 
 bool IsUnequipProtectedRingStack(RE::ExtraDataList* a_extraList) {
@@ -411,7 +607,7 @@ bool RightWornRingMatchesSource(
     }
 
     if (a_source.IsFormOnly()) {
-        return !HasCustomEnchantment(a_rightWorn.extraList);
+        return MatchesSource(a_rightWorn.extraList, a_source);
     }
 
     return a_source.IsCustomEnchantment()
@@ -572,7 +768,7 @@ CustomSourceMatch FindCustomSourceMatches(
     return FindCustomMatches(FindEntry(a_actor, a_ring), a_signature, a_uniqueID);
 }
 
-FormOnlySourceMatch FindFormOnlySourceMatches(RE::Actor& a_actor, const RE::TESObjectARMO& a_ring) {
+SourceMatch FindFormOnlySourceMatches(RE::Actor& a_actor, const RE::TESObjectARMO& a_ring) {
     auto const* entry = FindEntry(a_actor, a_ring);
     const auto totalCount = GetCount(a_actor, a_ring);
     const auto customCount = CountCustomCopies(entry);
@@ -580,7 +776,7 @@ FormOnlySourceMatch FindFormOnlySourceMatches(RE::Actor& a_actor, const RE::TESO
     const auto formOnlyCount = std::max(totalCount - customCount - reservedOutfitCount, 0);
     auto* rightWornExtraList = FindRightWornFormOnlyExtraList(entry);
 
-    FormOnlySourceMatch state {
+    SourceMatch state {
         .firstExtraList = rightWornExtraList,
         .rightWornExtraList = rightWornExtraList,
         .count = formOnlyCount,
@@ -685,10 +881,8 @@ namespace {
     }
 
     std::optional<EntryRingSource> ResolveActorInventoryEntryRingSource(
-        RE::Actor& a_actor,
         RE::InventoryEntryData const& a_entry,
-        RE::TESObjectARMO& a_ring,
-        const SourceResolveMode a_mode
+        RE::TESObjectARMO& a_ring
     ) {
         auto source = MakeFormOnlyEntryRingSource(a_ring, IsFormOnlyRightWorn(a_entry));
 
@@ -703,21 +897,12 @@ namespace {
             return source;
         }
 
-        const auto extraUniqueID = a_mode == SourceResolveMode::kEnsureCustomUniqueID
-                                       ? EnsureEntryCustomSelectionUniqueID(a_actor, a_ring, customSelection)
-                                       : customSelection.uniqueID;
-        if (a_mode == SourceResolveMode::kEnsureCustomUniqueID && !extraUniqueID) {
-            source.source = {};
-            return source;
-        }
-
         source.source = Core::ItemSource {
             .kind = Core::ItemSourceKind::kCustomEnchantment,
             .sourceFormID = a_ring.GetFormID(),
             .customEnchantment = *customSelection.signature,
-            .extraUniqueID = extraUniqueID,
+            .extraUniqueID = customSelection.uniqueID,
         };
-        source.sourceExtraList = customSelection.extraList;
         source.vanillaRingSlotEquipped = HasRightWornFlag(customSelection.extraList);
         return source;
     }
@@ -725,8 +910,7 @@ namespace {
     std::optional<EntryRingSource> ResolveMenuEntryRingSource(
         RE::Actor& a_actor,
         RE::InventoryEntryData const& a_entry,
-        RE::TESObjectARMO& a_ring,
-        const SourceResolveMode a_mode
+        RE::TESObjectARMO& a_ring
     ) {
         auto const* actorEntry = FindEntry(a_actor, a_ring);
         auto menuExtraLists = ResolveMenuEntryExtraLists(a_entry, actorEntry);
@@ -752,30 +936,48 @@ namespace {
         }
 
         auto& customSelection = menuExtraLists.customSelection;
-        const auto extraUniqueID = a_mode == SourceResolveMode::kEnsureCustomUniqueID
-                                       ? EnsureEntryCustomSelectionUniqueID(a_actor, a_ring, customSelection)
-                                       : customSelection.uniqueID;
-        if (a_mode == SourceResolveMode::kEnsureCustomUniqueID && !extraUniqueID) {
-            source.source = {};
-            return source;
-        }
-
         source.source = Core::ItemSource {
             .kind = Core::ItemSourceKind::kCustomEnchantment,
             .sourceFormID = a_ring.GetFormID(),
             .customEnchantment = *customSelection.signature,
-            .extraUniqueID = extraUniqueID,
+            .extraUniqueID = customSelection.uniqueID,
         };
-        source.sourceExtraList = customSelection.extraList;
         source.vanillaRingSlotEquipped = HasRightWornFlag(customSelection.extraList);
         return source;
+    }
+    void CollectMenuRowSources(RE::Actor& a_actor, const RE::InventoryEntryData& a_entry, EntryRingSource& a_result) {
+        const auto* actorEntry = FindEntry(a_actor, *a_result.ring);
+        auto represented = 0;
+        if (a_entry.extraLists) {
+            for (const auto* candidate : *a_entry.extraLists) {
+                const auto* extraList = FindActorOwnedExtraList(actorEntry, candidate);
+                if (!extraList) {
+                    continue;
+                }
+                represented += ExtraListCopyCount(extraList);
+                Core::ItemSource source {
+                    .kind = Core::ItemSourceKind::kFormOnly,
+                    .sourceFormID = a_result.ring->GetFormID(),
+                };
+                if (const auto signature = ReadCustomEnchantmentSignature(extraList)) {
+                    source.kind = Core::ItemSourceKind::kCustomEnchantment;
+                    source.customEnchantment = *signature;
+                }
+                source.extraUniqueID = ReadExtraUniqueIDKey(extraList);
+                a_result.rowSources.push_back(std::move(source));
+            }
+        }
+        if (a_entry.countDelta > represented) {
+            a_result.rowSources.push_back(
+                {.kind = Core::ItemSourceKind::kFormOnly, .sourceFormID = a_result.ring->GetFormID()}
+            );
+        }
     }
 }
 
 std::optional<EntryRingSource> ResolveEntryRingSource(
     RE::Actor& a_actor,
     RE::InventoryEntryData& a_entry,
-    const SourceResolveMode a_mode,
     const EntryResolveScope a_scope
 ) {
     auto* ring = AsRing(a_entry.GetObject());
@@ -784,10 +986,39 @@ std::optional<EntryRingSource> ResolveEntryRingSource(
     }
 
     if (a_scope == EntryResolveScope::kMenuRow) {
-        return ResolveMenuEntryRingSource(a_actor, a_entry, *ring, a_mode);
+        auto result = ResolveMenuEntryRingSource(a_actor, a_entry, *ring);
+        if (!result || result->customFailure != EntryCustomFailure::kNone) {
+            return result;
+        }
+        CollectMenuRowSources(a_actor, a_entry, *result);
+        return result;
     }
 
-    return ResolveActorInventoryEntryRingSource(a_actor, a_entry, *ring, a_mode);
+    return ResolveActorInventoryEntryRingSource(a_entry, *ring);
+}
+
+std::optional<EntryRingSource> PrepareMenuRingSelection(
+    RE::Actor& a_actor,
+    RE::InventoryEntryData& a_entry,
+    const std::span<const Core::ItemSource> a_claimed
+) {
+    auto const* ring = AsRing(a_entry.object);
+    if (!ring) {
+        return std::nullopt;
+    }
+    const auto* owned = FindEntry(a_actor, *ring);
+    if (a_entry.extraLists && owned && owned->extraLists) {
+        for (const auto* candidate : *a_entry.extraLists) {
+            auto* extraList = FindActorOwnedExtraList(owned, candidate);
+            if (!extraList) {
+                continue;
+            }
+            if (!PrepareCopyIdentity(a_actor, *ring, *extraList, a_claimed)) {
+                return std::nullopt;
+            }
+        }
+    }
+    return ResolveEntryRingSource(a_actor, a_entry, EntryResolveScope::kMenuRow);
 }
 
 RE::TESObjectARMO* AsRing(RE::TESBoundObject* a_object) {

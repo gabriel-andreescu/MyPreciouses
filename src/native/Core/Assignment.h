@@ -12,6 +12,7 @@ namespace Core {
 struct Assignment {
     ItemSource source;
     RE::FormID retainedEffectSourceFormID {0};
+    bool needsCopyBinding {false};
 
     [[nodiscard]] bool IsAssigned() const {
         return source.IsAssigned();
@@ -22,6 +23,17 @@ struct Assignment {
 
 struct TargetAssignments {
     std::array<Assignment, kAllTargets.size()> byTarget;
+
+    bool RemapUniqueID(const ExtraUniqueIDKey& a_previous, const ExtraUniqueIDKey& a_next) {
+        auto changed = false;
+        for (auto& assignment : byTarget) {
+            if (assignment.source.extraUniqueID == a_previous) {
+                assignment.source.extraUniqueID = a_next;
+                changed = true;
+            }
+        }
+        return changed;
+    }
 };
 
 struct ActorAssignments {

@@ -59,6 +59,15 @@ class RingSession:
 
     def save(self, name):
         self.client.save(name)
+        wait_for(
+            lambda: any(
+                save["name"] == name
+                for save in self.call("game", {"action": "list", "filter": name})[
+                    "saves"
+                ]
+            ),
+            message=f"Save {name} did not become available for loading",
+        )
 
     def reload_settings(self):
         self.p("MyPreciouses_MCM", "OnConfigClose", self_form=self.mcm_quest)

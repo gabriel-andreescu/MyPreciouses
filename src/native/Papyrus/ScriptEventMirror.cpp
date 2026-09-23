@@ -66,6 +66,25 @@ namespace {
         return scripts != a_vm.attachedScripts.end() && !scripts->second.empty();
     }
 
+    [[nodiscard]] RE::VMHandle ResolveScriptHandle(
+        RE::BSScript::Internal::VirtualMachine& a_vm,
+        const RE::Actor& a_actor,
+        RE::ExtraDataList& a_extraList
+    ) {
+        RE::VMHandle handle = 0;
+        if (const auto* uniqueID = a_extraList.GetByType<RE::ExtraUniqueID>(); uniqueID && uniqueID->uniqueID != 0) {
+            handle = InventoryHandle(uniqueID->uniqueID, a_actor.GetFormID());
+        }
+        if (auto* referenceHandle = a_extraList.GetByType<RE::ExtraReferenceHandle>();
+            referenceHandle && (handle == 0 || !HasScripts(a_vm, handle))) {
+            if (const auto original = referenceHandle->GetOriginalReference()) {
+                auto* policy = a_vm.GetObjectHandlePolicy();
+                handle = policy->GetHandleForObject(original->GetFormType(), original.get());
+            }
+        }
+        return handle;
+    }
+
     [[nodiscard]] std::optional<RE::VMHandle> FindInventoryScriptHandle(
         RE::Actor& a_actor,
         const RE::TESObjectARMO& a_ring,
@@ -80,22 +99,10 @@ namespace {
             if (!extraList || Inventory::HasRightWornFlag(extraList)) {
                 continue;
             }
-            if (a_source.IsCustomEnchantment()) {
-                if (!Inventory::MatchesCustomSelection(extraList, a_source.customEnchantment, a_source.extraUniqueID)) {
-                    continue;
-                }
-            } else if (Inventory::HasCustomEnchantment(extraList)) {
+            if (!Inventory::MatchesSource(extraList, a_source)) {
                 continue;
             }
-            RE::VMHandle handle = 0;
-            if (const auto* uniqueID = extraList->GetByType<RE::ExtraUniqueID>(); uniqueID && uniqueID->uniqueID != 0) {
-                handle = InventoryHandle(uniqueID->uniqueID, a_actor.GetFormID());
-            } else if (auto* referenceHandle = extraList->GetByType<RE::ExtraReferenceHandle>()) {
-                if (const auto original = referenceHandle->GetOriginalReference()) {
-                    auto* policy = virtualMachine->GetObjectHandlePolicy();
-                    handle = policy->GetHandleForObject(original->GetFormType(), original.get());
-                }
-            }
+            const auto handle = ResolveScriptHandle(*virtualMachine, a_actor, *extraList);
             if (handle == 0) {
                 continue;
             }
@@ -144,6 +151,36 @@ std::vector<BindingSnapshot> GetBindingSnapshots() {
         });
     }
     return snapshots;
+}
+
+std::optional<Core::ExtraUniqueIDKey> FindBoundCopyIdentity(
+    RE::Actor& a_actor,
+    const Core::ItemSource& a_source,
+    const RE::FormID a_effectSourceFormID
+) {
+    RE::VMHandle handle = 0;
+    {
+        std::scoped_lock const lock(g_lock);
+        const auto binding = Bindings().find(
+            {.actor = Core::MakeActorKey(a_actor), .effectSourceFormID = a_effectSourceFormID}
+        );
+        if (binding == Bindings().end() || binding->second.sourceFormID != a_source.sourceFormID) {
+            return std::nullopt;
+        }
+        handle = binding->second.handle;
+    }
+    auto* virtualMachine = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+    auto const* ring = RE::TESForm::LookupByID<RE::TESObjectARMO>(a_source.sourceFormID);
+    auto const* entry = ring ? Inventory::FindEntry(a_actor, *ring) : nullptr;
+    if (!virtualMachine || !entry || !entry->extraLists) {
+        return std::nullopt;
+    }
+    for (auto* extraList : *entry->extraLists) {
+        if (extraList && ResolveScriptHandle(*virtualMachine, a_actor, *extraList) == handle) {
+            return Inventory::EnsureExtraUniqueIDKey(a_actor, *ring, *extraList);
+        }
+    }
+    return std::nullopt;
 }
 
 void HandleUniqueIDChange(const RE::TESUniqueIDChangeEvent& a_event) {

@@ -3,6 +3,7 @@
 #include <RE/Skyrim.h> // IWYU pragma: keep
 #include <SKSE/SKSE.h> // IWYU pragma: keep
 
+#include <optional>
 #include <vector>
 
 #include "Core/ActorKey.h"
@@ -24,6 +25,11 @@ struct BindingSnapshot {
 };
 
 [[nodiscard]] std::vector<BindingSnapshot> GetBindingSnapshots();
+[[nodiscard]] std::optional<Core::ExtraUniqueIDKey> FindBoundCopyIdentity(
+    RE::Actor& a_actor,
+    const Core::ItemSource& a_source,
+    RE::FormID a_effectSourceFormID
+);
 void HandleUniqueIDChange(const RE::TESUniqueIDChangeEvent& a_event);
 
 [[nodiscard]] bool DispatchEquipped(

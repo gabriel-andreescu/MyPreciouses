@@ -15,6 +15,7 @@
 #include <RE/S/SendUIMessage.h>
 
 #include <REL/Relocation.h>
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstddef>
@@ -565,37 +566,12 @@ namespace {
         }
 
         auto const& runtimeData = GetRuntimeData(a_inventoryMenu);
-        auto* itemList = runtimeData.itemList;
+        auto const* itemList = runtimeData.itemList;
         if (!itemList) {
             return std::nullopt;
         }
 
-        if (movie->IsAvailable(kSkyUIUpdateBottomBarPath)) {
-            if (!itemList->entryList.IsArray()) {
-                return std::nullopt;
-            }
-
-            std::uint32_t changedEntryRows = 0;
-            for (std::uint32_t index = 0; index < itemList->entryList.GetArraySize(); ++index) {
-                RE::GFxValue entryObject;
-                if (!itemList->entryList.GetElement(index, std::addressof(entryObject))
-                    || !Scaleform::CanReadMembers(entryObject)) {
-                    continue;
-                }
-
-                const auto result = RingItemRows::RefreshStampedRingEntry(entryObject, Core::GetPlayerActorKey());
-                if (result != RingItemRows::RowStampResult::kChanged) {
-                    continue;
-                }
-
-                ++changedEntryRows;
-                static_cast<void>(itemList->entryList.SetElement(index, entryObject));
-            }
-
-            return changedEntryRows > 0;
-        }
-
-        if (!IsVanillaInventoryMovie(*movie)) {
+        if (!movie->IsAvailable(kSkyUIUpdateBottomBarPath) && !IsVanillaInventoryMovie(*movie)) {
             return std::nullopt;
         }
 

@@ -21,6 +21,13 @@ namespace {
     }
 }
 
+void RemapUniqueID(const Core::ExtraUniqueIDKey& a_previous, const Core::ExtraUniqueIDKey& a_next) {
+    std::scoped_lock const lock(g_lock);
+    for (auto& [actor, assignments] : Snapshots()) {
+        assignments.RemapUniqueID(a_previous, a_next);
+    }
+}
+
 void Capture(const Core::ActorKey a_actor) {
     auto snapshot = AssignmentStore::GetSnapshot(a_actor);
     std::scoped_lock const lock(g_lock);

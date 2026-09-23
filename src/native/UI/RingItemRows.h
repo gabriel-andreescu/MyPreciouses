@@ -29,7 +29,6 @@ struct RingHintState {
     bool a_updateRowLabel
 );
 [[nodiscard]] RowStampResult ClearRingEntry(RE::GFxValue& a_object);
-[[nodiscard]] RowStampResult RefreshStampedRingEntry(RE::GFxValue& a_entryObject, Core::ActorKey a_actor);
 [[nodiscard]] RingHintState GetRingEntryHintState(RE::InventoryEntryData& a_entry, Core::ActorKey a_actor);
 [[nodiscard]] bool CanUseRingEquipHint(const RE::GFxValue& a_entryObject);
 [[nodiscard]] bool CanShowFingerSelectHint(const RE::GFxValue& a_entryObject);

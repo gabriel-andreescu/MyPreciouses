@@ -10,8 +10,10 @@
 #include "Core/TargetMask.h"
 #include "Equipment/AssignmentStore.h"
 #include "Equipment/RaceSwitchRestore.h"
+#include "Equipment/SavedEquipment.h"
 #include "Equipment/SpecialRingRules.h"
 #include "Inventory.h"
+#include "Papyrus/ScriptEventMirror.h"
 #include "Settings.h"
 #include "SourceModelFootprints.h"
 #include "VirtualSlots.h"
@@ -21,6 +23,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -138,7 +141,7 @@ namespace {
             };
         }
 
-        const auto sourceMatches = Inventory::FindFormOnlySourceMatches(a_actor, a_ring);
+        const auto sourceMatches = Inventory::FindSourceMatches(a_actor, a_source);
         return SourceMatch {
             .equipExtraList = sourceMatches.firstExtraList,
             .rightWornExtraList = sourceMatches.rightWornExtraList,
@@ -214,14 +217,11 @@ namespace {
 
         if (a_assignment.source.kind
             != Core::ItemSourceKind::kFormOnly
-            || Inventory::HasCustomEnchantment(a_params.extraDataList)) {
+            || !Inventory::MatchesSource(a_params.extraDataList, a_assignment.source)) {
             return std::nullopt;
         }
 
-        return Core::ItemSource {
-            .kind = Core::ItemSourceKind::kFormOnly,
-            .sourceFormID = a_sourceFormID,
-        };
+        return a_assignment.source;
     }
 
     [[nodiscard]] std::optional<VirtualSourceTarget> FindVirtualTargetForVanillaRingSlotEquip(
@@ -263,7 +263,7 @@ namespace {
         const auto snapshot = AssignmentStore::GetSnapshot(a_actorKey);
         for (const auto target : Core::kVirtualTargets) {
             const auto& selection = snapshot.byTarget[Core::ToIndex(target)];
-            if (!selection.source.Matches(a_source)) {
+            if (!a_source.Matches(selection.source)) {
                 continue;
             }
 
@@ -329,8 +329,13 @@ namespace {
         }
         MergeActionResult(result, clearResult);
 
+        equipExtraList = FindSourceMatch(*actor, *ring, a_source).equipExtraList;
+        if (a_source.extraUniqueID && !equipExtraList) {
+            result.sourceUnavailable = true;
+            return result;
+        }
         const auto selection = AssignmentStore::Get(a_actor, a_target);
-        if (selection.source.Matches(a_source)) {
+        if (a_source.Matches(selection.source)) {
             AssignmentStore::Clear(a_actor, a_target);
             VirtualSlots::ClearTarget(a_actor, a_target);
             result.selectionChanged = true;
@@ -408,19 +413,7 @@ namespace {
         const Core::Target a_target,
         const std::optional<Core::Target> a_moveSourceTarget = std::nullopt
     ) {
-        bool assigned = false;
-        if (a_source.IsCustomEnchantment()) {
-            assigned = AssignmentStore::AssignCustom(
-                a_actor,
-                a_ring,
-                a_source.customEnchantment,
-                a_source.extraUniqueID,
-                a_target,
-                a_moveSourceTarget
-            );
-        } else {
-            assigned = AssignmentStore::AssignForm(a_actor, a_ring, a_target, a_moveSourceTarget);
-        }
+        const auto assigned = AssignmentStore::Assign(a_actor, a_ring, a_source, a_target, a_moveSourceTarget);
         if (assigned) {
             RaceSwitchRestore::DiscardReplacedTargets(
                 a_actor,
@@ -578,7 +571,8 @@ namespace {
         }
         MergeActionResult(result, clearResult);
 
-        if (!EquipVanillaRingSlot(*actor, *ring, sourceMatches.equipExtraList)) {
+        const auto currentSource = FindSourceMatch(*actor, *ring, a_source);
+        if (!currentSource.HasMatch() || !EquipVanillaRingSlot(*actor, *ring, currentSource.equipExtraList)) {
             return result;
         }
 
@@ -638,10 +632,12 @@ namespace {
 
         const auto sourceMatches = FindSourceMatch(a_actor, *ring, *source);
         const auto selectedCopies = CountSelectedVirtualCopies(actorKey, *source);
-        const auto vanillaSlotClaim = sourceMatches.rightWorn ? 1U : 0U;
-        const auto requiredInventoryCount = selectedCopies + vanillaSlotClaim;
-        const auto shouldClear = !sourceMatches.HasMatch()
-                                 || std::cmp_less(sourceMatches.count, requiredInventoryCount);
+        const auto shouldClear = !source->extraUniqueID
+                                 || sourceMatches.count
+                                 != 1
+                                 || sourceMatches.rightWorn
+                                 || selectedCopies
+                                 != 1;
         if (shouldClear) {
             return ClearVirtualAssignment(a_actor, a_target);
         }
@@ -662,7 +658,13 @@ bool IsSelected(const SourceSelection& a_selection, const Core::Target a_target)
         return false;
     }
 
-    return AssignmentStore::Get(a_selection.actor, a_target).source.Matches(a_selection.itemSource);
+    const auto assigned = AssignmentStore::Get(a_selection.actor, a_target).source;
+    if (a_selection.rowSources) {
+        return std::ranges::any_of(*a_selection.rowSources, [&](const auto& a_source) {
+            return a_source.IsSameCopy(assigned);
+        });
+    }
+    return a_selection.itemSource.Matches(assigned);
 }
 
 bool IsInVanillaRingSlot(const SourceSelection& a_selection) {
@@ -672,6 +674,11 @@ bool IsInVanillaRingSlot(const SourceSelection& a_selection) {
         return false;
     }
 
+    if (a_selection.rowSources) {
+        return std::ranges::any_of(*a_selection.rowSources, [&](const auto& a_source) {
+            return a_source.extraUniqueID && IsInVanillaRingSlot(*actor, *ring, a_source);
+        });
+    }
     return IsInVanillaRingSlot(*actor, *ring, a_selection.itemSource);
 }
 
@@ -682,6 +689,9 @@ bool IsProtectedInVanillaRingSlot(const SourceSelection& a_selection) {
         return false;
     }
 
+    if (a_selection.rowSources && !IsInVanillaRingSlot(a_selection)) {
+        return false;
+    }
     const auto sourceMatches = FindSourceMatch(*actor, *ring, a_selection.itemSource);
     return sourceMatches.rightWorn && sourceMatches.rightWornProtected;
 }
@@ -782,26 +792,6 @@ namespace {
         return result;
     }
 
-    void QueueVanillaRingSlotToVirtual(
-        const Core::ActorKey a_actor,
-        Core::ItemSource a_source,
-        const Core::Target a_target,
-        CompletionCallback a_onComplete
-    ) {
-        if (!CanUseVirtualTarget(a_target, std::string_view {"queueVanillaRingSlotToVirtual"})) {
-            return;
-        }
-
-        SKSE::GetTaskInterface()->AddTask(
-            [a_actor, source = std::move(a_source), a_target, onComplete = std::move(a_onComplete)] {
-                const auto result = MoveVanillaRingSlotToVirtual(a_actor, source, a_target);
-                if (onComplete) {
-                    onComplete(result);
-                }
-            }
-        );
-    }
-
     [[nodiscard]] ActionResult ToggleVanillaTarget(const SourceSelection& a_selection) {
         if (auto* actor = Core::ResolveActor(a_selection.actor);
             actor && Inventory::HasProtectedRightWornRing(*actor)) {
@@ -828,34 +818,11 @@ namespace {
         return result;
     }
 
-    [[nodiscard]] ActionResult CompleteQueuedMove() {
-        return ActionResult {
-            .handled = true,
-        };
-    }
-
-    [[nodiscard]] ActionResult MoveRightWornSourceToVirtual(
-        const Core::ActorKey a_actor,
-        Core::ItemSource a_source,
-        const Core::Target a_target,
-        const QueueMode a_queueMode,
-        CompletionCallback a_onQueuedComplete
-    ) {
-        if (a_queueMode == QueueMode::kQueued) {
-            QueueVanillaRingSlotToVirtual(a_actor, std::move(a_source), a_target, std::move(a_onQueuedComplete));
-            return CompleteQueuedMove();
-        }
-
-        return MoveVanillaRingSlotToVirtual(a_actor, a_source, a_target);
-    }
-
     [[nodiscard]] ActionResult AssignCustomTarget(
         const SourceSelection& a_selection,
         RE::TESObjectARMO const& a_ring,
         const Core::Target a_target,
-        const std::optional<Core::Target> a_moveSourceTarget,
-        const QueueMode a_queueMode,
-        CompletionCallback a_onQueuedComplete
+        const std::optional<Core::Target> a_moveSourceTarget
     ) {
         ActionResult result;
         auto* actor = Core::ResolveActor(a_selection.actor);
@@ -863,7 +830,7 @@ namespace {
             return result;
         }
 
-        auto source = a_selection.itemSource;
+        const auto& source = a_selection.itemSource;
         auto const sourceMatches = FindSourceMatch(*actor, a_ring, source);
         auto const* sourceExtraList = sourceMatches.equipExtraList;
         if (!sourceExtraList || !sourceMatches.HasMatch()) {
@@ -884,13 +851,7 @@ namespace {
                 return RightHandRingCannotBeUnequippedResult();
             }
 
-            return MoveRightWornSourceToVirtual(
-                a_selection.actor,
-                std::move(source),
-                a_target,
-                a_queueMode,
-                std::move(a_onQueuedComplete)
-            );
+            return MoveVanillaRingSlotToVirtual(a_selection.actor, source, a_target);
         }
 
         const auto hasNoFreeVirtualCopy = HasNoFreeVirtualCopy(sourceMatches, selectedCopies);
@@ -935,9 +896,7 @@ namespace {
         const SourceSelection& a_selection,
         RE::TESObjectARMO const& a_ring,
         const Core::Target a_target,
-        const std::optional<Core::Target> a_moveSourceTarget,
-        const QueueMode a_queueMode,
-        CompletionCallback a_onQueuedComplete
+        const std::optional<Core::Target> a_moveSourceTarget
     ) {
         ActionResult result;
         auto* actor = Core::ResolveActor(a_selection.actor);
@@ -945,7 +904,7 @@ namespace {
             return result;
         }
 
-        auto source = a_selection.itemSource;
+        const auto& source = a_selection.itemSource;
         auto const sourceMatches = FindSourceMatch(*actor, a_ring, source);
         if (!sourceMatches.HasMatch()) {
             result.sourceUnavailable = true;
@@ -959,13 +918,7 @@ namespace {
                 return RightHandRingCannotBeUnequippedResult();
             }
 
-            return MoveRightWornSourceToVirtual(
-                a_selection.actor,
-                std::move(source),
-                a_target,
-                a_queueMode,
-                std::move(a_onQueuedComplete)
-            );
+            return MoveVanillaRingSlotToVirtual(a_selection.actor, source, a_target);
         }
 
         const auto hasNoFreeVirtualCopy = HasNoFreeVirtualCopy(sourceMatches, selectedCopies);
@@ -1005,6 +958,75 @@ namespace {
         result.selectionChanged = true;
         return result;
     }
+    std::optional<Core::ItemSource> FindNativeRowCopy(
+        RE::Actor& a_actor,
+        const std::span<const Core::ItemSource> a_sources
+    ) {
+        for (const auto& source : a_sources) {
+            if (source.extraUniqueID && Inventory::FindSourceMatches(a_actor, source).rightWorn) {
+                return source;
+            }
+        }
+        return std::nullopt;
+    }
+
+    std::optional<Core::ItemSource> ResolveRowCopy(
+        RE::Actor& a_actor,
+        const SourceSelection& a_selection,
+        const std::span<const Core::ItemSource> a_sources,
+        const Core::Target a_target,
+        const std::optional<Core::Target> a_moveSourceTarget
+    ) {
+        const auto current = AssignmentStore::GetSnapshot(a_selection.actor);
+        if (Core::IsVirtualTarget(a_target) && IsSelected(a_selection, a_target)) {
+            return current.byTarget[Core::ToIndex(a_target)].source;
+        }
+        auto native = FindNativeRowCopy(a_actor, a_sources);
+        if (a_target == Core::kVanillaRingSlotTarget && native) {
+            return native;
+        }
+        std::vector<Core::ItemSource> claimed;
+        for (const auto& assignment : current.byTarget) {
+            if (assignment.IsAssigned()) {
+                claimed.push_back(assignment.source);
+            }
+        }
+        for (const auto& source : a_sources) {
+            if (const auto copy = Inventory::AcquireCopy(a_actor, source, claimed, !source.extraUniqueID)) {
+                return copy;
+            }
+        }
+        if (a_moveSourceTarget && IsSelected(a_selection, *a_moveSourceTarget)) {
+            return current.byTarget[Core::ToIndex(*a_moveSourceTarget)].source;
+        }
+        return native;
+    }
+
+    ActionResult ToggleRowTarget(
+        const SourceSelection& a_selection,
+        const std::span<const Core::ItemSource> a_sources,
+        const Core::Target a_target,
+        const std::optional<Core::Target> a_moveSourceTarget
+    ) {
+        auto* actor = Core::ResolveActor(a_selection.actor);
+        auto const* ring = LookupSourceRing(a_selection.itemSource.sourceFormID);
+        if (!actor || !ring) {
+            return {};
+        }
+        const auto occupied = SourceModelFootprints::GetProjectedRingGeometryTargets(*ring, a_target);
+        if (occupied.Empty()
+            || (Core::IsVirtualTarget(a_target)
+                && !SpecialRingRules::AreTargetsEnabledForSource(a_selection.actor, *ring, occupied))) {
+            return {};
+        }
+        const auto selected = ResolveRowCopy(*actor, a_selection, a_sources, a_target, a_moveSourceTarget);
+        if (!selected || !Inventory::FindSourceMatches(*actor, *selected).HasMatch()) {
+            return {.sourceUnavailable = true, .handled = true};
+        }
+        auto result = ToggleTarget({.actor = a_selection.actor, .itemSource = *selected}, a_target, a_moveSourceTarget);
+        result.inventoryChanged = result.inventoryChanged || result.selectionChanged;
+        return result;
+    }
 }
 
 ActionResult ToggleTarget(
@@ -1017,6 +1039,26 @@ ActionResult ToggleTarget(
     ActionResult result;
     if (!Settings::GetSingleton()->IsActorVirtualRingSupportEnabled(a_selection.actor)) {
         return result;
+    }
+    if (a_selection.inventoryRevision
+        && *a_selection.inventoryRevision
+        != Inventory::SelectionRevision(a_selection.actor.referenceFormID)) {
+        return {.sourceUnavailable = true, .handled = true};
+    }
+    if (a_queueMode == QueueMode::kQueued) {
+        SKSE::GetTaskInterface()->AddTask(
+            [selection = a_selection, a_target, a_moveSourceTarget, onComplete = std::move(a_onQueuedComplete)] {
+                const auto completed = ToggleTarget(selection, a_target, a_moveSourceTarget);
+                if (onComplete) {
+                    onComplete(completed);
+                }
+            }
+        );
+        return {.handled = true};
+    }
+
+    if (a_selection.rowSources) {
+        return ToggleRowTarget(a_selection, *a_selection.rowSources, a_target, a_moveSourceTarget);
     }
 
     if (a_target == Core::kVanillaRingSlotTarget) {
@@ -1037,24 +1079,10 @@ ActionResult ToggleTarget(
     }
 
     if (a_selection.itemSource.IsCustomEnchantment()) {
-        return AssignCustomTarget(
-            a_selection,
-            *ring,
-            a_target,
-            a_moveSourceTarget,
-            a_queueMode,
-            std::move(a_onQueuedComplete)
-        );
+        return AssignCustomTarget(a_selection, *ring, a_target, a_moveSourceTarget);
     }
 
-    return AssignFormTarget(
-        a_selection,
-        *ring,
-        a_target,
-        a_moveSourceTarget,
-        a_queueMode,
-        std::move(a_onQueuedComplete)
-    );
+    return AssignFormTarget(a_selection, *ring, a_target, a_moveSourceTarget);
 }
 
 ActionResult ClearDisabledVirtualSlotAssignments(const RefreshMode a_refreshMode) {
@@ -1174,11 +1202,103 @@ void QueueAssignmentReconciliation(const Core::ActorKey a_actor, CompletionCallb
     });
 }
 
+namespace {
+    std::optional<Core::ItemSource> AcquireLegacyCopy(
+        RE::Actor& a_actor,
+        const Core::Assignment& a_assignment,
+        const std::vector<Core::ItemSource>& a_claimed,
+        const bool a_bound
+    ) {
+        auto source = a_assignment.source;
+        if (a_bound) {
+            source.extraUniqueID = Papyrus::ScriptEventMirror::FindBoundCopyIdentity(
+                a_actor,
+                source,
+                a_assignment.retainedEffectSourceFormID
+            );
+            return source.extraUniqueID ? Inventory::AcquireCopy(a_actor, source, a_claimed) : std::nullopt;
+        }
+        if (const auto copy = Inventory::AcquireCopy(a_actor, source, a_claimed)) {
+            return copy;
+        }
+        source.extraUniqueID.reset();
+        return Inventory::AcquireCopy(a_actor, source, a_claimed);
+    }
+}
+
+void BindLegacyCopies(
+    RE::Actor& a_actor,
+    Core::TargetAssignments& a_snapshot,
+    const Core::TargetAssignments& a_current
+) {
+    const auto bindings = Papyrus::ScriptEventMirror::GetBindingSnapshots();
+    const auto actorKey = Core::MakeActorKey(a_actor);
+    const auto hasBinding = [&](const Core::Target a_target) {
+        const auto& assignment = a_snapshot.byTarget[Core::ToIndex(a_target)];
+        return std::ranges::any_of(bindings, [&](const auto& a_binding) {
+            return a_binding.actor
+                   == actorKey
+                   && a_binding.sourceFormID
+                   == assignment.source.sourceFormID
+                   && a_binding.effectSourceFormID
+                   == assignment.retainedEffectSourceFormID;
+        });
+    };
+    auto targets = Core::kVirtualTargets;
+    // Unbound assignments must not take copies owned by serialized script bindings.
+    std::ranges::stable_partition(targets, hasBinding);
+    std::vector<Core::ItemSource> claimed;
+    for (const auto& assignment : a_current.byTarget) {
+        if (assignment.IsAssigned()) {
+            claimed.push_back(assignment.source);
+        }
+    }
+    for (const auto& assignment : a_snapshot.byTarget) {
+        if (assignment.IsAssigned() && !assignment.needsCopyBinding) {
+            claimed.push_back(assignment.source);
+        }
+    }
+    for (const auto target : targets) {
+        auto& assignment = a_snapshot.byTarget[Core::ToIndex(target)];
+        if (!assignment.IsAssigned() || !assignment.needsCopyBinding) {
+            continue;
+        }
+        if (a_current.byTarget[Core::ToIndex(target)].IsAssigned()) {
+            assignment = {};
+            continue;
+        }
+        const auto copy = AcquireLegacyCopy(a_actor, assignment, claimed, hasBinding(target));
+        if (!copy) {
+            assignment = {};
+            continue;
+        }
+        assignment.source = *copy;
+        assignment.needsCopyBinding = false;
+        claimed.push_back(*copy);
+    }
+}
+
+void HandleUniqueIDChange(const RE::TESUniqueIDChangeEvent& a_event) {
+    if (a_event.oldUniqueID == 0 || a_event.newUniqueID == 0) {
+        return;
+    }
+    const Core::ExtraUniqueIDKey oldID {.baseID = a_event.oldBaseID, .uniqueID = a_event.oldUniqueID};
+    const Core::ExtraUniqueIDKey newID {.baseID = a_event.newBaseID, .uniqueID = a_event.newUniqueID};
+    if (a_event.oldBaseID == a_event.newBaseID) {
+        AssignmentStore::RemapUniqueID(oldID, newID);
+        VirtualSlots::RemapUniqueID(oldID, newID);
+    }
+    SavedEquipment::RemapUniqueID(oldID, newID);
+    RaceSwitchRestore::RemapUniqueID(oldID, newID);
+}
+
 void RestoreAvailableVirtualAssignments(RE::Actor& a_actor, const Core::TargetAssignments& a_snapshot) {
     const auto actorKey = Core::MakeActorKey(a_actor);
+    auto restored = a_snapshot;
+    BindLegacyCopies(a_actor, restored, AssignmentStore::GetSnapshot(actorKey));
     // Current selections take priority over saved equipment.
     for (const auto target : Core::kVirtualTargets) {
-        const auto& assignment = a_snapshot.byTarget[Core::ToIndex(target)];
+        const auto& assignment = restored.byTarget[Core::ToIndex(target)];
         auto const* ring = LookupSourceRing(assignment.source.sourceFormID);
         if (!assignment.IsAssigned() || !ring || AssignmentStore::Get(actorKey, target).IsAssigned()) {
             continue;

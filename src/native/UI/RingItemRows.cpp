@@ -55,6 +55,7 @@ namespace {
     struct RingRowPresentation {
         RE::TESObjectARMO& ring;
         Core::ItemSource source;
+        std::vector<Core::ItemSource> rowSources;
         bool vanillaRingSlotEquipped {false};
         Inventory::EntryCustomFailure customFailure {Inventory::EntryCustomFailure::kNone};
     };
@@ -471,12 +472,7 @@ namespace {
             return std::nullopt;
         }
 
-        auto source = Inventory::ResolveEntryRingSource(
-            *actor,
-            a_entry,
-            Inventory::SourceResolveMode::kReadOnly,
-            Inventory::EntryResolveScope::kMenuRow
-        );
+        auto source = Inventory::ResolveEntryRingSource(*actor, a_entry, Inventory::EntryResolveScope::kMenuRow);
         if (!source) {
             return std::nullopt;
         }
@@ -484,6 +480,7 @@ namespace {
         return RingRowPresentation {
             .ring = *source->ring,
             .source = source->source,
+            .rowSources = std::move(source->rowSources),
             .vanillaRingSlotEquipped = source->vanillaRingSlotEquipped,
             .customFailure = source->customFailure,
         };
@@ -497,7 +494,15 @@ namespace {
     ) {
         StampRingSource(a_object, a_presentation.source, a_presentation.customFailure);
 
-        const auto virtualTargets = Equipment::AssignmentStore::GetMatchingTargets(a_actor, a_presentation.source);
+        Core::TargetMask virtualTargets;
+        const auto assignments = Equipment::AssignmentStore::GetSnapshot(a_actor);
+        for (const auto target : Core::kVirtualTargets) {
+            if (std::ranges::any_of(a_presentation.rowSources, [&](const auto& a_source) {
+                    return a_source.IsSameCopy(assignments.byTarget[Core::ToIndex(target)].source);
+                })) {
+                virtualTargets.Add(target);
+            }
+        }
         const auto equipState = GetRingEquipState(virtualTargets, a_presentation.vanillaRingSlotEquipped);
         const auto previousEquipState = Scaleform::ReadIntMember(a_object, kScaleformEquipState)
                                             .value_or(kSkyUIEquipStateNone);
@@ -536,34 +541,6 @@ RowStampResult StampRingEntry(
 
 RowStampResult ClearRingEntry(RE::GFxValue& a_object) {
     return ClearRingEntryData(a_object);
-}
-
-RowStampResult RefreshStampedRingEntry(RE::GFxValue& a_entryObject, const Core::ActorKey a_actor) {
-    const auto formID = Scaleform::ReadUInt32Member(a_entryObject, kScaleformItemFormID);
-    if (!formID) {
-        return ClearRingEntryData(a_entryObject);
-    }
-
-    auto const* ring = Inventory::AsRing(RE::TESForm::LookupByID<RE::TESObjectARMO>(*formID));
-    if (!ring) {
-        return ClearRingEntryData(a_entryObject);
-    }
-
-    const auto previousEquipState = Scaleform::ReadIntMember(a_entryObject, kScaleformEquipState)
-                                        .value_or(kSkyUIEquipStateNone);
-    const auto previousVanillaRingSlotState = previousEquipState
-                                              == kSkyUIEquipStateRight
-                                              || previousEquipState
-                                              == kSkyUIEquipStateBoth;
-    const auto storedVanillaRingSlotState = Scaleform::ReadBoolMember(a_entryObject, kScaleformVanillaRingSlotEquipped);
-    const auto source = ReadStampedItemSource(a_entryObject, *formID);
-    const auto vanillaRingSlotEquipped = storedVanillaRingSlotState.value_or(previousVanillaRingSlotState);
-    const auto virtualTargets = Equipment::AssignmentStore::GetMatchingTargets(a_actor, source);
-    const auto equipState = GetRingEquipState(virtualTargets, vanillaRingSlotEquipped);
-    const auto textChanged = UpdateRingRowLabel(a_entryObject, source, virtualTargets, vanillaRingSlotEquipped);
-
-    StampEquipState(a_entryObject, equipState, vanillaRingSlotEquipped);
-    return previousEquipState != equipState || textChanged ? RowStampResult::kChanged : RowStampResult::kUnchanged;
 }
 
 RingHintState GetRingEntryHintState(RE::InventoryEntryData& a_entry, const Core::ActorKey a_actor) {

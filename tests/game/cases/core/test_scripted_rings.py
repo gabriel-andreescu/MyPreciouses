@@ -27,9 +27,17 @@ def test_script_state_and_cosmetic_mode(rings):
         return p("Actor", "HasPerk", [perk], "0x14")
 
     assert not has_perk(), "The baseline must not have the Namira cannibalism perk"
-    rings.add(0x2C37B)
+    rings.add(0x2C37B, 2)
     menu.equip(0x2C37B, 0)
+    menu.equip(0x2C37B, 8)
     menu.close()
+    state = rings.wait(
+        lambda state: (
+            len(state["assignments"]) == 2 and len(state["scriptBindings"]) == 2
+        ),
+        "Scripted copies added together did not get independent bindings",
+    )
+    assert len({assignment["uniqueId"] for assignment in state["assignments"]}) == 2
     wait_for(
         has_perk, message="Namira did not run its equip script on a virtual finger"
     )

@@ -66,6 +66,8 @@ namespace {
         Core::ActorKey itemActor;
         RE::TESObjectARMO* ring {nullptr};
         Core::ItemSource itemSource;
+        std::vector<Core::ItemSource> rowSources;
+        std::uint64_t inventoryRevision {0};
         bool blocked {false};
     };
 
@@ -73,6 +75,8 @@ namespace {
         ItemMenuHost hostMenu {ItemMenuHost::kInventory};
         Core::ActorKey itemActor;
         Core::ItemSource itemSource;
+        std::vector<Core::ItemSource> rowSources;
+        std::uint64_t inventoryRevision {0};
         Core::TargetMask sourceTargets;
         std::optional<Core::Target> moveSourceTarget;
     };
@@ -163,12 +167,13 @@ namespace {
             return std::nullopt;
         }
 
-        auto source = Inventory::ResolveEntryRingSource(
-            *actor,
-            a_entry,
-            Inventory::SourceResolveMode::kEnsureCustomUniqueID,
-            Inventory::EntryResolveScope::kMenuRow
-        );
+        std::vector<Core::ItemSource> claimed;
+        for (const auto& assignment : Equipment::AssignmentStore::GetSnapshot(a_itemActor).byTarget) {
+            if (assignment.IsAssigned()) {
+                claimed.push_back(assignment.source);
+            }
+        }
+        auto source = Inventory::PrepareMenuRingSelection(*actor, a_entry, claimed);
         if (!source) {
             return std::nullopt;
         }
@@ -178,6 +183,8 @@ namespace {
             .itemActor = a_itemActor,
             .ring = source->ring,
             .itemSource = source->source,
+            .rowSources = std::move(source->rowSources),
+            .inventoryRevision = Inventory::SelectionRevision(a_itemActor.referenceFormID),
             .blocked = source->ring == nullptr || !source->source.IsAssigned(),
         };
     }
@@ -186,6 +193,8 @@ namespace {
         return Equipment::SourceSelection {
             .actor = a_source.itemActor,
             .itemSource = a_source.itemSource,
+            .rowSources = a_source.rowSources,
+            .inventoryRevision = a_source.inventoryRevision,
         };
     }
 
@@ -245,6 +254,8 @@ namespace {
             .hostMenu = a_source.hostMenu,
             .itemActor = a_source.itemActor,
             .itemSource = a_source.itemSource,
+            .rowSources = a_source.rowSources,
+            .inventoryRevision = a_source.inventoryRevision,
             .sourceTargets = a_source.ring ? SourceModelFootprints::GetRingGeometrySourceTargets(*a_source.ring)
                                            : Core::TargetMask {},
             .moveSourceTarget = a_moveSourceTarget,
@@ -252,6 +263,9 @@ namespace {
     }
 
     [[nodiscard]] std::optional<MenuRingSource> RestoreMenuRingSource(const StoredMenuRingSource& a_source) {
+        if (a_source.inventoryRevision != Inventory::SelectionRevision(a_source.itemActor.referenceFormID)) {
+            return std::nullopt;
+        }
         auto* ring = Inventory::AsRing(RE::TESForm::LookupByID<RE::TESObjectARMO>(a_source.itemSource.sourceFormID));
         auto* actor = Core::ResolveActor(a_source.itemActor);
         if (!ring || !actor || Inventory::GetCount(*actor, *ring) <= 0) {
@@ -275,6 +289,8 @@ namespace {
             .itemActor = a_source.itemActor,
             .ring = ring,
             .itemSource = a_source.itemSource,
+            .rowSources = a_source.rowSources,
+            .inventoryRevision = a_source.inventoryRevision,
         };
     }
 
@@ -298,7 +314,9 @@ namespace {
         const auto snapshot = Equipment::AssignmentStore::GetSnapshot(a_source.itemActor);
         for (const auto target : Core::kVirtualTargets) {
             const auto& assignment = snapshot.byTarget[Core::ToIndex(target)];
-            if (assignment.source.Matches(a_source.itemSource)) {
+            if (std::ranges::any_of(a_source.rowSources, [&](const auto& a_rowSource) {
+                    return a_rowSource.IsSameCopy(assignment.source);
+                })) {
                 return target;
             }
         }

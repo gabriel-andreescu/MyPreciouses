@@ -170,7 +170,7 @@ namespace {
         }
 
         auto& assignment = a_snapshot.byTarget[Core::ToIndex(a_moveSourceTarget)];
-        if (!assignment.source.Matches(a_expectedSource)) {
+        if (!assignment.source.IsSameCopy(a_expectedSource)) {
             return std::nullopt;
         }
 
@@ -186,97 +186,89 @@ namespace {
         return a_assignment.source.IsAssigned() && a_assignment.source == a_expected.source;
     }
 
-    [[nodiscard]] bool AssignSource(
-        const Core::ActorKey a_actor,
-        RE::TESObjectARMO const& a_ring,
-        const Core::ItemSource& a_nextSource,
-        const Core::Target a_target,
-        const std::optional<Core::Target> a_moveSourceTarget,
-        const std::string_view a_action
-    ) {
-        if (!CanUseActor(a_actor, a_action) || !CanUseVirtualTarget(a_target, a_action)) {
-            return false;
-        }
+}
 
-        const auto occupiedTargets = SourceModelFootprints::GetProjectedRingGeometryTargets(a_ring, a_target);
-        if (!CanOccupyTargets(occupiedTargets, a_target, a_ring, a_action)
-            || !CanUseEnabledTargets(a_actor, occupiedTargets, a_target, a_ring, a_action)) {
-            return false;
-        }
-
-        const auto conflicts = FindConflictingTargets(GetSnapshot(a_actor), a_target, occupiedTargets);
-
-        std::scoped_lock const lock(g_lock);
-        auto& snapshot = GetOrCreateSnapshot(a_actor);
-        auto& assignment = snapshot.byTarget[Core::ToIndex(a_target)];
-        auto nextAssignment = Core::Assignment {
-            .source = a_nextSource,
-        };
-        if (assignment.source.sourceFormID == a_ring.GetFormID()) {
-            nextAssignment.retainedEffectSourceFormID = assignment.retainedEffectSourceFormID;
-        }
-        if (a_moveSourceTarget) {
-            const auto movedEffectSourceFormID = ClearMovedSourceAssignment(
-                snapshot,
-                a_target,
-                *a_moveSourceTarget,
-                a_nextSource
-            );
-            if (!movedEffectSourceFormID) {
-                if (!HasAnyAssignment(snapshot)) {
-                    Snapshots().erase(a_actor);
-                }
-                return false;
-            }
-
-            nextAssignment.retainedEffectSourceFormID = *movedEffectSourceFormID;
-        }
-        ClearConflictingAssignments(snapshot, conflicts);
-        assignment = std::move(nextAssignment);
-        return true;
+bool Assign(
+    const Core::ActorKey a_actor,
+    RE::TESObjectARMO const& a_ring,
+    const Core::ItemSource& a_source,
+    const Core::Target a_target,
+    const std::optional<Core::Target> a_moveSourceTarget
+) {
+    if (!CanUseActor(a_actor, std::string_view {"assign"})
+        || !CanUseVirtualTarget(a_target, std::string_view {"assign"})) {
+        return false;
     }
+
+    const auto occupiedTargets = SourceModelFootprints::GetProjectedRingGeometryTargets(a_ring, a_target);
+    if (!CanOccupyTargets(occupiedTargets, a_target, a_ring, std::string_view {"assign"})
+        || !CanUseEnabledTargets(a_actor, occupiedTargets, a_target, a_ring, std::string_view {"assign"})) {
+        return false;
+    }
+
+    auto* actor = Core::ResolveActor(a_actor);
+    if (!actor) {
+        return false;
+    }
+    const auto current = GetSnapshot(a_actor);
+    const auto conflicts = FindConflictingTargets(current, a_target, occupiedTargets);
+    std::vector<Core::ItemSource> claimed;
+    for (const auto target : Core::kVirtualTargets) {
+        if (target
+            != a_target
+            && target
+            != a_moveSourceTarget
+            && std::ranges::find(conflicts, target)
+            == conflicts.end()) {
+            claimed.push_back(current.byTarget[Core::ToIndex(target)].source);
+        }
+    }
+    auto requested = a_source;
+    if (a_moveSourceTarget) {
+        const auto& moved = current.byTarget[Core::ToIndex(*a_moveSourceTarget)].source;
+        if (!requested.Matches(moved)) {
+            return false;
+        }
+        requested = moved;
+    }
+    const auto copy = Inventory::AcquireCopy(*actor, requested, claimed);
+    if (!copy) {
+        return false;
+    }
+
+    std::scoped_lock const lock(g_lock);
+    auto& snapshot = GetOrCreateSnapshot(a_actor);
+    auto& assignment = snapshot.byTarget[Core::ToIndex(a_target)];
+    auto nextAssignment = Core::Assignment {
+        .source = *copy,
+    };
+    if (assignment.source.sourceFormID == a_ring.GetFormID()) {
+        nextAssignment.retainedEffectSourceFormID = assignment.retainedEffectSourceFormID;
+    }
+    if (a_moveSourceTarget) {
+        const auto movedEffectSourceFormID = ClearMovedSourceAssignment(snapshot, a_target, *a_moveSourceTarget, *copy);
+        if (!movedEffectSourceFormID) {
+            if (!HasAnyAssignment(snapshot)) {
+                Snapshots().erase(a_actor);
+            }
+            return false;
+        }
+
+        nextAssignment.retainedEffectSourceFormID = *movedEffectSourceFormID;
+    }
+    ClearConflictingAssignments(snapshot, conflicts);
+    assignment = std::move(nextAssignment);
+    Inventory::InvalidateSelections(a_actor.referenceFormID);
+    return true;
 }
 
-bool AssignForm(
-    const Core::ActorKey a_actor,
-    RE::TESObjectARMO const& a_ring,
-    const Core::Target a_target,
-    const std::optional<Core::Target> a_moveSourceTarget
-) {
-    return AssignSource(
-        a_actor,
-        a_ring,
-        Core::ItemSource {
-            .kind = Core::ItemSourceKind::kFormOnly,
-            .sourceFormID = a_ring.GetFormID(),
-        },
-        a_target,
-        a_moveSourceTarget,
-        std::string_view {"assignForm"}
-    );
-}
-
-bool AssignCustom(
-    const Core::ActorKey a_actor,
-    RE::TESObjectARMO const& a_ring,
-    Core::CustomEnchantmentSignature a_signature,
-    std::optional<Core::ExtraUniqueIDKey> a_uniqueID,
-    const Core::Target a_target,
-    const std::optional<Core::Target> a_moveSourceTarget
-) {
-    return AssignSource(
-        a_actor,
-        a_ring,
-        Core::ItemSource {
-            .kind = Core::ItemSourceKind::kCustomEnchantment,
-            .sourceFormID = a_ring.GetFormID(),
-            .customEnchantment = std::move(a_signature),
-            .extraUniqueID = a_uniqueID,
-        },
-        a_target,
-        a_moveSourceTarget,
-        std::string_view {"assignCustom"}
-    );
+void RemapUniqueID(const Core::ExtraUniqueIDKey& a_previous, const Core::ExtraUniqueIDKey& a_next) {
+    std::scoped_lock const lock(g_lock);
+    for (auto& [actor, assignments] : Snapshots()) {
+        if (assignments.RemapUniqueID(a_previous, a_next)) {
+            Inventory::InvalidateSelections(actor.referenceFormID);
+        }
+    }
 }
 
 void Clear(const Core::ActorKey a_actor, const Core::Target a_target) {
@@ -287,6 +279,7 @@ void Clear(const Core::ActorKey a_actor, const Core::Target a_target) {
     std::scoped_lock const lock(g_lock);
     auto& snapshots = Snapshots();
     if (auto const snapshot = snapshots.find(a_actor); snapshot != snapshots.end()) {
+        Inventory::InvalidateSelections(a_actor.referenceFormID);
         snapshot->second.byTarget[Core::ToIndex(a_target)] = {};
         if (!HasAnyAssignment(snapshot->second)) {
             snapshots.erase(snapshot);
@@ -372,7 +365,7 @@ Core::TargetMask GetMatchingTargets(const Core::ActorKey a_actor, const Core::It
     }
     for (const auto target : Core::kVirtualTargets) {
         const auto& assignment = snapshot->byTarget[Core::ToIndex(target)];
-        if (assignment.source.Matches(a_source)) {
+        if (a_source.Matches(assignment.source)) {
             targets.Add(target);
         }
     }

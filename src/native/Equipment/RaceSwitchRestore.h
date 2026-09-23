@@ -16,6 +16,7 @@ struct PendingRestore {
 };
 
 void BeginRaceSwitch(RE::Actor const& a_actor, RE::TESRace const& a_targetRace);
+void RemapUniqueID(const Core::ExtraUniqueIDKey& a_previous, const Core::ExtraUniqueIDKey& a_next);
 bool MarkClearedDuringRaceSwitch(RE::Actor const& a_actor);
 void DiscardReplacedTargets(Core::ActorKey a_actor, const Core::TargetMask& a_targets);
 [[nodiscard]] bool HandleRaceSwitchComplete(RE::Actor& a_actor);

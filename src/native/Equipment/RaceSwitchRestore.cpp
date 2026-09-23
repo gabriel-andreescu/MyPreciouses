@@ -302,6 +302,16 @@ void ReplacePendingRestores(std::vector<PendingRestore> a_restores) {
     PendingRestores() = std::move(nextRestores);
 }
 
+void RemapUniqueID(const Core::ExtraUniqueIDKey& a_previous, const Core::ExtraUniqueIDKey& a_next) {
+    std::scoped_lock const lock(g_lock);
+    for (auto& [actor, snapshot] : ActiveSwitches()) {
+        snapshot.assignments.RemapUniqueID(a_previous, a_next);
+    }
+    for (auto& [actor, snapshot] : PendingRestores()) {
+        snapshot.assignments.RemapUniqueID(a_previous, a_next);
+    }
+}
+
 void ClearActiveSwitches() {
     std::scoped_lock const lock(g_lock);
     ActiveSwitches().clear();

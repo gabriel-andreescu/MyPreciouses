@@ -27,6 +27,7 @@ struct RefreshOptions {
 
 void RequestRefresh(Core::ActorKey a_actor, RefreshOptions a_options = {});
 void RequestVisualRefresh(Core::ActorKey a_actor);
+void RemapUniqueID(const Core::ExtraUniqueIDKey& a_previous, const Core::ExtraUniqueIDKey& a_next);
 void ClearTarget(
     Core::ActorKey a_actor,
     Core::Target a_target,

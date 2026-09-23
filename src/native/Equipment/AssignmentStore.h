@@ -10,17 +10,11 @@
 #include <vector>
 
 namespace Equipment::AssignmentStore {
-[[nodiscard]] bool AssignForm(
+void RemapUniqueID(const Core::ExtraUniqueIDKey& a_previous, const Core::ExtraUniqueIDKey& a_next);
+[[nodiscard]] bool Assign(
     Core::ActorKey a_actor,
     RE::TESObjectARMO const& a_ring,
-    Core::Target a_target,
-    std::optional<Core::Target> a_moveSourceTarget = std::nullopt
-);
-[[nodiscard]] bool AssignCustom(
-    Core::ActorKey a_actor,
-    RE::TESObjectARMO const& a_ring,
-    Core::CustomEnchantmentSignature a_signature,
-    std::optional<Core::ExtraUniqueIDKey> a_uniqueID,
+    const Core::ItemSource& a_source,
     Core::Target a_target,
     std::optional<Core::Target> a_moveSourceTarget = std::nullopt
 );

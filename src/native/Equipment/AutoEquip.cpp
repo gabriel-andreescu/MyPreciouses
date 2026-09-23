@@ -63,10 +63,8 @@ namespace {
     };
 
     struct Candidate {
-        RE::InventoryEntryData* entry {nullptr};
         RE::TESObjectARMO* ring {nullptr};
         Core::ItemSource source;
-        RE::ExtraDataList* sourceExtraList {nullptr};
         Core::TargetMask sourceTargets;
         std::int32_t value {0};
         std::uint32_t availableCopies {0};
@@ -223,8 +221,7 @@ namespace {
                 a_source.extraUniqueID
             );
             const auto available = std::max(matches.count, 0);
-            return a_source.extraUniqueID ? static_cast<std::uint32_t>(available)
-                                          : static_cast<std::uint32_t>(std::min(available, 1));
+            return static_cast<std::uint32_t>(available);
         }
 
         if (a_source.IsFormOnly()) {
@@ -247,7 +244,7 @@ namespace {
                 continue;
             }
 
-            auto source = Inventory::ResolveEntryRingSource(a_actor, *entry, Inventory::SourceResolveMode::kReadOnly);
+            auto source = Inventory::ResolveEntryRingSource(a_actor, *entry);
             if (!source || !source->ring || !source->source.IsAssigned()) {
                 continue;
             }
@@ -257,6 +254,7 @@ namespace {
                 continue;
             }
 
+            source->source.extraUniqueID.reset();
             const auto availableCopies = AvailableCopyCount(a_actor, *source->ring, source->source);
             if (availableCopies == 0) {
                 continue;
@@ -264,10 +262,8 @@ namespace {
 
             candidates.push_back(
                 Candidate {
-                    .entry = entry,
                     .ring = source->ring,
                     .source = source->source,
-                    .sourceExtraList = source->sourceExtraList,
                     .sourceTargets = sourceTargets,
                     .value = entry->GetValue(),
                     .availableCopies = availableCopies,
@@ -276,14 +272,6 @@ namespace {
         }
 
         return candidates;
-    }
-
-    [[nodiscard]] std::uint32_t OptionalUniqueBaseID(const Core::ItemSource& a_source) {
-        return a_source.extraUniqueID ? a_source.extraUniqueID->baseID : 0;
-    }
-
-    [[nodiscard]] std::uint16_t OptionalUniqueID(const Core::ItemSource& a_source) {
-        return a_source.extraUniqueID ? a_source.extraUniqueID->uniqueID : 0;
     }
 
     [[nodiscard]] bool IsSingleFingerRing(const Candidate& a_candidate) {
@@ -379,14 +367,6 @@ namespace {
 
         if (a_lhs.source.customEnchantment.removeOnUnequip != a_rhs.source.customEnchantment.removeOnUnequip) {
             return !a_lhs.source.customEnchantment.removeOnUnequip;
-        }
-
-        if (OptionalUniqueBaseID(a_lhs.source) != OptionalUniqueBaseID(a_rhs.source)) {
-            return OptionalUniqueBaseID(a_lhs.source) < OptionalUniqueBaseID(a_rhs.source);
-        }
-
-        if (OptionalUniqueID(a_lhs.source) != OptionalUniqueID(a_rhs.source)) {
-            return OptionalUniqueID(a_lhs.source) < OptionalUniqueID(a_rhs.source);
         }
 
         return a_lhs.source.customEnchantment.playerDisplayName < a_rhs.source.customEnchantment.playerDisplayName;
@@ -555,35 +535,6 @@ namespace {
         }
     }
 
-    [[nodiscard]] std::optional<Core::ItemSource> ResolveAppliedSource(
-        RE::Actor& a_actor,
-        const Candidate& a_candidate
-    ) {
-        if (!a_candidate.source.IsCustomEnchantment() || a_candidate.source.extraUniqueID) {
-            return a_candidate.source;
-        }
-
-        if (!a_candidate.entry) {
-            return std::nullopt;
-        }
-
-        auto source = Inventory::ResolveEntryRingSource(
-            a_actor,
-            *a_candidate.entry,
-            Inventory::SourceResolveMode::kEnsureCustomUniqueID
-        );
-        if (!source || !source->source.IsCustomEnchantment()) {
-            SKSE::log::warn(
-                "AutoEquip: custom ring skipped | actor={:08X} | source={:08X} | reason=uniqueIDUnavailable",
-                a_actor.GetFormID(),
-                a_candidate.source.sourceFormID
-            );
-            return std::nullopt;
-        }
-
-        return source->source;
-    }
-
     [[nodiscard]] std::optional<PlannedAssignment> FindPlannedAssignment(
         const std::vector<PlannedAssignment>& a_plan,
         const Core::Target a_target
@@ -622,15 +573,6 @@ namespace {
             return nullptr;
         }
 
-        if (a_candidate.sourceExtraList
-            && Inventory::MatchesCustomSelection(
-                a_candidate.sourceExtraList,
-                a_source.customEnchantment,
-                a_source.extraUniqueID
-            )) {
-            return a_candidate.sourceExtraList;
-        }
-
         const auto matches = Inventory::FindCustomSourceMatches(
             a_actor,
             *a_candidate.ring,
@@ -650,17 +592,17 @@ namespace {
         }
 
         const auto& candidate = a_candidates[a_planned.candidateIndex];
-        auto source = ResolveAppliedSource(a_actor, candidate);
-        if (!source || !source->IsAssigned() || !candidate.ring) {
+        const auto& source = candidate.source;
+        if (!source.IsAssigned() || !candidate.ring) {
             return std::nullopt;
         }
 
-        auto* sourceExtraList = ResolveCustomSourceExtraList(a_actor, candidate, *source);
-        if (source->IsCustomEnchantment() && !sourceExtraList) {
+        auto* sourceExtraList = ResolveCustomSourceExtraList(a_actor, candidate, source);
+        if (source.IsCustomEnchantment() && !sourceExtraList) {
             SKSE::log::warn(
                 "AutoEquip: custom ring skipped | actor={:08X} | source={:08X} | target={} | reason=sourceExtraListUnavailable",
                 a_actor.GetFormID(),
-                source->sourceFormID,
+                source.sourceFormID,
                 Core::TargetName(a_planned.target)
             );
             return std::nullopt;
@@ -668,7 +610,7 @@ namespace {
 
         return AppliedAssignment {
             .ring = candidate.ring,
-            .source = std::move(*source),
+            .source = source,
             .sourceExtraList = sourceExtraList,
             .target = a_planned.target,
         };
@@ -680,14 +622,38 @@ namespace {
         const std::vector<PlannedAssignment>& a_plan
     ) {
         std::array<std::optional<AppliedAssignment>, Core::kAllTargets.size()> appliedPlan;
+        const auto current = AssignmentStore::GetSnapshot(Core::MakeActorKey(a_actor));
+        std::vector<Core::ItemSource> claimed;
         for (const auto& planned : a_plan) {
             if (planned.target == Core::kVanillaRingSlotTarget) {
                 continue;
             }
-
-            appliedPlan[Core::ToIndex(planned.target)] = ResolveAppliedAssignment(a_actor, a_candidates, planned);
+            auto desired = ResolveAppliedAssignment(a_actor, a_candidates, planned);
+            if (!desired) {
+                continue;
+            }
+            const auto& existing = current.byTarget[Core::ToIndex(planned.target)].source;
+            const auto match = Inventory::FindSourceMatches(a_actor, existing);
+            if (desired->source.Matches(existing) && existing.extraUniqueID && match.count == 1 && !match.rightWorn) {
+                desired->source = existing;
+                desired->sourceExtraList = match.firstExtraList;
+                claimed.push_back(existing);
+            }
+            appliedPlan[Core::ToIndex(planned.target)] = std::move(desired);
         }
-
+        for (auto& desired : appliedPlan) {
+            if (!desired || desired->source.extraUniqueID) {
+                continue;
+            }
+            const auto copy = Inventory::AcquireCopy(a_actor, desired->source, claimed);
+            if (!copy) {
+                desired.reset();
+                continue;
+            }
+            desired->source = *copy;
+            desired->sourceExtraList = Inventory::FindSourceMatches(a_actor, *copy).firstExtraList;
+            claimed.push_back(*copy);
+        }
         return appliedPlan;
     }
 
@@ -696,21 +662,7 @@ namespace {
             return false;
         }
 
-        if (a_assignment.source.IsCustomEnchantment()) {
-            return AssignmentStore::AssignCustom(
-                a_actor,
-                *a_assignment.ring,
-                a_assignment.source.customEnchantment,
-                a_assignment.source.extraUniqueID,
-                a_assignment.target
-            );
-        }
-
-        if (a_assignment.source.IsFormOnly()) {
-            return AssignmentStore::AssignForm(a_actor, *a_assignment.ring, a_assignment.target);
-        }
-
-        return false;
+        return AssignmentStore::Assign(a_actor, *a_assignment.ring, a_assignment.source, a_assignment.target);
     }
 
     [[nodiscard]] bool StoredAssignmentMatches(const Core::ActorKey a_actor, const AppliedAssignment& a_assignment) {
@@ -1105,6 +1057,35 @@ namespace {
         };
     }
 
+    bool ApplyVirtualPlan(
+        const Core::ActorKey a_actor,
+        const std::array<std::optional<AppliedAssignment>, Core::kAllTargets.size()>& a_plan
+    ) {
+        const auto current = AssignmentStore::GetSnapshot(a_actor);
+        auto changed = false;
+        for (const auto target : Core::kVirtualTargets) {
+            const auto index = Core::ToIndex(target);
+            const auto& desired = a_plan[index];
+            if (current.byTarget[index].IsAssigned()
+                && (!desired || !current.byTarget[index].source.IsSameCopy(desired->source))) {
+                AssignmentStore::Clear(a_actor, target);
+                changed = true;
+            }
+        }
+        for (const auto target : Core::kVirtualTargets) {
+            const auto index = Core::ToIndex(target);
+            const auto& desired = a_plan[index];
+            if (!desired || current.byTarget[index].source == desired->source) {
+                continue;
+            }
+            if (!AssignAppliedSource(a_actor, *desired)) {
+                AssignmentStore::Clear(a_actor, target);
+            }
+            changed = true;
+        }
+        return changed;
+    }
+
     [[nodiscard]] bool ApplyPlan(
         const Core::ActorKey a_actor,
         RE::Actor& a_actorRef,
@@ -1150,35 +1131,7 @@ namespace {
             a_candidates,
             nativeSlotResult.failed ? fallbackPlan : a_plan
         );
-        const auto current = AssignmentStore::GetSnapshot(a_actor);
-
-        for (const auto target : Core::kVirtualTargets) {
-            const auto index = Core::ToIndex(target);
-            if (!appliedPlan[index] && current.byTarget[index].IsAssigned()) {
-                AssignmentStore::Clear(a_actor, target);
-                changed = true;
-            }
-        }
-
-        for (const auto target : Core::kVirtualTargets) {
-            const auto index = Core::ToIndex(target);
-            const auto& desired = appliedPlan[index];
-            if (!desired) {
-                continue;
-            }
-
-            if (current.byTarget[index].source == desired->source) {
-                continue;
-            }
-
-            if (AssignAppliedSource(a_actor, *desired)) {
-                changed = true;
-                continue;
-            }
-
-            AssignmentStore::Clear(a_actor, target);
-            changed = true;
-        }
+        changed = ApplyVirtualPlan(a_actor, appliedPlan) || changed;
 
         if (!nativeSlotResult.removedCannotWearExtraLists.empty()
             && nativeSlotClearPolicy.allowCannotWearBondOfMatrimonyRelocation) {

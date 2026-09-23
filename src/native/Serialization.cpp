@@ -13,6 +13,7 @@
 #include "Equipment/AutoEquip.h"
 #include "Equipment/RaceSwitchRestore.h"
 #include "Equipment/SavedEquipment.h"
+#include "Inventory.h"
 #include "Papyrus/ScriptEventMirror.h"
 #include "Settings.h"
 #include "VirtualSlots.h"
@@ -74,17 +75,17 @@ namespace {
     constexpr auto kRecordAssignments = MakeRecordType('S', 'T', 'A', 'T');
     constexpr auto kRecordSavedEquipment = MakeRecordType('E', 'Q', 'U', 'P');
     constexpr auto kRecordRaceSwitchRestores = MakeRecordType('R', 'S', 'R', 'T');
-    constexpr std::uint32_t kAssignmentRecordVersion = 1;
-    constexpr std::uint32_t kRaceSwitchRestoreRecordVersion = 1;
+    constexpr std::uint32_t kAssignmentRecordVersion = 2;
+    constexpr std::uint32_t kRaceSwitchRestoreRecordVersion = 2;
 
-    struct SerializedCustomEnchantmentHeader {
+    struct SerializedItemSource {
         RE::FormID enchantmentFormID {0};
         std::uint16_t charge {0};
         std::uint8_t removeOnUnequip {0};
         std::uint8_t hasUniqueID {0};
         RE::FormID uniqueBaseID {0};
         std::uint16_t uniqueID {0};
-        std::uint16_t pad {0};
+        std::uint16_t needsCopyBinding {0};
         std::uint32_t displayNameLength {0};
     };
 
@@ -102,19 +103,16 @@ namespace {
             return false;
         }
 
-        if (a_assignment.source.kind != Core::ItemSourceKind::kCustomEnchantment) {
-            return true;
-        }
-
         const auto& customEnchantment = a_assignment.source.customEnchantment;
         const auto& extraUniqueID = a_assignment.source.extraUniqueID;
-        const auto header = SerializedCustomEnchantmentHeader {
+        const auto header = SerializedItemSource {
             .enchantmentFormID = customEnchantment.enchantmentFormID,
             .charge = customEnchantment.charge,
             .removeOnUnequip = customEnchantment.removeOnUnequip ? std::uint8_t {1} : std::uint8_t {0},
             .hasUniqueID = extraUniqueID ? std::uint8_t {1} : std::uint8_t {0},
             .uniqueBaseID = extraUniqueID ? extraUniqueID->baseID : RE::FormID {0},
             .uniqueID = extraUniqueID ? extraUniqueID->uniqueID : std::uint16_t {0},
+            .needsCopyBinding = a_assignment.needsCopyBinding ? std::uint16_t {1} : std::uint16_t {0},
             .displayNameLength = static_cast<std::uint32_t>(customEnchantment.playerDisplayName.size()),
         };
 
@@ -183,7 +181,8 @@ namespace {
 
     [[nodiscard]] std::optional<Core::Assignment> ReadAssignment(
         SKSE::SerializationInterface& a_intfc,
-        std::uint32_t& a_remaining
+        std::uint32_t& a_remaining,
+        const std::uint32_t a_version
     ) {
         std::uint32_t kind = 0;
         RE::FormID sourceFormID = 0;
@@ -200,17 +199,19 @@ namespace {
                 .sourceFormID = sourceFormID,
             },
             .retainedEffectSourceFormID = effectSourceFormID,
+            .needsCopyBinding = a_version == 1,
         };
 
-        if (assignment.source.kind != Core::ItemSourceKind::kCustomEnchantment) {
+        if (a_version == 1 && assignment.source.kind != Core::ItemSourceKind::kCustomEnchantment) {
             return assignment;
         }
 
-        SerializedCustomEnchantmentHeader header;
+        SerializedItemSource header;
         if (!ReadField(a_intfc, a_remaining, header)) {
             return std::nullopt;
         }
 
+        assignment.needsCopyBinding = a_version == 1 || header.needsCopyBinding != 0;
         if (header.displayNameLength > a_remaining) {
             return std::nullopt;
         }
@@ -246,7 +247,8 @@ namespace {
 
     [[nodiscard]] std::optional<Core::TargetAssignments> ReadSnapshot(
         SKSE::SerializationInterface& a_intfc,
-        std::uint32_t& a_remaining
+        std::uint32_t& a_remaining,
+        const std::uint32_t a_version
     ) {
         std::uint32_t targetCount = 0;
         if (!ReadField(a_intfc, a_remaining, targetCount) || targetCount != Core::kVirtualTargets.size()) {
@@ -261,7 +263,7 @@ namespace {
             }
 
             const auto target = Core::FromIndex(storedTargetIndex);
-            auto assignment = ReadAssignment(a_intfc, a_remaining);
+            auto assignment = ReadAssignment(a_intfc, a_remaining, a_version);
             if (!target || !Core::IsVirtualTarget(*target) || !assignment) {
                 return std::nullopt;
             }
@@ -274,7 +276,8 @@ namespace {
 
     [[nodiscard]] std::optional<std::vector<Core::ActorAssignments>> ReadActorAssignments(
         SKSE::SerializationInterface& a_intfc,
-        const std::uint32_t a_length
+        const std::uint32_t a_length,
+        const std::uint32_t a_version
     ) {
         auto remaining = a_length;
         std::uint32_t actorCount = 0;
@@ -292,7 +295,7 @@ namespace {
                 return std::nullopt;
             }
 
-            auto snapshot = ReadSnapshot(a_intfc, remaining);
+            auto snapshot = ReadSnapshot(a_intfc, remaining, a_version);
             if (!snapshot) {
                 DrainRecordData(a_intfc, remaining);
                 return std::nullopt;
@@ -318,7 +321,8 @@ namespace {
 
     [[nodiscard]] std::optional<std::vector<Equipment::RaceSwitchRestore::PendingRestore>> ReadRaceSwitchRestores(
         SKSE::SerializationInterface& a_intfc,
-        const std::uint32_t a_length
+        const std::uint32_t a_length,
+        const std::uint32_t a_version
     ) {
         auto remaining = a_length;
         std::uint32_t restoreCount = 0;
@@ -337,7 +341,7 @@ namespace {
                 return std::nullopt;
             }
 
-            auto snapshot = ReadSnapshot(a_intfc, remaining);
+            auto snapshot = ReadSnapshot(a_intfc, remaining, a_version);
             if (!snapshot) {
                 DrainRecordData(a_intfc, remaining);
                 return std::nullopt;
@@ -429,6 +433,7 @@ namespace {
                 .extraUniqueID = extraUniqueID,
             },
             .retainedEffectSourceFormID = a_retainedEffectSourceFormID,
+            .needsCopyBinding = a_savedAssignment.needsCopyBinding,
         };
     }
 
@@ -468,12 +473,21 @@ namespace {
         }
 
         if (a_savedAssignment.source.kind == Core::ItemSourceKind::kFormOnly) {
+            auto identity = a_savedAssignment.source.extraUniqueID;
+            if (identity) {
+                identity->baseID = ResolveFormID(a_intfc, identity->baseID, "copy owner");
+                if (!identity->IsValid()) {
+                    return std::nullopt;
+                }
+            }
             return Core::Assignment {
                 .source = Core::ItemSource {
                     .kind = Core::ItemSourceKind::kFormOnly,
                     .sourceFormID = sourceFormID,
+                    .extraUniqueID = identity,
                 },
                 .retainedEffectSourceFormID = retainedEffectSourceFormID,
+                .needsCopyBinding = a_savedAssignment.needsCopyBinding,
             };
         }
 
@@ -670,7 +684,13 @@ namespace {
                 .reapplyEffects = false,
                 .restoreMissingEffects = false,
             };
-            const auto snapshots = Equipment::AssignmentStore::GetAllSnapshots();
+            auto snapshots = Equipment::AssignmentStore::GetAllSnapshots();
+            for (auto& snapshot : snapshots) {
+                if (auto* actor = Core::ResolveActor(snapshot.actor)) {
+                    Equipment::BindLegacyCopies(*actor, snapshot.assignments);
+                }
+            }
+            Equipment::AssignmentStore::ReplaceAll(snapshots);
             if (snapshots.empty()) {
                 VirtualSlots::RequestRefresh(Core::GetPlayerActorKey(), loadRefreshOptions);
                 return;
@@ -734,7 +754,7 @@ namespace {
         }
 
         if (a_record.type == kRecordRaceSwitchRestores) {
-            if (a_record.version != kRaceSwitchRestoreRecordVersion) {
+            if (a_record.version != 1 && a_record.version != kRaceSwitchRestoreRecordVersion) {
                 SKSE::log::warn(
                     "Serialization: record skipped | version={} | length={} | reason=unsupportedRaceSwitchRestoreVersion",
                     a_record.version,
@@ -744,7 +764,7 @@ namespace {
                 return;
             }
 
-            auto restores = ReadRaceSwitchRestores(a_intfc, a_record.length);
+            auto restores = ReadRaceSwitchRestores(a_intfc, a_record.length, a_record.version);
             if (!restores) {
                 SKSE::log::error("Serialization: load failed | record=RSRT | reason=readRecord");
                 return;
@@ -764,7 +784,7 @@ namespace {
             return;
         }
 
-        if (a_record.version != kAssignmentRecordVersion) {
+        if (a_record.version != 1 && a_record.version != kAssignmentRecordVersion) {
             SKSE::log::warn(
                 "Serialization: record skipped | version={} | length={} | reason=unsupportedAssignmentVersion",
                 a_record.version,
@@ -774,7 +794,7 @@ namespace {
             return;
         }
 
-        auto snapshots = ReadActorAssignments(a_intfc, a_record.length);
+        auto snapshots = ReadActorAssignments(a_intfc, a_record.length, a_record.version);
         if (!snapshots) {
             SKSE::log::error("Serialization: cannot read equipment record {:08X}", a_record.type);
             return;
@@ -815,6 +835,7 @@ namespace {
     }
 
     void RevertCallback([[maybe_unused]] SKSE::SerializationInterface* a_intfc) { // NOLINT(misc-const-correctness)
+        Inventory::RevertSelections();
         Equipment::AssignmentStore::Revert();
         Equipment::AutoEquip::Revert();
         Equipment::RaceSwitchRestore::Revert();
