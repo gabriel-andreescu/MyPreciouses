@@ -110,7 +110,11 @@ namespace {
         return a_extraList ? std::max(a_extraList->GetCount(), 1) : 0;
     }
 
-    [[nodiscard]] bool IsOutfitManagedCopy(const RE::ExtraDataList* a_extraList) {
+    [[nodiscard]] bool IsOutfitManagedCopy(const RE::Actor& a_actor, const RE::ExtraDataList* a_extraList) {
+        if (a_actor.IsPlayerRef()) {
+            return false;
+        }
+
         const auto* outfitItem = a_extraList ? a_extraList->GetByType<RE::ExtraOutfitItem>() : nullptr;
         return outfitItem != nullptr && outfitItem->id != 0;
     }
@@ -129,7 +133,10 @@ namespace {
         return count;
     }
 
-    [[nodiscard]] std::int32_t CountReservedOutfitManagedFormOnlyCopies(const RE::InventoryEntryData* a_entry) {
+    [[nodiscard]] std::int32_t CountReservedOutfitManagedFormOnlyCopies(
+        const RE::Actor& a_actor,
+        const RE::InventoryEntryData* a_entry
+    ) {
         if (!a_entry || !a_entry->extraLists) {
             return 0;
         }
@@ -140,7 +147,7 @@ namespace {
                 continue;
             }
 
-            if (!IsOutfitManagedCopy(extraList)) {
+            if (!IsOutfitManagedCopy(a_actor, extraList)) {
                 continue;
             }
 
@@ -569,7 +576,7 @@ FormOnlySourceMatch FindFormOnlySourceMatches(RE::Actor& a_actor, const RE::TESO
     auto const* entry = FindEntry(a_actor, a_ring);
     const auto totalCount = GetCount(a_actor, a_ring);
     const auto customCount = CountCustomCopies(entry);
-    const auto reservedOutfitCount = CountReservedOutfitManagedFormOnlyCopies(entry);
+    const auto reservedOutfitCount = CountReservedOutfitManagedFormOnlyCopies(a_actor, entry);
     const auto formOnlyCount = std::max(totalCount - customCount - reservedOutfitCount, 0);
     auto* rightWornExtraList = FindRightWornFormOnlyExtraList(entry);
 
@@ -585,7 +592,7 @@ FormOnlySourceMatch FindFormOnlySourceMatches(RE::Actor& a_actor, const RE::TESO
 
     if (!state.firstExtraList && entry && entry->extraLists) {
         for (auto* extraList : *entry->extraLists) {
-            if (extraList && !HasCustomEnchantment(extraList) && !IsOutfitManagedCopy(extraList)) {
+            if (extraList && !HasCustomEnchantment(extraList) && !IsOutfitManagedCopy(a_actor, extraList)) {
                 state.firstExtraList = extraList;
                 break;
             }
