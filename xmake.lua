@@ -3,7 +3,7 @@ set_project("MyPreciouses")
 set_license("GPL-3.0")
 set_policy("package.requires_lock", true)
 
-local version = "1.0.0"
+local version = "1.0.1"
 local papyrus_imports = (get_config("papyrus_imports") or ""):split(";", { plain = true })
 local bath_patch_imports = table.join({
     path.join(os.projectdir(), "src/papyrus"),
@@ -137,14 +137,14 @@ target("MyPreciouses", function()
             file_id = "7442558",
             category = "main",
             primary = true,
-            description = "Updating from an older version? Follow the Updating to 1.0.0 instructions in the mod description before installing.",
+            description = "Updating from 0.x? Follow the Updating to 1.0.0 instructions in the mod description before installing.",
         },
     })
     add_installfiles("assets/(**)|optional/**")
 end)
 
 target("MyPreciousesMCM", function()
-    set_version(version)
+    set_version("1.0.0")
     add_deps("Mutagen", { inherit = false })
     add_rules("@addon/bmk/skyrim.package", {
         targets = { "MCMScripts" },
@@ -161,7 +161,7 @@ target("MyPreciousesMCM", function()
 end)
 
 target("DizietBathPatch", function()
-    set_version(version)
+    set_version("1.0.0")
     add_rules("@addon/bmk/skyrim.package", {
         targets = { "BathPatchScripts" },
         package_name = "MyPreciouses - Diziet Bath Patch",
