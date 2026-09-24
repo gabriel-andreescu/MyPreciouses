@@ -153,7 +153,7 @@ target("MyPreciousesMCM", function()
             mod_id = "7318624452399",
             file_id = "7442579",
             category = "optional",
-            description = "MCM addon for MyPreciouses 1.0.0. Requires SkyUI and MCM Helper.",
+            description = "MCM addon for MyPreciouses 1.0.0. Requires SkyUI and MCM Helper. VR also requires [url=https://www.nexusmods.com/skyrimspecialedition/mods/106712]Skyrim VR ESL Support[/url].",
         },
     })
     add_installfiles("$(builddir)/artifacts/Mutagen/mcm/(MyPreciouses.esp)")
