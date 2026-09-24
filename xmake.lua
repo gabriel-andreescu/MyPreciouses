@@ -144,7 +144,7 @@ target("MyPreciouses", function()
 end)
 
 target("MyPreciousesMCM", function()
-    set_version("1.0.0")
+    set_version(version)
     add_deps("Mutagen", { inherit = false })
     add_rules("@addon/bmk/skyrim.package", {
         targets = { "MCMScripts" },
@@ -153,7 +153,9 @@ target("MyPreciousesMCM", function()
             mod_id = "7318624452399",
             file_id = "7442579",
             category = "optional",
-            description = "MCM addon for MyPreciouses 1.0.0. Requires SkyUI and MCM Helper. VR also requires [url=https://www.nexusmods.com/skyrimspecialedition/mods/106712]Skyrim VR ESL Support[/url].",
+            description = "MCM addon for MyPreciouses "
+                .. version
+                .. ". Requires SkyUI and MCM Helper. VR also requires [url=https://www.nexusmods.com/skyrimspecialedition/mods/106712]Skyrim VR ESL Support[/url].",
         },
     })
     add_installfiles("$(builddir)/artifacts/Mutagen/mcm/(MyPreciouses.esp)")
@@ -161,7 +163,7 @@ target("MyPreciousesMCM", function()
 end)
 
 target("DizietBathPatch", function()
-    set_version("1.0.0")
+    set_version(version)
     add_rules("@addon/bmk/skyrim.package", {
         targets = { "BathPatchScripts" },
         package_name = "MyPreciouses - Diziet Bath Patch",
@@ -169,7 +171,9 @@ target("DizietBathPatch", function()
             mod_id = "7318624452399",
             file_id = "7995933",
             category = "optional",
-            description = "Restores extra rings after bathing. Requires MyPreciouses 1.0.0 and Diziet's Player Home Bath Undressing 7.1.2.7. Install after both mods and let this patch overwrite Diziet's script.",
+            description = "Restores extra rings after bathing. Requires MyPreciouses "
+                .. version
+                .. " and Diziet's Player Home Bath Undressing 7.1.2.7. Install after both mods and let this patch overwrite Diziet's script.",
         },
     })
     add_installfiles("assets/optional/bath/(**)")
