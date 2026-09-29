@@ -4,9 +4,9 @@
     },
     bmk = {
         repo = {
-            commit = "518c1acc454b6f5db48f6fe5dfaf942e1c3d7075",
+            commit = "67fabcfc91f896fa9d2a4090fdde2c0fddd8d1d9",
             url = "https://github.com/gabriel-andreescu/BethesdaModKit.git"
         },
-        version = "0.3.0"
+        version = "0.4.0"
     }
 }

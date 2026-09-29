@@ -8,7 +8,7 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
-        var output = Path.GetFullPath(args[0]);
+        string output = Path.GetFullPath(args[0]);
         var mod = new SkyrimMod("MyPreciouses.esp", SkyrimRelease.SkyrimSE)
         {
             IsSmallMaster = true,

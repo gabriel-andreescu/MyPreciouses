@@ -1,11 +1,11 @@
-_commit: v0.2.0
+_commit: v0.4.0
 _src_path: https://github.com/gabriel-andreescu/BethesdaModKit.git
 author: GabonZ
 bmk_repository: https://github.com/gabriel-andreescu/BethesdaModKit.git
 components:
-  - native
-  - papyrus
-  - interface
+- native
+- papyrus
+- interface
 description: Wear rings on every finger
 devbench_api: true
 devbench_tests: true

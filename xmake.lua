@@ -12,12 +12,12 @@ local bath_patch_imports = table.join({
 }, papyrus_imports)
 
 add_repositories("bmk https://github.com/gabriel-andreescu/BethesdaModKit.git")
-add_addons("bmk 0.3.0")
+add_addons("bmk 0.4.0")
 includes("@addon/bmk/project")
 includes("@addon/bmk/native")
 
 -- Dependencies
-add_requires("commonlibsse-ng 8.0.1", { system = false })
+add_requires("commonlibsse-ng 10.0.0", { system = false })
 add_requires("clib-util 1.5.0", { system = false })
 add_requires("bmk", "devbench-api 2026.09.13", { system = false })
 add_requires("caprica", { host = true })
