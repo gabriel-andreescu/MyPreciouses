@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Prevent a crash on Skyrim 1.6.1170 when transforming into a werewolf while
   wearing the Ring of Instinct as an extra ring
 - End the Ring of Instinct's werewolf bonus correctly on Skyrim 1.7.104
+- Prevent NPCs from re-equipping their rings and logging false equip failures
+  when they load in
 
 ## [1.0.1] - 2026-09-24
 

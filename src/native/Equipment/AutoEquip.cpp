@@ -823,13 +823,14 @@ namespace {
 
             auto const* unequippedRing = rightWorn->ring;
             auto const* unequippedExtraList = rightWorn->extraList;
+            // Queued equipment changes on loaded actors apply on a later update, after the check below.
             equipManager->UnequipObject(
                 std::addressof(a_actor),
                 rightWorn->ring,
                 rightWorn->extraList,
                 1,
                 nullptr,
-                true,
+                false,
                 false,
                 false,
                 true,
@@ -889,13 +890,14 @@ namespace {
             return false;
         }
 
+        // Queued equipment changes on loaded actors apply on a later update, after the check below.
         equipManager->EquipObject(
             std::addressof(a_actor),
             a_assignment.ring,
             a_assignment.sourceExtraList,
             1,
             equipSlot,
-            true,
+            false,
             false,
             false,
             true
@@ -935,7 +937,7 @@ namespace {
             a_original.extraList,
             1,
             equipSlot,
-            true,
+            false,
             false,
             false,
             true
