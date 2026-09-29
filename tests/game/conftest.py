@@ -117,6 +117,8 @@ def rings(request, devbench, game_artifacts):
         game_artifacts,
         vanilla=bool(request.node.get_closest_marker("vanilla")),
     )
+    if (flatrim := request.node.get_closest_marker("flatrim")) and bench.vr:
+        pytest.skip(flatrim.args[0])
     loaded = False
     with preserved_file(settings, game_artifacts / "settings-before.ini"):
         try:

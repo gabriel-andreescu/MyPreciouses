@@ -18,6 +18,7 @@ markers = [
     "vanilla: requires SkyUI Vanilla Menus",
     "warlock: requires the Fishing Creation and a keyboard block binding",
     "restart: a prepare or verify phase separated by a full game restart",
+    "flatrim(reason): skipped on Skyrim VR for the given reason",
 ]
 devbench_url = "http://127.0.0.1:8920"
 

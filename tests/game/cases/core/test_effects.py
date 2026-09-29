@@ -36,29 +36,25 @@ def test_equipment_effects_and_active_effects_menu(rings):
     rings.add(0x61CB9)
 
     def visible_effects():
-        key = p("Input", "GetMappedKey", ["Quick Magic", 0])
-        assert key >= 0, "Quick Magic must have a keyboard binding"
-        rings.keyboard.tap(key)
+        rings.open_menu("MagicMenu", "Quick Magic")
         try:
-            wait_for(
-                lambda: p("UI", "GetBool", ["MagicMenu", "_root.Menu_mc.bFadedIn"]),
+            root = "_root.Menu_mc.inventoryLists.itemList.entryList"
+            # Skyrim VR fades the menu in before its list is populated.
+            count = wait_for(
+                lambda: (
+                    p("UI", "GetBool", ["MagicMenu", "_root.Menu_mc.bFadedIn"])
+                    and p("UI", "GetInt", ["MagicMenu", f"{root}.length"])
+                ),
                 message="The magic menu did not become ready",
                 timeout=5,
             )
-            root = "_root.Menu_mc.inventoryLists.itemList.entryList"
-            count = p("UI", "GetInt", ["MagicMenu", f"{root}.length"])
             return [
                 p("UI", "GetInt", ["MagicMenu", f"{root}.{i}.formId"]) & 0xFFFFFFFF
                 for i in range(count)
                 if p("UI", "GetInt", ["MagicMenu", f"{root}.{i}.filterFlag"]) & 256
             ]
         finally:
-            if p("UI", "IsMenuOpen", ["MagicMenu"]):
-                rings.keyboard.tap(15)
-                wait_for(
-                    lambda: not p("UI", "IsMenuOpen", ["MagicMenu"]),
-                    message="Magic menu did not close",
-                )
+            rings.close_menu("MagicMenu")
 
     def check(count, bonus, mask):
         state = rings.wait(

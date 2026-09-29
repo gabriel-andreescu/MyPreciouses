@@ -1,3 +1,4 @@
+import pytest
 from bmk.testing import wait_for
 
 from ...support.session import assigned
@@ -12,11 +13,9 @@ def exercise_favorites(rings):
     rings.add(ring, 2)
     menu.equip(ring, 1)
     menu.select(ring)
-    rings.keyboard.tap(33)
+    rings.favorite_selected(ring)
     menu.close()
-    key = p("Input", "GetMappedKey", ["Favorites", 0])
-    assert key >= 0, "Favorites must have a keyboard binding"
-    rings.keyboard.tap(key)
+    rings.open_menu("FavoritesMenu", "Favorites")
     favorite_list = "_root.MenuHolder.Menu_mc.itemList"
 
     def ui(function, path, *args):
@@ -82,5 +81,6 @@ def exercise_favorites(rings):
     )
 
 
+@pytest.mark.flatrim("Skyrim VR's Favorites menu has no keyboard confirmation")
 def test_favorites(rings):
     exercise_favorites(rings)

@@ -29,8 +29,7 @@ class FavoriteGroups:
             rings.menu.select(form, unique_id=unique_id)
         else:
             rings.menu.close()
-            key = rings.p("Input", "GetMappedKey", ["Quick Magic", 0])
-            rings.keyboard.tap(key)
+            rings.open_menu("MagicMenu", "Quick Magic")
             root = "_root.Menu_mc.inventoryLists.itemList"
 
             def ui(function, path, *args):
@@ -59,11 +58,7 @@ class FavoriteGroups:
                 & flag
             )
         if not favorited:
-            rings.keyboard.tap(33)
-        wait_for(
-            lambda: rings.p("Game", "IsObjectFavorited", [{"form": hex(form)}]),
-            message=f"{form:08X} was not favorited",
-        )
+            rings.favorite_selected(form)
         if spell:
             rings.call("menu", {"action": "close", "name": "MagicMenu"})
         else:
@@ -126,6 +121,9 @@ class FavoriteGroups:
             self.ui("GetInt", f"{row}.{member}") & (1 << group)
             for row in self.rows(form)
         )
+
+
+pytestmark = pytest.mark.flatrim("Stock SkyUI VR has no favorite group menu")
 
 
 @pytest.mark.parametrize("unequip_armor", [False, True])

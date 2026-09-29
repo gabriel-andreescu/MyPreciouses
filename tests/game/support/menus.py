@@ -23,10 +23,7 @@ class Inventory:
         return self.p("UI", "IsMenuOpen", ["InventoryMenu"])
 
     def open(self):
-        if not self.is_open():
-            key = self.p("Input", "GetMappedKey", ["Quick Inventory", 0])
-            assert key >= 0, "Quick Inventory must have a keyboard binding"
-            self.rings.keyboard.tap(key)
+        self.rings.open_menu("InventoryMenu", "Quick Inventory")
         wait_for(
             lambda: self.ui("GetBool", "_root.Menu_mc.bFadedIn"),
             message="Inventory did not fade in",
@@ -70,9 +67,9 @@ class Inventory:
             self.ui("InvokeInt", "_root.Menu_mc.SetPlatform", 0)
             if self.vanilla:
                 self.ui("Invoke", "_root.Menu_mc.onExitMenuRectClick")
+                wait_for(lambda: not self.is_open(), message="Inventory did not close")
             else:
-                self.rings.keyboard.tap(15)
-            wait_for(lambda: not self.is_open(), message="Inventory did not close")
+                self.rings.close_menu("InventoryMenu")
 
     def select(self, form_id, name="", enchantment_id=-1, *, unique_id=None):
         self.open()

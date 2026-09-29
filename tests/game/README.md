@@ -21,6 +21,11 @@ transformations, inventory confiscation and save persistence through
   through 4. Stock SkyUI VR does not include that menu.
 - English interface text for the inventory label assertions.
 
+On Skyrim VR, the suite opens and closes menus directly because VR keyboard
+controls switch between menus. It skips the favorite-group cases, keyboard
+confirmation in Favorites and Necromancy reanimation, which aims from the hand
+controller.
+
 The suite changes equipment, settings, skills and quest state. Use a dedicated
 test save. Avoid input while the suite operates menus. DevBench input works with
 Skyrim in the background.

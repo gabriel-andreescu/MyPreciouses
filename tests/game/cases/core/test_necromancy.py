@@ -6,6 +6,7 @@ from bmk.testing import wait_for
 from ...support.session import assigned
 
 
+@pytest.mark.flatrim("Skyrim VR aims the reanimation spell from the hand controller")
 @pytest.mark.parametrize("mode", ["Empty", "Native", "Virtual", "Cosmetic"])
 def test_necromancy_reanimation_and_hit(rings, mode):
     p, menu = rings.p, rings.menu

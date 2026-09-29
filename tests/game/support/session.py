@@ -1,5 +1,6 @@
 """Ring inspection, settings and actor actions used by the suite."""
 
+import functools
 import json
 import time
 
@@ -31,7 +32,6 @@ class RingSession:
     def __init__(self, client, settings_path, baseline, artifacts, *, vanilla=False):
         self.client = client
         self.keyboard = Keyboard(client)
-        self.p = client.papyrus
         self.call = client.call
         self.settings_path = settings_path
         self.baseline = baseline
@@ -40,6 +40,53 @@ class RingSession:
         (artifacts / "passed.json").write_text("[]\n", encoding="utf-8")
         self.menu = Inventory(self, vanilla=vanilla)
         self.mcm_quest = None
+
+    def p(self, script, function, args=(), self_form="", **options):
+        result = self.client.papyrus(script, function, args, self_form, **options)
+        if result is None and (script, function) == ("Actor", "GetActorValueMax"):
+            # Skyrim VR's Actor script has no GetActorValueMax. Current minus damage is the same value.
+            actor = {"form": self_form or "0x14"}
+            current = self.client.papyrus("Actor", "GetActorValue", args, self_form)
+            damage = self.client.papyrus(
+                "PO3_SKSEFunctions", "GetActorValueModifier", [actor, 2, args[0]]
+            )
+            return current - damage
+        return result
+
+    @functools.cached_property
+    def vr(self):
+        return self.call("inspect", {"kind": "state"})["vr"]
+
+    # Skyrim VR's keyboard controls switch between menus instead of opening and closing them.
+    def open_menu(self, name, control):
+        if not self.p("UI", "IsMenuOpen", [name]):
+            if self.vr:
+                self.call("menu", {"action": "open", "name": name})
+            else:
+                key = self.p("Input", "GetMappedKey", [control, 0])
+                assert key >= 0, f"{control} must have a keyboard binding"
+                self.keyboard.tap(key)
+        wait_for(
+            lambda: self.p("UI", "IsMenuOpen", [name]), message=f"{name} did not open"
+        )
+
+    def close_menu(self, name):
+        if self.p("UI", "IsMenuOpen", [name]):
+            if self.vr:
+                self.call("menu", {"action": "close", "name": name})
+            else:
+                self.keyboard.tap(15)
+        wait_for(
+            lambda: not self.p("UI", "IsMenuOpen", [name]),
+            message=f"{name} did not close",
+        )
+
+    def favorite_selected(self, form):
+        self.keyboard.tap(33)
+        wait_for(
+            lambda: self.p("Game", "IsObjectFavorited", [{"form": hex(form)}]),
+            message=f"{form:08X} was not favorited",
+        )
 
     def checkpoint(self, description):
         self.checks.append(description)
