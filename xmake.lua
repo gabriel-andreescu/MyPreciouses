@@ -3,7 +3,7 @@ set_project("MyPreciouses")
 set_license("GPL-3.0")
 set_policy("package.requires_lock", true)
 
-local version = "1.0.1"
+local version = "1.0.2"
 local papyrus_imports = (get_config("papyrus_imports") or ""):split(";", { plain = true })
 local bath_patch_imports = table.join({
     path.join(os.projectdir(), "src/papyrus"),
