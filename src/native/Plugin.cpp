@@ -1,3 +1,4 @@
+#include "Compatibility/SkyUI/ScriptCalls.h"
 #include "DevBenchIntegration.h"
 
 #include "EventListener.h"
@@ -44,6 +45,7 @@ SKSE_PLUGIN_LOAD(const SKSE::LoadInterface* a_extender) {
     SKSE::Init(a_extender, initInfo);
 
     Serialization::Install();
+    Compatibility::SkyUI::ScriptCalls::Install();
     Papyrus::Register();
 
     SKSE::GetMessagingInterface()->RegisterListener(MessageHandler);

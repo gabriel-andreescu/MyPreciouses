@@ -597,6 +597,26 @@ bool IsRingSourceRightWorn(RE::Actor& a_actor, const RE::TESObjectARMO& a_ring, 
     return IsFormOnlyRightWorn(*entry);
 }
 
+std::optional<Core::ItemSource> CaptureRightWornRing(RE::Actor& a_actor) {
+    const auto worn = FindRightWornRing(a_actor);
+    if (!worn || !worn->extraList) {
+        return std::nullopt;
+    }
+    Core::ItemSource source {
+        .kind = Core::ItemSourceKind::kFormOnly,
+        .sourceFormID = worn->ring->GetFormID(),
+        .extraUniqueID = EnsureExtraUniqueIDKey(a_actor, *worn->ring, *worn->extraList),
+    };
+    if (!source.extraUniqueID) {
+        return std::nullopt;
+    }
+    if (const auto signature = ReadCustomEnchantmentSignature(worn->extraList)) {
+        source.kind = Core::ItemSourceKind::kCustomEnchantment;
+        source.customEnchantment = *signature;
+    }
+    return source;
+}
+
 bool RightWornRingMatchesSource(
     const RightWornRing& a_rightWorn,
     const RE::TESObjectARMO& a_ring,
@@ -676,7 +696,7 @@ RightWornRingUnequipResult UnequipRightWornRing(RE::Actor& a_actor) {
             rightWorn->extraList,
             1,
             nullptr,
-            true,
+            false,
             false,
             false,
             true,

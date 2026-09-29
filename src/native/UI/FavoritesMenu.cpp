@@ -3,6 +3,7 @@
 #include <RE/Skyrim.h> // IWYU pragma: keep
 #include <SKSE/SKSE.h> // IWYU pragma: keep
 
+#include "Compatibility/SkyUI/FavoritesMenu.h"
 #include "Core/ActorKey.h"
 #include "UI/RingItemRows.h"
 #include "UI/Scaleform.h"
@@ -15,47 +16,11 @@ namespace {
     constexpr auto kScaleformItemFormID = "formId";
     constexpr auto kScaleformItemIndex = "index";
 
-    [[nodiscard]] bool GetFavoritesItemList(RE::FavoritesMenu& a_menu, RE::GFxValue& a_itemList) {
-        auto const& root = a_menu.GetRuntimeData().root;
-        if (root.GetMember("ItemList", std::addressof(a_itemList)) && Scaleform::CanReadMembers(a_itemList)) {
-            return true;
-        }
-
-        return root.GetMember("itemList", std::addressof(a_itemList)) && Scaleform::CanReadMembers(a_itemList);
-    }
-
-    [[nodiscard]] RE::InventoryEntryData* GetFavoriteEntryDataForRow(
-        RE::FavoritesMenu& a_menu,
-        const RE::GFxValue& a_entryObject
-    ) {
-        const auto favoriteIndex = Scaleform::ReadUInt32Member(a_entryObject, kScaleformItemIndex);
-        if (!favoriteIndex) {
-            return nullptr;
-        }
-
-        auto& favorites = a_menu.GetRuntimeData().favorites;
-        if (*favoriteIndex >= favorites.size()) {
-            return nullptr;
-        }
-
-        auto* entry = favorites[*favoriteIndex].entryData;
-        if (!entry || !entry->GetObject()) {
-            return nullptr;
-        }
-
-        const auto formID = Scaleform::ReadUInt32Member(a_entryObject, kScaleformItemFormID);
-        if (formID && entry->GetObject()->GetFormID() != *formID) {
-            return nullptr;
-        }
-
-        return entry;
-    }
-
     [[nodiscard]] RingItemRows::RowStampResult StampFavoriteRingEntry(
         RE::FavoritesMenu& a_menu,
         RE::GFxValue& a_entryObject
     ) {
-        auto* entry = GetFavoriteEntryDataForRow(a_menu, a_entryObject);
+        auto* entry = GetRowEntry(a_menu, a_entryObject);
         if (!entry) {
             return RingItemRows::RowStampResult::kIgnored;
         }
@@ -70,17 +35,49 @@ namespace {
 
         return a_itemList.Invoke("requestInvalidate");
     }
+}
 
-    [[nodiscard]] RE::FavoritesMenu* GetOpenFavoritesMenu() {
-        auto* userInterface = RE::UI::GetSingleton();
-        if (!userInterface || !userInterface->IsMenuOpen(RE::FavoritesMenu::MENU_NAME)) {
-            return nullptr;
-        }
-
-        auto const favoritesMenu = userInterface->GetMenu<RE::FavoritesMenu>();
-        return favoritesMenu.get();
+RE::FavoritesMenu* GetOpenMenu() {
+    auto* userInterface = RE::UI::GetSingleton();
+    if (!userInterface || !userInterface->IsMenuOpen(RE::FavoritesMenu::MENU_NAME)) {
+        return nullptr;
     }
 
+    auto const favoritesMenu = userInterface->GetMenu<RE::FavoritesMenu>();
+    return favoritesMenu.get();
+}
+
+bool GetItemList(RE::FavoritesMenu& a_menu, RE::GFxValue& a_itemList) {
+    auto const& root = a_menu.GetRuntimeData().root;
+    if (root.GetMember("ItemList", std::addressof(a_itemList)) && Scaleform::CanReadMembers(a_itemList)) {
+        return true;
+    }
+
+    return root.GetMember("itemList", std::addressof(a_itemList)) && Scaleform::CanReadMembers(a_itemList);
+}
+
+RE::InventoryEntryData* GetRowEntry(RE::FavoritesMenu& a_menu, const RE::GFxValue& a_row) {
+    const auto favoriteIndex = Scaleform::ReadUInt32Member(a_row, kScaleformItemIndex);
+    if (!favoriteIndex) {
+        return nullptr;
+    }
+
+    auto& favorites = a_menu.GetRuntimeData().favorites;
+    if (*favoriteIndex >= favorites.size()) {
+        return nullptr;
+    }
+
+    auto* entry = favorites[*favoriteIndex].entryData;
+    if (!entry || !entry->GetObject()) {
+        return nullptr;
+    }
+
+    const auto formID = Scaleform::ReadUInt32Member(a_row, kScaleformItemFormID);
+    if (formID && entry->GetObject()->GetFormID() != *formID) {
+        return nullptr;
+    }
+
+    return entry;
 }
 
 void QueueRingRowRefresh(const RowRefreshMode a_mode) {
@@ -88,15 +85,17 @@ void QueueRingRowRefresh(const RowRefreshMode a_mode) {
 }
 
 bool TryRefreshOpenMenuRows(const RowRefreshMode a_mode) {
-    auto* favoritesMenu = GetOpenFavoritesMenu();
+    auto* favoritesMenu = GetOpenMenu();
     if (!favoritesMenu) {
         return false;
     }
 
     RE::GFxValue itemList;
-    if (!GetFavoritesItemList(*favoritesMenu, itemList)) {
+    if (!GetItemList(*favoritesMenu, itemList)) {
         return true;
     }
+
+    Compatibility::SkyUI::FavoritesMenu::Attach(*favoritesMenu, itemList);
 
     RE::GFxValue entryList;
     if (!itemList.GetMember("entryList", std::addressof(entryList)) || !entryList.IsArray()) {

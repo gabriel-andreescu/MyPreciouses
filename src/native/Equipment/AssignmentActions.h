@@ -79,6 +79,8 @@ enum class RefreshMode : std::uint8_t {
     VirtualSlots::ScriptBindingClearMode a_scriptBindings = VirtualSlots::ScriptBindingClearMode::kRelease,
     std::span<const RE::BSFixedString> a_excludedKeywords = {}
 );
+[[nodiscard]] ActionResult EquipTarget(const SourceSelection& a_selection, Core::Target a_target);
+void ApplyVirtualLayout(RE::Actor& a_actor, const Core::TargetAssignments& a_layout, bool a_unequipOthers);
 [[nodiscard]] ActionResult ClearNonPlayerVirtualAssignments(
     VirtualSlots::ScriptBindingClearMode a_scriptBindings = VirtualSlots::ScriptBindingClearMode::kRelease
 );

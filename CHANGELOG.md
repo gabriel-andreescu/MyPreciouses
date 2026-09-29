@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Restore rings to their saved fingers when equipping SkyUI favorite groups
+- Keep rings from replacing saved weapon and spell hands in SkyUI favorite
+  groups
+- Remove extra rings with SkyUI's Unequip Armor group option
 - Remove extra rings during Diziet's slow undressing and restore them after
   bathing, respecting its keyword exclusions
 

@@ -17,6 +17,8 @@ transformations, inventory confiscation and save persistence through
   silver rings or health rings in their inventory, and no Namira cannibalism
   perk.
 - Keyboard bindings for Quick Inventory, Quick Magic, Favorites and Shout.
+- The favorite-group cases require SkyUI's group menu and bindings for groups 1
+  through 4. Stock SkyUI VR does not include that menu.
 - English interface text for the inventory label assertions.
 
 The suite changes equipment, settings, skills and quest state. Use a dedicated

@@ -3,6 +3,8 @@
 #include <RE/Skyrim.h> // IWYU pragma: keep
 #include <SKSE/SKSE.h> // IWYU pragma: keep
 
+#include "Compatibility/SkyUI/FavoritesMenu.h"
+#include "Compatibility/SkyUI/ScriptCalls.h"
 #include "Compatibility/Vanilla.h"
 #include "Core/ActorKey.h"
 #include "Core/Assignment.h"
@@ -11,6 +13,7 @@
 #include "Equipment/AssignmentActions.h"
 #include "Equipment/AssignmentStore.h"
 #include "Equipment/AutoEquip.h"
+#include "Equipment/FavoriteGroups.h"
 #include "Equipment/RaceSwitchRestore.h"
 #include "Equipment/SavedEquipment.h"
 #include "Inventory.h"
@@ -74,6 +77,7 @@ namespace {
     constexpr auto kSerializationID = MakeRecordType('M', 'Y', 'P', 'R');
     constexpr auto kRecordAssignments = MakeRecordType('S', 'T', 'A', 'T');
     constexpr auto kRecordSavedEquipment = MakeRecordType('E', 'Q', 'U', 'P');
+    constexpr auto kRecordFavoriteGroups = MakeRecordType('G', 'R', 'P', 'S');
     constexpr auto kRecordRaceSwitchRestores = MakeRecordType('R', 'S', 'R', 'T');
     constexpr std::uint32_t kAssignmentRecordVersion = 2;
     constexpr std::uint32_t kRaceSwitchRestoreRecordVersion = 2;
@@ -706,6 +710,64 @@ namespace {
         });
     }
 
+    bool WriteFavoriteGroups(SKSE::SerializationInterface& a_intfc) {
+        if (!a_intfc.OpenRecord(kRecordFavoriteGroups, 1)) {
+            return false;
+        }
+        for (const auto& group : Equipment::FavoriteGroups::GetAll()) {
+            if (!WriteField(a_intfc, static_cast<std::uint8_t>(group.has_value()))) {
+                return false;
+            }
+            if (!group) {
+                continue;
+            }
+            const auto& layout = *group;
+            for (const auto target : Core::kAllTargets) {
+                const auto index = Core::ToIndex(target);
+                if (!WriteAssignment(a_intfc, target, layout.assignments.byTarget[index])
+                    || !WriteField(a_intfc, layout.itemIDs[index])) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    bool ReadFavoriteGroups(SKSE::SerializationInterface& a_intfc, std::uint32_t& a_remaining) {
+        Equipment::FavoriteGroups::Groups groups;
+        for (auto& group : groups) {
+            std::uint8_t saved = 0;
+            if (!ReadField(a_intfc, a_remaining, saved) || saved > 1) {
+                return false;
+            }
+            if (saved == 0) {
+                continue;
+            }
+            auto& layout = group.emplace();
+            for (const auto target : Core::kAllTargets) {
+                const auto index = Core::ToIndex(target);
+                std::uint32_t storedIndex = 0;
+                if (!ReadField(a_intfc, a_remaining, storedIndex) || storedIndex != index) {
+                    return false;
+                }
+                const auto assignment = ReadAssignment(a_intfc, a_remaining, kAssignmentRecordVersion);
+                if (!assignment || !ReadField(a_intfc, a_remaining, layout.itemIDs[index])) {
+                    return false;
+                }
+                if (auto resolved = ResolveAssignment(Core::GetPlayerActorKey(), target, *assignment, a_intfc)) {
+                    layout.assignments.byTarget[index] = std::move(*resolved);
+                } else {
+                    layout.itemIDs[index] = 0;
+                }
+            }
+        }
+        if (a_remaining != 0) {
+            return false;
+        }
+        Equipment::FavoriteGroups::ReplaceAll(std::move(groups));
+        return true;
+    }
+
     void SaveCallback(SKSE::SerializationInterface* a_intfc) {
         if (!a_intfc) {
             return;
@@ -739,9 +801,20 @@ namespace {
         }
         VirtualSlots::EffectSources::Save(*a_intfc);
         Compatibility::Vanilla::Save(*a_intfc);
+        if (!WriteFavoriteGroups(*a_intfc)) {
+            SKSE::log::error("Serialization: cannot save favorite ring groups");
+        }
     }
 
     void LoadRecord(const RecordInfo& a_record, SKSE::SerializationInterface& a_intfc) {
+        if (a_record.type == kRecordFavoriteGroups) {
+            auto remaining = a_record.length;
+            if (a_record.version != 1 || !ReadFavoriteGroups(a_intfc, remaining)) {
+                SKSE::log::error("Serialization: cannot read favorite ring groups");
+                DrainRecordData(a_intfc, remaining);
+            }
+            return;
+        }
         if (Papyrus::ScriptEventMirror::TryLoadBindingRecord(a_record, a_intfc)) {
             return;
         }
@@ -835,6 +908,9 @@ namespace {
     }
 
     void RevertCallback([[maybe_unused]] SKSE::SerializationInterface* a_intfc) { // NOLINT(misc-const-correctness)
+        Compatibility::SkyUI::ScriptCalls::Revert();
+        Compatibility::SkyUI::FavoritesMenu::Revert();
+        Equipment::FavoriteGroups::Revert();
         Inventory::RevertSelections();
         Equipment::AssignmentStore::Revert();
         Equipment::AutoEquip::Revert();

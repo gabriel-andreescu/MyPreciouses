@@ -88,6 +88,7 @@ struct RingInventoryState {
     const RE::ExtraDataList* a_extraList
 );
 [[nodiscard]] std::optional<RightWornRing> FindRightWornRing(RE::Actor& a_actor);
+[[nodiscard]] std::optional<Core::ItemSource> CaptureRightWornRing(RE::Actor& a_actor);
 [[nodiscard]] bool RightWornRingMatchesSource(
     const RightWornRing& a_rightWorn,
     const RE::TESObjectARMO& a_ring,

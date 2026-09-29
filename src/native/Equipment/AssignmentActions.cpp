@@ -9,6 +9,7 @@
 #include "Core/Target.h"
 #include "Core/TargetMask.h"
 #include "Equipment/AssignmentStore.h"
+#include "Equipment/FavoriteGroups.h"
 #include "Equipment/RaceSwitchRestore.h"
 #include "Equipment/SavedEquipment.h"
 #include "Equipment/SpecialRingRules.h"
@@ -370,7 +371,7 @@ namespace {
             a_extraList,
             1,
             nullptr,
-            true,
+            false,
             false,
             false,
             true,
@@ -1127,6 +1128,52 @@ ActionResult ClearDisabledVirtualSlotAssignments(const RefreshMode a_refreshMode
     return result;
 }
 
+ActionResult EquipTarget(const SourceSelection& a_selection, const Core::Target a_target) {
+    if (Core::IsVirtualTarget(a_target) ? IsSelected(a_selection, a_target) : IsInVanillaRingSlot(a_selection)) {
+        return {};
+    }
+    return ToggleTarget(a_selection, a_target);
+}
+
+void ApplyVirtualLayout(RE::Actor& a_actor, const Core::TargetAssignments& a_layout, const bool a_unequipOthers) {
+    const auto actorKey = Core::MakeActorKey(a_actor);
+    auto available = a_layout;
+    for (const auto target : Core::kAllTargets) {
+        auto& assignment = available.byTarget[Core::ToIndex(target)];
+        const auto* ring = LookupSourceRing(assignment.source.sourceFormID);
+        if (!ring
+            || !Inventory::FindSourceMatches(a_actor, assignment.source).HasMatch()
+            || (Core::IsVirtualTarget(target)
+                && !SpecialRingRules::AreTargetsEnabledForSource(
+                    actorKey,
+                    *ring,
+                    SourceModelFootprints::GetProjectedRingGeometryTargets(*ring, target)
+                ))) {
+            assignment = {};
+        }
+    }
+    const auto current = AssignmentStore::GetSnapshot(actorKey);
+    for (const auto target : Core::kVirtualTargets) {
+        const auto& selected = current.byTarget[Core::ToIndex(target)].source;
+        const auto& desired = available.byTarget[Core::ToIndex(target)].source;
+        if (!selected.IsAssigned() || selected.IsSameCopy(desired)) {
+            continue;
+        }
+        const auto moving = std::ranges::any_of(available.byTarget, [&](const auto& a_assignment) {
+            return selected.IsSameCopy(a_assignment.source);
+        });
+        if (a_unequipOthers || moving) {
+            static_cast<void>(ClearVirtualAssignment(a_actor, target));
+        }
+    }
+    for (const auto target : Core::kVirtualTargets) {
+        const auto& desired = available.byTarget[Core::ToIndex(target)].source;
+        if (desired.IsAssigned()) {
+            static_cast<void>(EquipTarget({.actor = actorKey, .itemSource = desired}, target));
+        }
+    }
+}
+
 ActionResult ClearVirtualAssignments(
     RE::Actor const& a_actor,
     const VirtualSlots::ScriptBindingClearMode a_scriptBindings,
@@ -1298,6 +1345,7 @@ void HandleUniqueIDChange(const RE::TESUniqueIDChangeEvent& a_event) {
         VirtualSlots::RemapUniqueID(oldID, newID);
     }
     SavedEquipment::RemapUniqueID(oldID, newID);
+    FavoriteGroups::RemapUniqueID(oldID, newID);
     RaceSwitchRestore::RemapUniqueID(oldID, newID);
 }
 
