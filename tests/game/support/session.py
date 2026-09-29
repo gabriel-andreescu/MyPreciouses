@@ -1,6 +1,7 @@
 """Ring inspection, settings and actor actions used by the suite."""
 
 import json
+import time
 
 from bmk.skyrim.devbench import Keyboard
 from bmk.testing import set_ini_values, wait_for
@@ -58,10 +59,12 @@ class RingSession:
         self.client.load(name or self.baseline, cell=cell, settle_ms=5000)
 
     def save(self, name):
+        # A save from an earlier run keeps the name listed while Skyrim replaces it.
+        requested = int(time.time())
         self.client.save(name)
         wait_for(
             lambda: any(
-                save["name"] == name
+                save["name"] == name and save["mtimeUnix"] >= requested
                 for save in self.call("game", {"action": "list", "filter": name})[
                     "saves"
                 ]

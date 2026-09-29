@@ -80,8 +80,33 @@ class Inventory:
             name = self.p("Form", "GetName", self_form=f"0x{form_id:08X}")
         # Mouse navigation reselects the hovered row when SkyUI refreshes the list.
         self.ui("InvokeInt", "_root.Menu_mc.SetPlatform", 1)
-        count = self.ui("GetInt", f"{self.list}.entryList.length")
-        for index in range(count):
+        # A list refresh can replace the entries while they are being read.
+        index = wait_for(
+            lambda: self.find_row(form_id, name, enchantment_id, unique_id),
+            lambda found: found is not None,
+            f"Inventory does not contain 0x{form_id:08X} {name}",
+            timeout=5,
+        )
+        if self.vanilla:
+            for _ in range(self.ui("GetInt", f"{self.list}.entryList.length")):
+                selected = self.ui("GetInt", f"{self.list}.selectedIndex")
+                if selected == index:
+                    break
+                move = "moveSelectionDown" if selected < index else "moveSelectionUp"
+                self.ui("Invoke", f"{self.list}.{move}")
+            assert (
+                self.ui("GetString", f"{self.list}.selectedEntry.myPreciousesBaseText")
+                == name
+            )
+        else:
+            self.ui("SetInt", f"{self.list}.selectedIndex", index)
+            assert (
+                self.ui("GetInt", f"{self.list}.selectedEntry.formId") & 0xFFFFFFFF
+                == form_id
+            )
+
+    def find_row(self, form_id, name, enchantment_id, unique_id):
+        for index in range(self.ui("GetInt", f"{self.list}.entryList.length")):
             row = f"{self.list}.entryList.{index}"
             if (
                 not self.vanilla
@@ -102,29 +127,8 @@ class Inventory:
                 != enchantment_id
             ):
                 continue
-            if self.vanilla:
-                for _ in range(count):
-                    selected = self.ui("GetInt", f"{self.list}.selectedIndex")
-                    if selected == index:
-                        break
-                    move = (
-                        "moveSelectionDown" if selected < index else "moveSelectionUp"
-                    )
-                    self.ui("Invoke", f"{self.list}.{move}")
-                assert (
-                    self.ui(
-                        "GetString", f"{self.list}.selectedEntry.myPreciousesBaseText"
-                    )
-                    == name
-                )
-            else:
-                self.ui("SetInt", f"{self.list}.selectedIndex", index)
-                assert (
-                    self.ui("GetInt", f"{self.list}.selectedEntry.formId") & 0xFFFFFFFF
-                    == form_id
-                )
-            return
-        raise AssertionError(f"Inventory does not contain 0x{form_id:08X} {name}")
+            return index
+        return None
 
     def open_selector(
         self, form_id, target, name="", enchantment_id=-1, *, unique_id=None
