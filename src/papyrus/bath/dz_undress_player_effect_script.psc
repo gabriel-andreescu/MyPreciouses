@@ -100,6 +100,8 @@ Function dz_player_undresses()															;define the function to undress the
 		DEBUG_TRACE(PlayerRef,"issued dz_get_all_player_slots")
 	EndIf
 	If mcm_script.slow_unequip == True
+		MyPreciouses.SaveExtraRings(PlayerRef)
+		MyPreciouses.UnequipExtraRings(PlayerRef,mcm_script.keywords_list)
 		dz_slow_unequip(PlayerRef)
 		DEBUG_TRACE(PlayerRef,"issued dz_slow_unequip")
 	Else

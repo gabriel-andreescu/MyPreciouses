@@ -91,7 +91,8 @@ Diziet bath patch after it. Enable `dz_undress_common.esp` and
 `dz_undress_testing_cell.esp`. Use the bath mod's default instant unequip mode.
 The cases enter and leave its player-only trigger, save while bathing, and check
 named rings, enchantments, scripts, removed items and new selections. They also
-check that slow undressing leaves extra rings equipped.
+check slow undressing with and without keyword exclusions, including retained
+scripted effects on excluded rings.
 
 Install each fixture's requirements before creating the baseline. Load patches
 after their masters. For the upgraded marriage-ring model case, also install

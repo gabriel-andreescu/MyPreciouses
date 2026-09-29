@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <span>
 #include <vector>
 
 namespace Equipment {
@@ -75,7 +76,8 @@ enum class RefreshMode : std::uint8_t {
 );
 [[nodiscard]] ActionResult ClearVirtualAssignments(
     RE::Actor const& a_actor,
-    VirtualSlots::ScriptBindingClearMode a_scriptBindings = VirtualSlots::ScriptBindingClearMode::kRelease
+    VirtualSlots::ScriptBindingClearMode a_scriptBindings = VirtualSlots::ScriptBindingClearMode::kRelease,
+    std::span<const RE::BSFixedString> a_excludedKeywords = {}
 );
 [[nodiscard]] ActionResult ClearNonPlayerVirtualAssignments(
     VirtualSlots::ScriptBindingClearMode a_scriptBindings = VirtualSlots::ScriptBindingClearMode::kRelease

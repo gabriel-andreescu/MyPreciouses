@@ -1129,10 +1129,19 @@ ActionResult ClearDisabledVirtualSlotAssignments(const RefreshMode a_refreshMode
 
 ActionResult ClearVirtualAssignments(
     RE::Actor const& a_actor,
-    const VirtualSlots::ScriptBindingClearMode a_scriptBindings
+    const VirtualSlots::ScriptBindingClearMode a_scriptBindings,
+    const std::span<const RE::BSFixedString> a_excludedKeywords
 ) {
     ActionResult result;
+    const auto actorKey = Core::MakeActorKey(a_actor);
     for (const auto target : Core::kVirtualTargets) {
+        const auto assignment = AssignmentStore::Get(actorKey, target);
+        auto const* ring = LookupSourceRing(assignment.source.sourceFormID);
+        if (ring && std::ranges::any_of(a_excludedKeywords, [ring](const auto& a_keyword) {
+                return ring->HasKeywordString(a_keyword.c_str());
+            })) {
+            continue;
+        }
         result.selectionChanged = ClearVirtualAssignment(a_actor, target, a_scriptBindings) || result.selectionChanged;
     }
     return result;

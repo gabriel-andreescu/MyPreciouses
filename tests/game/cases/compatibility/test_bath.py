@@ -7,7 +7,10 @@ from ...support.session import actor, assigned
 
 
 @pytest.mark.compatibility("DizietBath")
-def test_bath_restoration_and_changed_equipment(rings):
+@pytest.mark.parametrize(
+    "slow,keep_namira", [(False, False), (True, False), (True, True)]
+)
+def test_bath_restoration_and_changed_equipment(rings, slow, keep_namira):
     p, menu = rings.p, rings.menu
     p("Actor", "UnequipAll", self_form="0x14")
     silver, health_ring, namira = 0x3B97C, 0xFCEFD, 0x2C37B
@@ -27,7 +30,7 @@ def test_bath_restoration_and_changed_equipment(rings):
     menu.equip(silver, 0, enchantment_id=0)
     menu.equip(silver, 1, name)
     menu.equip(health_ring, 2)
-    menu.equip(namira, 3)
+    menu.equip(namira, 8)
     menu.equip(0x877C9, 6)
     menu.close()
     equipped_health = p("Actor", "GetActorValueMax", ["Health"], "0x14")
@@ -40,6 +43,19 @@ def test_bath_restoration_and_changed_equipment(rings):
         message="The bath test cell did not load",
     )
     time.sleep(3)
+    rings.call(
+        "console",
+        {"command": f"setpqv dz_undress_MCM_menu slow_unequip {str(slow).lower()}"},
+    )
+    if keep_namira:
+        for function, value in (
+            ("GoToState", "state_keywords"),
+            ("OnInputAcceptST", "DaedricArtifact"),
+            ("GoToState", ""),
+        ):
+            p("dz_undress_MCM_menu_script", function, [value], "dz_undress_MCM_menu")
+        assert p("Form", "HasKeywordString", ["DaedricArtifact"], "0x2C37B")
+        assert not p("Form", "HasKeywordString", ["DaedricArtifact"], "0xFCEFD")
     p("ObjectReference", "SetPosition", [1021.0, -298.0, 0.0], "0x14")
     assert len(rings.state()["assignments"]) == 4
     rings.save("MyPreciousesTest_BeforeBath")
@@ -47,16 +63,25 @@ def test_bath_restoration_and_changed_equipment(rings):
         rings.restore("MyPreciousesTest_BeforeBath", "dzundresstestingcell")
         p("ObjectReference", "SetPosition", [1792.0, -624.0, 112.0], "0x14")
         rings.wait(
-            lambda s: not s["assignments"] and not s["scriptBindings"],
-            "The bath did not remove extra rings",
+            lambda s: (
+                len(s["assignments"]) == int(keep_namira)
+                and len(s["scriptBindings"]) == int(keep_namira)
+                and (not keep_namira or assigned(s, namira, 8))
+                and actor(s)["rightWorn"] == 0
+                and all(
+                    (v["thirdPersonGeometry"] > 0) == (keep_namira and v["target"] == 8)
+                    for v in actor(s)["visuals"]
+                )
+            ),
+            "The bath did not remove rings according to its keyword exclusions",
         )
         wait_for(
             lambda: p("Actor", "GetActorValueMax", ["Health"], "0x14") == health,
             message="Bathing retained ring enchantments",
         )
         wait_for(
-            lambda: not p("Actor", "HasPerk", [perk], "0x14"),
-            message="Bathing retained Namira perk",
+            lambda: p("Actor", "HasPerk", [perk], "0x14") == keep_namira,
+            message="Bathing did not preserve Namira's perk only when excluded",
         )
         if changed:
             p("ObjectReference", "RemoveItem", [{"form": "0xFCEFD"}, 1, True], "0x14")
@@ -69,9 +94,14 @@ def test_bath_restoration_and_changed_equipment(rings):
         rings.wait(
             lambda s, changed=changed: (
                 assigned(s, silver, 1)
-                and assigned(s, namira, 3)
+                and assigned(s, namira, 8)
                 and assigned(s, 0x877C9, 6)
                 and len(s["assignments"]) == (3 if changed else 4)
+                and all(
+                    v["thirdPersonGeometry"] > 0
+                    for v in actor(s)["visuals"]
+                    if v["target"] in ({0, 1, 8} if changed else {0, 1, 2, 8})
+                )
             ),
             "Leaving the bath did not restore available ring selections",
         )
@@ -113,20 +143,5 @@ def test_bath_restoration_and_changed_equipment(rings):
             message="Restored bath rings left effects after unequipping",
         )
         rings.checkpoint(
-            f"Diziet bath restores named, enchanted and scripted rings across save/load, with changed equipment={changed}"
+            f"Diziet bath restores named, enchanted and scripted rings across save/load, with slow={slow}, keep Namira={keep_namira}, changed equipment={changed}"
         )
-    rings.restore("MyPreciousesTest_BeforeBath", "dzundresstestingcell")
-    rings.call("console", {"command": "setpqv dz_undress_MCM_menu slow_unequip true"})
-    p("ObjectReference", "SetPosition", [1792.0, -624.0, 112.0], "0x14")
-    rings.wait(
-        lambda s: actor(s)["rightWorn"] == 0 and len(s["assignments"]) == 4,
-        "Slow undressing did not preserve extra rings",
-    )
-    p("ObjectReference", "SetPosition", [1021.0, -298.0, 0.0], "0x14")
-    rings.wait(
-        lambda s: assigned(s, 0x877C9, 6) and len(s["assignments"]) == 4,
-        "Slow redressing changed extra ring selections",
-    )
-    assert p("Actor", "GetActorValueMax", ["Health"], "0x14") == equipped_health
-    assert p("Actor", "HasPerk", [perk], "0x14")
-    rings.checkpoint("Diziet slow undressing preserves extra rings and their effects")

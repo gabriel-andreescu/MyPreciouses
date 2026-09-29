@@ -1,5 +1,9 @@
 Scriptname MyPreciouses Hidden
 
+; Unequip extra rings except those matching any listed keyword EditorID.
+; Native equipment is unchanged. Use SaveExtraRings first to restore them later.
+Function UnequipExtraRings(Actor target, String[] excludedKeywords = None) Global Native
+
 ; Remember the actor's extra rings, including fingers and custom enchantments.
 ; One set is stored per actor. Calling again replaces it. The set survives saving/loading.
 Function SaveExtraRings(Actor target) Global Native

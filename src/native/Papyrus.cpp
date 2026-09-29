@@ -14,9 +14,35 @@
 
 #include <cstdint>
 #include <utility>
+#include <vector>
 
 namespace Papyrus {
 namespace {
+    void UnequipExtraRings(
+        [[maybe_unused]] RE::StaticFunctionTag* a_tag, // NOLINT(misc-const-correctness)
+        RE::Actor* a_actor,                            // NOLINT(misc-const-correctness)
+        std::vector<RE::BSFixedString> a_excludedKeywords
+    ) {
+        if (!a_actor) {
+            return;
+        }
+        const auto actorKey = Core::MakeActorKey(*a_actor);
+        SKSE::GetTaskInterface()->AddTask([actorKey, keywords = std::move(a_excludedKeywords)] {
+            auto const* actor = Core::ResolveActor(actorKey);
+            if (!actor) {
+                return;
+            }
+            const auto result = Equipment::ClearVirtualAssignments(
+                *actor,
+                VirtualSlots::ScriptBindingClearMode::kRelease,
+                keywords
+            );
+            if (result.selectionChanged) {
+                UI::RefreshRingItemRows();
+            }
+        });
+    }
+
     void SaveExtraRings(
         [[maybe_unused]] RE::StaticFunctionTag* a_tag, // NOLINT(misc-const-correctness)
         RE::Actor* a_actor                             // NOLINT(misc-const-correctness)
@@ -146,6 +172,7 @@ namespace {
     }
 
     bool RegisterNativeFunctions(RE::BSScript::IVirtualMachine* a_vm) {
+        a_vm->RegisterFunction("UnequipExtraRings", "MyPreciouses", UnequipExtraRings);
         a_vm->RegisterFunction("SaveExtraRings", "MyPreciouses", SaveExtraRings);
         a_vm->RegisterFunction("RestoreExtraRings", "MyPreciouses", RestoreExtraRings);
         a_vm->RegisterFunction(
