@@ -364,18 +364,12 @@ namespace {
         const Core::CustomEnchantmentSignature& a_signature
     ) {
         const auto* extra = a_extraList ? a_extraList->GetByType<RE::ExtraEnchantment>() : nullptr;
-        return extra
-               != nullptr
-               && extra->enchantment
-               != nullptr
-               && extra->enchantment->GetFormID()
-               == a_signature.enchantmentFormID
-               && extra->charge
-               == a_signature.charge
-               && extra->removeOnUnequip
-               == a_signature.removeOnUnequip
-               && ReadPlayerDisplayName(*a_extraList).value_or(std::string_view {})
-               == a_signature.playerDisplayName;
+        return extra != nullptr
+               && extra->enchantment != nullptr
+               && extra->enchantment->GetFormID() == a_signature.enchantmentFormID
+               && extra->charge == a_signature.charge
+               && extra->removeOnUnequip == a_signature.removeOnUnequip
+               && ReadPlayerDisplayName(*a_extraList).value_or(std::string_view {}) == a_signature.playerDisplayName;
     }
 
     bool MatchesExtraUniqueIDKey(const RE::ExtraDataList* a_extraList, const Core::ExtraUniqueIDKey& a_uniqueID) {
@@ -801,8 +795,7 @@ SourceMatch FindFormOnlySourceMatches(RE::Actor& a_actor, const RE::TESObjectARM
         .rightWornExtraList = rightWornExtraList,
         .count = formOnlyCount,
         .rightWornProtected = IsUnequipProtectedRingStack(rightWornExtraList),
-        .rightWorn = rightWornExtraList
-                     != nullptr
+        .rightWorn = rightWornExtraList != nullptr
                      || (entry != nullptr && entry->extraLists == nullptr && entry->IsWorn(false)),
     };
 

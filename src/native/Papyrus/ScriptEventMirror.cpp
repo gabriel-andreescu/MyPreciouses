@@ -285,10 +285,8 @@ bool HasLoadedActiveBinding(
 ) {
     std::scoped_lock const lock(g_lock);
     const auto binding = Bindings().find({.actor = a_actor, .effectSourceFormID = a_effectSourceFormID});
-    return binding
-           != Bindings().end()
-           && binding->second.sourceFormID
-           == a_sourceFormID
+    return binding != Bindings().end()
+           && binding->second.sourceFormID == a_sourceFormID
            && binding->second.loadedFromSave
            && !binding->second.suspended;
 }

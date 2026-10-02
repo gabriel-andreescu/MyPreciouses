@@ -216,8 +216,7 @@ namespace {
             };
         }
 
-        if (a_assignment.source.kind
-            != Core::ItemSourceKind::kFormOnly
+        if (a_assignment.source.kind != Core::ItemSourceKind::kFormOnly
             || !Inventory::MatchesSource(a_params.extraDataList, a_assignment.source)) {
             return std::nullopt;
         }
@@ -634,11 +633,9 @@ namespace {
         const auto sourceMatches = FindSourceMatch(a_actor, *ring, *source);
         const auto selectedCopies = CountSelectedVirtualCopies(actorKey, *source);
         const auto shouldClear = !source->extraUniqueID
-                                 || sourceMatches.count
-                                 != 1
+                                 || sourceMatches.count != 1
                                  || sourceMatches.rightWorn
-                                 || selectedCopies
-                                 != 1;
+                                 || selectedCopies != 1;
         if (shouldClear) {
             return ClearVirtualAssignment(a_actor, a_target);
         }
@@ -734,8 +731,7 @@ namespace {
         auto sourceMatches = FindSourceMatch(*actor, *ring, a_source);
         if (!sourceMatches.HasMatch()) {
             if (!a_source.IsCustomEnchantment()
-                && AssignmentStore::Get(a_actor, a_target).source.sourceFormID
-                == a_source.sourceFormID) {
+                && AssignmentStore::Get(a_actor, a_target).source.sourceFormID == a_source.sourceFormID) {
                 result.selectionChanged = ClearVirtualAssignment(*actor, a_target);
             }
             return result;
@@ -1042,8 +1038,7 @@ ActionResult ToggleTarget(
         return result;
     }
     if (a_selection.inventoryRevision
-        && *a_selection.inventoryRevision
-        != Inventory::SelectionRevision(a_selection.actor.referenceFormID)) {
+        && *a_selection.inventoryRevision != Inventory::SelectionRevision(a_selection.actor.referenceFormID)) {
         return {.sourceUnavailable = true, .handled = true};
     }
     if (a_queueMode == QueueMode::kQueued) {
@@ -1292,12 +1287,9 @@ void BindLegacyCopies(
     const auto hasBinding = [&](const Core::Target a_target) {
         const auto& assignment = a_snapshot.byTarget[Core::ToIndex(a_target)];
         return std::ranges::any_of(bindings, [&](const auto& a_binding) {
-            return a_binding.actor
-                   == actorKey
-                   && a_binding.sourceFormID
-                   == assignment.source.sourceFormID
-                   && a_binding.effectSourceFormID
-                   == assignment.retainedEffectSourceFormID;
+            return a_binding.actor == actorKey
+                   && a_binding.sourceFormID == assignment.source.sourceFormID
+                   && a_binding.effectSourceFormID == assignment.retainedEffectSourceFormID;
         });
     };
     auto targets = Core::kVirtualTargets;

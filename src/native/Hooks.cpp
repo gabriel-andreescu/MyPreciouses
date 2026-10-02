@@ -271,10 +271,8 @@ namespace {
             RE::TESForm* a_item
         ) {
             return func(a_vm, a_stackID, a_actor, a_item)
-                   || (a_actor
-                       != nullptr
-                       && a_item
-                       != nullptr
+                   || (a_actor != nullptr
+                       && a_item != nullptr
                        && VirtualSlots::MatchesGetEquippedCondition(*a_actor, *a_item));
         }
 

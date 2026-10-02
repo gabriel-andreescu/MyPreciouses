@@ -379,8 +379,7 @@ namespace {
         const Core::TargetMask& a_occupiedTargets
     ) {
         const auto projectedTargets = SourceModelFootprints::GetProjectedTargets(a_candidate.sourceTargets, a_target);
-        return a_candidate.ring
-               != nullptr
+        return a_candidate.ring != nullptr
                && !projectedTargets.Empty()
                && SpecialRingRules::AreTargetsEnabledForSource(a_actor, *a_candidate.ring, projectedTargets)
                && !a_occupiedTargets.Intersects(projectedTargets);
@@ -399,8 +398,7 @@ namespace {
         for (std::size_t index = 0; index < a_candidates.size(); ++index) {
             const auto& candidate = a_candidates[index];
             const auto availableCopies = EffectiveAvailableCopies(candidate, a_reservedNativeRing);
-            if (a_usedCopies[index]
-                >= availableCopies
+            if (a_usedCopies[index] >= availableCopies
                 || !CanPlaceCandidate(a_actor, candidate, a_target, a_occupiedTargets)) {
                 continue;
             }
@@ -676,8 +674,7 @@ namespace {
     ) {
         return a_clearPolicy.allowCannotWearBondOfMatrimonyRelocation
                && Compatibility::IsBondOfMatrimony(a_rightWorn.ring)
-               && a_rightWorn.extraList
-               != nullptr
+               && a_rightWorn.extraList != nullptr
                && a_rightWorn.extraList->HasType(RE::ExtraDataType::kCannotWear)
                && !a_rightWorn.extraList->HasQuestObjectAlias();
     }

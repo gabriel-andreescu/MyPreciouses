@@ -124,8 +124,7 @@ namespace {
             return false;
         }
 
-        return header.displayNameLength
-               == 0
+        return header.displayNameLength == 0
                || a_intfc.WriteRecordData(customEnchantment.playerDisplayName.data(), header.displayNameLength);
     }
 
@@ -401,8 +400,7 @@ namespace {
             customEnchantment.enchantmentFormID,
             std::string_view {"custom enchantment"}
         );
-        if (customEnchantment.enchantmentFormID
-            == 0
+        if (customEnchantment.enchantmentFormID == 0
             || !RE::TESForm::LookupByID<RE::EnchantmentItem>(customEnchantment.enchantmentFormID)) {
             SKSE::log::warn(
                 "Serialization: custom virtual assignment cleared | actor={:08X} | target={} | source={:08X} | enchantment={:08X} | reason=enchantmentMissing",
@@ -617,12 +615,9 @@ namespace {
         const Papyrus::ScriptEventMirror::BindingRetentionKey& a_lhs,
         const Papyrus::ScriptEventMirror::BindingRetentionKey& a_rhs
     ) {
-        return a_lhs.actor
-               == a_rhs.actor
-               && a_lhs.sourceFormID
-               == a_rhs.sourceFormID
-               && a_lhs.effectSourceFormID
-               == a_rhs.effectSourceFormID;
+        return a_lhs.actor == a_rhs.actor
+               && a_lhs.sourceFormID == a_rhs.sourceFormID
+               && a_lhs.effectSourceFormID == a_rhs.effectSourceFormID;
     }
 
     void AddBindingRetentionKey(

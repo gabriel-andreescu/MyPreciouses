@@ -61,12 +61,9 @@ namespace {
     }
 
     [[nodiscard]] bool IsGroupUse(const RE::BSScript::StackFrame* a_frame, const RE::BSScript::StackFrame& a_callee) {
-        return a_frame
-               != nullptr
-               && a_frame->owningFunction->GetName()
-               == "GroupUse"
-               && a_frame->self.GetObject()
-               == a_callee.self.GetObject();
+        return a_frame != nullptr
+               && a_frame->owningFunction->GetName() == "GroupUse"
+               && a_frame->self.GetObject() == a_callee.self.GetObject();
     }
 }
 

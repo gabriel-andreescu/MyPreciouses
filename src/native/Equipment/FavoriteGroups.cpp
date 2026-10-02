@@ -19,8 +19,7 @@ namespace {
         const std::span<const Row> a_rows
     ) {
         for (const auto& row : a_rows) {
-            if (std::ranges::find(a_members, row.member)
-                != a_members.end()
+            if (std::ranges::find(a_members, row.member) != a_members.end()
                 && std::ranges::any_of(row.sources, [&](const auto& a_rowSource) {
                        return a_rowSource.Matches(a_source);
                    })) {

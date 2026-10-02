@@ -46,10 +46,8 @@ MemberResult EquipMember(
     }
     const auto savedOn = [&](const Core::Target a_target) {
         const auto index = Core::ToIndex(a_target);
-        return layout->assignments.byTarget[index].source.sourceFormID
-               == a_member.formID
-               && layout->itemIDs[index]
-               == a_member.itemID;
+        return layout->assignments.byTarget[index].source.sourceFormID == a_member.formID
+               && layout->itemIDs[index] == a_member.itemID;
     };
     if (!std::ranges::any_of(Core::kAllTargets, savedOn)) {
         return {};

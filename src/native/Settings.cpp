@@ -476,33 +476,33 @@ Settings::ReloadResult Settings::Reload() {
 
     BMK::Settings::ApplyLogLevel(loaded.debugLoggingEnabled, SKSE::InitInfo {}.logLevel);
 
-    const auto extraRingModeChanged = extraRingMode_.exchange(loaded.extraRingMode) != loaded.extraRingMode;
-    const auto enchantmentStrengthModeChanged = enchantmentStrengthMode_.exchange(loaded.enchantmentStrengthMode)
+    const auto extraRingModeChanged = _extraRingMode.exchange(loaded.extraRingMode) != loaded.extraRingMode;
+    const auto enchantmentStrengthModeChanged = _enchantmentStrengthMode.exchange(loaded.enchantmentStrengthMode)
                                                 != loaded.enchantmentStrengthMode;
-    const auto fixedStrengthChanged = fixedEnchantmentStrengthPercent_.exchange(loaded.fixedStrengthPercent)
+    const auto fixedStrengthChanged = _fixedEnchantmentStrengthPercent.exchange(loaded.fixedStrengthPercent)
                                       != loaded.fixedStrengthPercent;
-    const auto alwaysChooseFingerChanged = alwaysChooseFinger_.exchange(loaded.alwaysChooseFinger)
+    const auto alwaysChooseFingerChanged = _alwaysChooseFinger.exchange(loaded.alwaysChooseFinger)
                                            != loaded.alwaysChooseFinger;
-    const auto modifierKeyChanged = fingerSelectModifierKey_.exchange(loaded.fingerSelectModifierKey)
+    const auto modifierKeyChanged = _fingerSelectModifierKey.exchange(loaded.fingerSelectModifierKey)
                                     != loaded.fingerSelectModifierKey;
-    const auto modifierButtonChanged = fingerSelectModifierButton_.exchange(loaded.fingerSelectModifierButton)
+    const auto modifierButtonChanged = _fingerSelectModifierButton.exchange(loaded.fingerSelectModifierButton)
                                        != loaded.fingerSelectModifierButton;
-    const auto npcSupportChanged = npcSupportEnabled_.exchange(loaded.npcSupportEnabled) != loaded.npcSupportEnabled;
+    const auto npcSupportChanged = _npcSupportEnabled.exchange(loaded.npcSupportEnabled) != loaded.npcSupportEnabled;
     const auto playerAlwaysEquipBondOfMatrimonyLeftRingFingerChanged
-        = playerAlwaysEquipBondOfMatrimonyOnLeftRingFinger_.exchange(
+        = _playerAlwaysEquipBondOfMatrimonyOnLeftRingFinger.exchange(
               loaded.playerAlwaysEquipBondOfMatrimonyOnLeftRingFinger
           )
           != loaded.playerAlwaysEquipBondOfMatrimonyOnLeftRingFinger;
     const auto
-        npcAlwaysEquipBondOfMatrimonyLeftRingFingerChanged = npcAlwaysEquipBondOfMatrimonyOnLeftRingFinger_.exchange(
+        npcAlwaysEquipBondOfMatrimonyLeftRingFingerChanged = _npcAlwaysEquipBondOfMatrimonyOnLeftRingFinger.exchange(
                                                                  loaded.npcAlwaysEquipBondOfMatrimonyOnLeftRingFinger
                                                              )
                                                              != loaded.npcAlwaysEquipBondOfMatrimonyOnLeftRingFinger;
-    const auto unequipAllClearsExtraRingsChanged = unequipAllClearsExtraRings_.exchange(
+    const auto unequipAllClearsExtraRingsChanged = _unequipAllClearsExtraRings.exchange(
                                                        loaded.unequipAllClearsExtraRings
                                                    )
                                                    != loaded.unequipAllClearsExtraRings;
-    const auto virtualSlotsChanged = enabledVirtualTargetBits_.exchange(loaded.enabledVirtualTargetBits)
+    const auto virtualSlotsChanged = _enabledVirtualTargetBits.exchange(loaded.enabledVirtualTargetBits)
                                      != loaded.enabledVirtualTargetBits;
 
     LogLoadedSettings(loaded, userPath);
@@ -522,31 +522,31 @@ Settings::ReloadResult Settings::Reload() {
 }
 
 ExtraRingMode Settings::GetExtraRingMode() const {
-    return extraRingMode_.load();
+    return _extraRingMode.load();
 }
 
 bool Settings::AlwaysChooseFinger() const {
-    return alwaysChooseFinger_.load();
+    return _alwaysChooseFinger.load();
 }
 
 std::uint32_t Settings::GetFingerSelectModifierKey() const {
-    return fingerSelectModifierKey_.load();
+    return _fingerSelectModifierKey.load();
 }
 
 std::uint32_t Settings::GetFingerSelectModifierButton() const {
-    return fingerSelectModifierButton_.load();
+    return _fingerSelectModifierButton.load();
 }
 
 bool Settings::IsNpcSupportEnabled() const {
-    return npcSupportEnabled_.load();
+    return _npcSupportEnabled.load();
 }
 
 bool Settings::ShouldPlayerAlwaysEquipBondOfMatrimonyOnLeftRingFinger() const {
-    return playerAlwaysEquipBondOfMatrimonyOnLeftRingFinger_.load();
+    return _playerAlwaysEquipBondOfMatrimonyOnLeftRingFinger.load();
 }
 
 bool Settings::ShouldNpcAlwaysEquipBondOfMatrimonyOnLeftRingFinger() const {
-    return npcAlwaysEquipBondOfMatrimonyOnLeftRingFinger_.load();
+    return _npcAlwaysEquipBondOfMatrimonyOnLeftRingFinger.load();
 }
 
 bool Settings::IsActorVirtualRingSupportEnabled(const Core::ActorKey a_actor) const {
@@ -554,22 +554,22 @@ bool Settings::IsActorVirtualRingSupportEnabled(const Core::ActorKey a_actor) co
 }
 
 bool Settings::ShouldUnequipAllClearExtraRings() const {
-    return unequipAllClearsExtraRings_.load();
+    return _unequipAllClearsExtraRings.load();
 }
 
 bool Settings::IsTargetEnabled(const Core::Target a_target) const {
-    return ::IsTargetEnabled(enabledVirtualTargetBits_.load(), a_target);
+    return ::IsTargetEnabled(_enabledVirtualTargetBits.load(), a_target);
 }
 
 bool Settings::AreTargetsEnabled(const Core::TargetMask& a_targets) const {
-    const auto enabledVirtualTargetBits = enabledVirtualTargetBits_.load();
+    const auto enabledVirtualTargetBits = _enabledVirtualTargetBits.load();
     return std::ranges::all_of(Core::kVirtualTargets, [&](const auto a_target) {
         return !a_targets.Contains(a_target) || ::IsTargetEnabled(enabledVirtualTargetBits, a_target);
     });
 }
 
 std::optional<Core::Target> Settings::GetDefaultLeftTarget() const {
-    const auto enabledVirtualTargetBits = enabledVirtualTargetBits_.load();
+    const auto enabledVirtualTargetBits = _enabledVirtualTargetBits.load();
     for (const auto target : kDefaultLeftTargetPriority) {
         if (::IsTargetEnabled(enabledVirtualTargetBits, target)) {
             return target;
@@ -588,10 +588,10 @@ float Settings::GetRingEnchantmentScale(const std::uint32_t a_enchantedRingCount
         return 1.0F;
     }
 
-    switch (enchantmentStrengthMode_.load()) {
+    switch (_enchantmentStrengthMode.load()) {
         case EnchantmentStrengthMode::kFullStrength: return 1.0F;
         case EnchantmentStrengthMode::kFixedStrength:
-            return static_cast<float>(fixedEnchantmentStrengthPercent_.load())
+            return static_cast<float>(_fixedEnchantmentStrengthPercent.load())
                    / static_cast<float>(kMaximumEnchantmentStrengthPercent);
         case EnchantmentStrengthMode::kSplitStrength: return 1.0F / static_cast<float>(a_enchantedRingCount);
     }

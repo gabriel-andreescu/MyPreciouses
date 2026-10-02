@@ -37,10 +37,8 @@ namespace {
     constexpr auto kPs3ArtRightTrigger = std::string_view {"PS3_RT"};
 
     [[nodiscard]] std::optional<std::string_view> GetKeyboardMouseButtonArt(const std::uint32_t a_keyCode) {
-        if (a_keyCode
-            >= SKSE::InputMap::kMacro_MouseButtonOffset
-            && a_keyCode
-            < SKSE::InputMap::kMacro_MouseWheelOffset) {
+        if (a_keyCode >= SKSE::InputMap::kMacro_MouseButtonOffset
+            && a_keyCode < SKSE::InputMap::kMacro_MouseWheelOffset) {
             static constexpr std::array<std::string_view, SKSE::InputMap::kMacro_NumMouseButtons> kMouseButtonArt {
                 "Mouse1",
                 "Mouse2",

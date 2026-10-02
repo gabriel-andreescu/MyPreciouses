@@ -864,8 +864,7 @@ namespace {
         }
 
         auto const* mouse = GetMouse(*input);
-        return mouse
-               != nullptr
+        return mouse != nullptr
                && IsDeviceKeyPressed(
                    static_cast<const RE::BSInputDevice&>(*mouse),
                    keyCode - SKSE::InputMap::kMacro_MouseButtonOffset

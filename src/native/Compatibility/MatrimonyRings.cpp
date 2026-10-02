@@ -19,8 +19,7 @@ bool IsBondOfMatrimony(const RE::TESObjectARMO* a_ring) {
 
     constexpr std::array<RE::FormID, 3> kUpgradeFormIDs {0x801, 0x802, 0x804};
     const auto* file = a_ring->GetFile(0);
-    return file
-           != nullptr
+    return file != nullptr
            && clib_util::string::iequals(file->GetFilename(), "UpgradableBondOfMatrimony.esp")
            && std::ranges::contains(kUpgradeFormIDs, a_ring->GetLocalFormID());
 }

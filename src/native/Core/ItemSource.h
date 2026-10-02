@@ -94,11 +94,9 @@ struct ItemSource {
     [[nodiscard]] bool IsSameCopy(const ItemSource& a_source) const {
         return IsAssigned()
                && a_source.IsAssigned()
-               && sourceFormID
-               == a_source.sourceFormID
+               && sourceFormID == a_source.sourceFormID
                && extraUniqueID
-               && extraUniqueID
-               == a_source.extraUniqueID;
+               && extraUniqueID == a_source.extraUniqueID;
     }
 
     [[nodiscard]] bool operator==(const ItemSource&) const = default;

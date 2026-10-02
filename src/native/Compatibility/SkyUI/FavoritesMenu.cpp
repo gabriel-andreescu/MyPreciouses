@@ -69,10 +69,8 @@ namespace {
             }
             const auto group = UI::Scaleform::ReadIntMember(*a_params.thisPtr, "_groupIndex");
             if (group
-                && *group
-                >= 0
-                && static_cast<std::size_t>(*group)
-                < g_captures.size()
+                && *group >= 0
+                && static_cast<std::size_t>(*group) < g_captures.size()
                 && UI::Scaleform::ReadBoolMember(*a_params.thisPtr, "_groupButtonFocused").value_or(false)) {
                 std::scoped_lock const lock(g_captureLock);
                 g_captures[static_cast<std::size_t>(*group)] = std::move(rows);
@@ -103,10 +101,8 @@ namespace {
             const auto& layout = *saved;
             for (const auto target : Core::kAllTargets) {
                 const auto index = Core::ToIndex(target);
-                if (layout.assignments.byTarget[index].source.sourceFormID
-                    == *formID
-                    && layout.itemIDs[index]
-                    == *itemID) {
+                if (layout.assignments.byTarget[index].source.sourceFormID == *formID
+                    && layout.itemIDs[index] == *itemID) {
                     (target.hand == Core::Hand::kLeft ? left : right) |= bit;
                 }
             }
@@ -118,8 +114,7 @@ namespace {
     class GroupFlagsHandler final : public RE::GFxFunctionHandler {
         void Call(Params& a_params) override {
             RE::GFxValue entries;
-            if (a_params.argCount
-                != 1
+            if (a_params.argCount != 1
                 || !a_params.args->GetMember("entryList", std::addressof(entries))
                 || !entries.IsArray()) {
                 return;

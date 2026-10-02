@@ -134,8 +134,7 @@ void RefreshItemRowsAfterEquipmentAction(
     if (!a_result.inventoryChanged
         && !a_result.sourceUnavailable
         && !a_result.selectionChanged
-        && a_result.blockReason
-        == Equipment::ActionBlockReason::kNone) {
+        && a_result.blockReason == Equipment::ActionBlockReason::kNone) {
         return;
     }
 

@@ -72,10 +72,8 @@ bool HasMagnitudeEnchantment(const RE::TESObjectARMO& a_source, const RE::ExtraD
 bool CanDispelSourceEffects(RE::Actor& a_actor, const RE::TESObjectARMO& a_source) {
     auto* effects = a_actor.AsMagicTarget()->GetActiveEffectList();
     return effects == nullptr || std::ranges::none_of(*effects, [&a_source](auto* a_effect) {
-        return a_effect
-               != nullptr
-               && a_effect->source
-               == &a_source
+        return a_effect != nullptr
+               && a_effect->source == &a_source
                && !a_effect->flags.any(RE::ActiveEffect::Flag::kDispelled)
                && !a_effect->CanFinish();
     });
@@ -84,10 +82,8 @@ bool CanDispelSourceEffects(RE::Actor& a_actor, const RE::TESObjectARMO& a_sourc
 bool HasSourceEffects(RE::Actor& a_actor, const RE::TESObjectARMO& a_source) {
     auto* effects = a_actor.AsMagicTarget()->GetActiveEffectList();
     return effects != nullptr && std::ranges::any_of(*effects, [&a_source](const auto* a_effect) {
-        return a_effect
-               != nullptr
-               && a_effect->source
-               == &a_source
+        return a_effect != nullptr
+               && a_effect->source == &a_source
                && !a_effect->flags.any(RE::ActiveEffect::Flag::kDispelled);
     });
 }

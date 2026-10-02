@@ -156,8 +156,7 @@ namespace {
         const auto functional = a_state.mode == ExtraRingMode::kFunctional;
         return a_state.active
                && functional
-               && a_state.effectSource
-               != nullptr
+               && a_state.effectSource != nullptr
                && VirtualSlots::EnchantmentEffects::HasMagnitudeEnchantment(
                    a_state.effectSource->formEnchanting ? a_state.effectSource->formEnchanting
                                                         : a_state.customEnchantment
@@ -437,8 +436,7 @@ namespace {
     }
 
     void StoreRefreshOptions(ActorState& a_actorState, const RefreshOptions& a_options) {
-        if (a_options.sound
-            != Audio::EquipSounds::Cue::kNone
+        if (a_options.sound != Audio::EquipSounds::Cue::kNone
             && a_options.soundTarget
             && Core::IsVirtualTarget(*a_options.soundTarget)) {
             a_actorState.pendingSounds[Core::ToIndex(*a_options.soundTarget)] = a_options.sound;
@@ -524,8 +522,7 @@ namespace {
             return false;
         }
         if (a_requireRetainedEffectSource
-            && effectSource->GetFormID()
-            != a_plan.expectedAssignment.retainedEffectSourceFormID) {
+            && effectSource->GetFormID() != a_plan.expectedAssignment.retainedEffectSourceFormID) {
             SKSE::log::error(
                 "Cannot preserve loaded ring effects for actor {:08X}, target {}",
                 a_actor.GetFormID(),
@@ -571,12 +568,10 @@ namespace {
         const TargetState& a_state,
         TargetRefreshPlan& a_plan
     ) {
-        const auto restoredEffectSource = a_state.effectSource
-                                          != nullptr
+        const auto restoredEffectSource = a_state.effectSource != nullptr
                                           && a_state.effectSource->GetFormID()
-                                          == a_plan.expectedAssignment.retainedEffectSourceFormID;
-        const auto hasRestoredLoadedBinding = a_mode
-                                              == ExtraRingMode::kFunctional
+                                                 == a_plan.expectedAssignment.retainedEffectSourceFormID;
+        const auto hasRestoredLoadedBinding = a_mode == ExtraRingMode::kFunctional
                                               && !a_state.active
                                               && restoredEffectSource
                                               && Papyrus::ScriptEventMirror::HasLoadedActiveBinding(
@@ -671,10 +666,8 @@ namespace {
         const auto changedAssignment = !state.active || sourceChanged || assignmentChanged || state.mode != mode;
         const auto preserveLoadedEffect = a_refreshState.preserveLoadedEffects
                                           && !wasActive
-                                          && assignment.retainedEffectSourceFormID
-                                          != 0
-                                          && mode
-                                          == ExtraRingMode::kFunctional;
+                                          && assignment.retainedEffectSourceFormID != 0
+                                          && mode == ExtraRingMode::kFunctional;
         const auto preserveMatchingSource = preserveLoadedEffect
                                             && EffectSources::Matches(
                                                 assignment.retainedEffectSourceFormID,
@@ -707,8 +700,7 @@ namespace {
                 true
             );
         } else if (
-            mode
-            == ExtraRingMode::kFunctional
+            mode == ExtraRingMode::kFunctional
             && a_refreshState.restoreMissingEffects
             && !EnchantmentEffects::HasSourceEffects(a_actor, *state.effectSource)
         ) {
@@ -820,7 +812,7 @@ namespace {
         const auto* settings = Settings::GetSingleton();
         const auto magnitudeScaleChanged = !a_refreshState.preserveLoadedEffects
                                            && settings->GetRingEnchantmentScale(baselineMagnitudeRingCount)
-                                           != settings->GetRingEnchantmentScale(nextMagnitudeRingCount);
+                                                  != settings->GetRingEnchantmentScale(nextMagnitudeRingCount);
         const auto reapplyMagnitudeEffects = a_refreshState.reapplyEffects || magnitudeScaleChanged;
         if (reapplyMagnitudeEffects) {
             AddMagnitudeEffectReapplyActions(a_actor, *actor, plans);

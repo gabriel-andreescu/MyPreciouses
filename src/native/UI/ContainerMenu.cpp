@@ -208,10 +208,10 @@ namespace {
     class ShowItemsListHandler final : public RE::GFxFunctionHandler {
     public:
         explicit ShowItemsListHandler(RE::GFxValue a_originalFunction)
-            : originalFunction_(std::move(a_originalFunction)) {}
+            : _originalFunction(std::move(a_originalFunction)) {}
 
         void Call(Params& a_params) override {
-            originalFunction_.Invoke(
+            _originalFunction.Invoke(
                 "call",
                 a_params.retVal,
                 a_params.argsWithThisRef,
@@ -224,7 +224,7 @@ namespace {
         }
 
     private:
-        RE::GFxValue originalFunction_;
+        RE::GFxValue _originalFunction;
     };
 
     [[nodiscard]] bool InstallShowItemsListPatch(

@@ -82,15 +82,15 @@ public:
     [[nodiscard]] std::optional<Core::Target> GetDefaultLeftTarget() const;
 
 private:
-    std::atomic<ExtraRingMode> extraRingMode_ {ExtraRingMode::kFunctional};
-    std::atomic<EnchantmentStrengthMode> enchantmentStrengthMode_ {EnchantmentStrengthMode::kFullStrength};
-    std::atomic<std::uint32_t> fixedEnchantmentStrengthPercent_ {kDefaultFixedEnchantmentStrengthPercent};
-    std::atomic_bool alwaysChooseFinger_ {false};
-    std::atomic<std::uint32_t> fingerSelectModifierKey_ {kDefaultFingerSelectModifierKey};
-    std::atomic<std::uint32_t> fingerSelectModifierButton_ {kDefaultFingerSelectModifierButton};
-    std::atomic_bool npcSupportEnabled_ {true};
-    std::atomic_bool playerAlwaysEquipBondOfMatrimonyOnLeftRingFinger_ {false};
-    std::atomic_bool npcAlwaysEquipBondOfMatrimonyOnLeftRingFinger_ {true};
-    std::atomic_bool unequipAllClearsExtraRings_ {true};
-    std::atomic<std::uint16_t> enabledVirtualTargetBits_ {kDefaultEnabledVirtualTargetBits};
+    std::atomic<ExtraRingMode> _extraRingMode {ExtraRingMode::kFunctional};
+    std::atomic<EnchantmentStrengthMode> _enchantmentStrengthMode {EnchantmentStrengthMode::kFullStrength};
+    std::atomic<std::uint32_t> _fixedEnchantmentStrengthPercent {kDefaultFixedEnchantmentStrengthPercent};
+    std::atomic_bool _alwaysChooseFinger {false};
+    std::atomic<std::uint32_t> _fingerSelectModifierKey {kDefaultFingerSelectModifierKey};
+    std::atomic<std::uint32_t> _fingerSelectModifierButton {kDefaultFingerSelectModifierButton};
+    std::atomic_bool _npcSupportEnabled {true};
+    std::atomic_bool _playerAlwaysEquipBondOfMatrimonyOnLeftRingFinger {false};
+    std::atomic_bool _npcAlwaysEquipBondOfMatrimonyOnLeftRingFinger {true};
+    std::atomic_bool _unequipAllClearsExtraRings {true};
+    std::atomic<std::uint16_t> _enabledVirtualTargetBits {kDefaultEnabledVirtualTargetBits};
 };

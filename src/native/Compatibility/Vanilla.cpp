@@ -272,8 +272,7 @@ namespace {
         RE::Actor& a_player,
         std::vector<std::int32_t>& a_ringIDs
     ) {
-        if (Settings::GetSingleton()->GetExtraRingMode()
-            != ExtraRingMode::kFunctional
+        if (Settings::GetSingleton()->GetExtraRingMode() != ExtraRingMode::kFunctional
             || !IsWerewolf(a_player, a_data)) {
             return;
         }
@@ -306,8 +305,7 @@ namespace {
         magicTarget->VisitActiveEffects([&](RE::ActiveEffect* a_activeEffect) -> RE::BSContainer::ForEachResult {
             if (a_activeEffect
                 && !a_activeEffect->flags.any(RE::ActiveEffect::Flag::kDispelled)
-                && a_activeEffect->spell
-                == std::addressof(a_spell)) {
+                && a_activeEffect->spell == std::addressof(a_spell)) {
                 found = true;
                 return RE::BSContainer::ForEachResult::kStop;
             }
@@ -324,8 +322,7 @@ namespace {
         magicTarget->VisitActiveEffects([&](RE::ActiveEffect* a_activeEffect) -> RE::BSContainer::ForEachResult {
             if (a_activeEffect
                 && !a_activeEffect->flags.any(RE::ActiveEffect::Flag::kDispelled)
-                && a_activeEffect->spell
-                == std::addressof(a_spell)) {
+                && a_activeEffect->spell == std::addressof(a_spell)) {
                 effects.push_back(a_activeEffect);
             }
 

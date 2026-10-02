@@ -214,12 +214,9 @@ bool Assign(
     const auto conflicts = FindConflictingTargets(current, a_target, occupiedTargets);
     std::vector<Core::ItemSource> claimed;
     for (const auto target : Core::kVirtualTargets) {
-        if (target
-            != a_target
-            && target
-            != a_moveSourceTarget
-            && std::ranges::find(conflicts, target)
-            == conflicts.end()) {
+        if (target != a_target
+            && target != a_moveSourceTarget
+            && std::ranges::find(conflicts, target) == conflicts.end()) {
             claimed.push_back(current.byTarget[Core::ToIndex(target)].source);
         }
     }
@@ -295,8 +292,7 @@ bool TrySetRetainedEffectSourceFormID(
 ) {
     if (!CanUseActor(a_actor, std::string_view {"setRestoredEffectSource"})
         || !CanUseVirtualTarget(a_target, std::string_view {"setRestoredEffectSource"})
-        || a_effectSourceFormID
-        == 0) {
+        || a_effectSourceFormID == 0) {
         return false;
     }
 

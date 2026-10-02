@@ -99,12 +99,9 @@ namespace {
     }
 
     [[nodiscard]] bool IsPCInputDevice(const RE::INPUT_DEVICE a_device) {
-        return a_device
-               == RE::INPUT_DEVICE::kKeyboard
-               || a_device
-               == RE::INPUT_DEVICE::kMouse
-               || a_device
-               == RE::INPUT_DEVICES::VirtualKeyboard();
+        return a_device == RE::INPUT_DEVICE::kKeyboard
+               || a_device == RE::INPUT_DEVICE::kMouse
+               || a_device == RE::INPUT_DEVICES::VirtualKeyboard();
     }
 
     [[nodiscard]] std::int32_t GetGamepadPlatform() {

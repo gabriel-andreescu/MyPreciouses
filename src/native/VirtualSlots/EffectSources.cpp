@@ -40,12 +40,9 @@ namespace {
         const Core::ItemSource& a_source,
         const ExtraRingMode a_mode
     ) {
-        return a_variant.kind
-               == a_source.kind
-               && a_variant.custom
-               == a_source.customEnchantment
-               && a_variant.mode
-               == a_mode;
+        return a_variant.kind == a_source.kind
+               && a_variant.custom == a_source.customEnchantment
+               && a_variant.mode == a_mode;
     }
 
     void Initialize(RE::TESObjectARMO& a_armor, const RE::TESObjectARMO& a_source, const Variant& a_variant) {
@@ -59,10 +56,8 @@ namespace {
             name = a_variant.custom.playerDisplayName.c_str();
         }
         a_armor.SetFullName(name ? name : "");
-        const auto inheritEnchantment = a_variant.mode
-                                        == ExtraRingMode::kFunctional
-                                        && a_variant.kind
-                                        == Core::ItemSourceKind::kFormOnly;
+        const auto inheritEnchantment = a_variant.mode == ExtraRingMode::kFunctional
+                                        && a_variant.kind == Core::ItemSourceKind::kFormOnly;
         a_armor.formEnchanting = inheritEnchantment ? a_source.formEnchanting : nullptr;
         a_armor.amountofEnchantment = inheritEnchantment ? a_source.amountofEnchantment : 0;
     }
@@ -145,8 +140,7 @@ RE::TESObjectARMO* Acquire(
         variants.push_back({.kind = a_source.kind, .custom = a_source.customEnchantment, .mode = a_mode, .forms = {}});
         variant = std::prev(variants.end());
     }
-    if (a_retainedSource
-        != 0
+    if (a_retainedSource != 0
         && std::ranges::contains(variant->forms, a_retainedSource)
         && !std::ranges::contains(a_usedByActor, a_retainedSource)) {
         return RE::TESForm::LookupByID<RE::TESObjectARMO>(a_retainedSource);
@@ -189,8 +183,7 @@ bool TryLoadRecord(const Serialization::RecordInfo a_record, SKSE::Serialization
         std::uint32_t kind = 0;
         std::underlying_type_t<ExtraRingMode> mode = 0;
         std::uint8_t removeOnUnequip = 0;
-        if (a_record.version
-            != kRecordVersion
+        if (a_record.version != kRecordVersion
             || !ReadField(a_intfc, remaining, source)
             || !ReadField(a_intfc, remaining, kind)
             || !ReadField(a_intfc, remaining, mode)
@@ -222,8 +215,7 @@ bool TryLoadRecord(const Serialization::RecordInfo a_record, SKSE::Serialization
         }
         const auto originalSource = source;
         if (!a_intfc.ResolveFormID(source, source)
-            || (variant.kind
-                == Core::ItemSourceKind::kCustomEnchantment
+            || (variant.kind == Core::ItemSourceKind::kCustomEnchantment
                 && !a_intfc.ResolveFormID(variant.custom.enchantmentFormID, variant.custom.enchantmentFormID))) {
             SKSE::log::warn("Cannot resolve saved effect-source variant for ring {:08X}", originalSource);
             return;

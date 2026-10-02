@@ -224,7 +224,7 @@ namespace {
     class SkyUIEquipButtonDataHandler final : public RE::GFxFunctionHandler {
     public:
         explicit SkyUIEquipButtonDataHandler(RE::GFxValue a_originalFunction)
-            : originalFunction_(std::move(a_originalFunction)) {}
+            : _originalFunction(std::move(a_originalFunction)) {}
 
         void Call(Params& a_params) override {
             if (IsSelectedRingEquipHintRow(*a_params.movie, kSkyUISelectedEntryPath)) {
@@ -232,7 +232,7 @@ namespace {
                 return;
             }
 
-            originalFunction_.Invoke(
+            _originalFunction.Invoke(
                 "call",
                 a_params.retVal,
                 a_params.argsWithThisRef,
@@ -241,28 +241,28 @@ namespace {
         }
 
     private:
-        RE::GFxValue originalFunction_;
+        RE::GFxValue _originalFunction;
     };
 
     class SkyUIAddButtonBeforeEquipHandler final : public RE::GFxFunctionHandler {
     public:
         SkyUIAddButtonBeforeEquipHandler(RE::GFxValue a_originalFunction, RE::GFxValue a_inventoryMenu)
-            : originalFunction_(std::move(a_originalFunction))
-            , inventoryMenu_(std::move(a_inventoryMenu)) {}
+            : _originalFunction(std::move(a_originalFunction))
+            , _inventoryMenu(std::move(a_inventoryMenu)) {}
 
         void Call(Params& a_params) override {
-            if (!hintAdded_) {
-                hintAdded_ = true;
+            if (!_hintAdded) {
+                _hintAdded = true;
 
                 RE::GFxValue buttonData;
-                SetSkyUIFingerSelectHintButtonData(*a_params.movie, inventoryMenu_, buttonData);
+                SetSkyUIFingerSelectHintButtonData(*a_params.movie, _inventoryMenu, buttonData);
 
                 std::array<RE::GFxValue, 2> args {*a_params.thisPtr, buttonData};
                 RE::GFxValue result;
-                static_cast<void>(originalFunction_.Invoke("call", std::addressof(result), args.data(), args.size()));
+                static_cast<void>(_originalFunction.Invoke("call", std::addressof(result), args.data(), args.size()));
             }
 
-            originalFunction_.Invoke(
+            _originalFunction.Invoke(
                 "call",
                 a_params.retVal,
                 a_params.argsWithThisRef,
@@ -271,21 +271,19 @@ namespace {
         }
 
     private:
-        RE::GFxValue originalFunction_;
-        RE::GFxValue inventoryMenu_;
-        bool hintAdded_ {false};
+        RE::GFxValue _originalFunction;
+        RE::GFxValue _inventoryMenu;
+        bool _hintAdded {false};
     };
 
     class SkyUIBottomBarUpdateHandler final : public RE::GFxFunctionHandler {
     public:
         explicit SkyUIBottomBarUpdateHandler(RE::GFxValue a_originalFunction)
-            : originalFunction_(std::move(a_originalFunction)) {}
+            : _originalFunction(std::move(a_originalFunction)) {}
 
         void Call(Params& a_params) override {
-            const auto selected = a_params.argCount
-                                  > 0
-                                  && a_params.args
-                                  != nullptr
+            const auto selected = a_params.argCount > 0
+                                  && a_params.args != nullptr
                                   && a_params.args->IsBool()
                                   && a_params.args->GetBool();
 
@@ -311,7 +309,7 @@ namespace {
                 restoreAddButton = navPanel.SetMember("addButton", function);
             }
 
-            originalFunction_.Invoke(
+            _originalFunction.Invoke(
                 "call",
                 a_params.retVal,
                 a_params.argsWithThisRef,
@@ -324,17 +322,17 @@ namespace {
         }
 
     private:
-        RE::GFxValue originalFunction_;
+        RE::GFxValue _originalFunction;
     };
 
     class VanillaBottomBarUpdateHandler final : public RE::GFxFunctionHandler {
     public:
         explicit VanillaBottomBarUpdateHandler(RE::GFxValue a_originalFunction)
-            : originalFunction_(std::move(a_originalFunction)) {}
+            : _originalFunction(std::move(a_originalFunction)) {}
 
         void Call(Params& a_params) override {
             if (!a_params.movie || !IsVanillaInventoryMovie(*a_params.movie)) {
-                originalFunction_.Invoke(
+                _originalFunction.Invoke(
                     "call",
                     a_params.retVal,
                     a_params.argsWithThisRef,
@@ -351,7 +349,7 @@ namespace {
             RE::GFxValue originalAltButtonArt;
             const auto restoreAltButtonArt = PrepareButtonArt(a_params, hintState, originalAltButtonArt);
 
-            originalFunction_.Invoke(
+            _originalFunction.Invoke(
                 "call",
                 a_params.retVal,
                 a_params.argsWithThisRef,
@@ -382,12 +380,12 @@ namespace {
                 }
             }
 
-            if (a_params.thisPtr && preservedButtonArt_) {
+            if (a_params.thisPtr && _preservedButtonArt) {
                 static_cast<void>(VanillaItemMenuControls::TrySetFixedSlotButtonArt(
                     *a_params.movie,
                     *a_params.thisPtr,
                     kVanillaInventoryPreservedButtonArtFirstIndex,
-                    *preservedButtonArt_
+                    *_preservedButtonArt
                 ));
             }
             return restoreAltButtonArt;
@@ -398,14 +396,14 @@ namespace {
                 return;
             }
 
-            if (!preservedButtonArt_) {
-                preservedButtonArt_ = VanillaItemMenuControls::ReadFixedSlotButtonArt(
+            if (!_preservedButtonArt) {
+                _preservedButtonArt = VanillaItemMenuControls::ReadFixedSlotButtonArt(
                     *a_params.thisPtr,
                     kVanillaInventoryPreservedButtonArtFirstIndex,
                     kVanillaInventoryPreservedButtonArtCount
                 );
             }
-            if (!preservedButtonArt_) {
+            if (!_preservedButtonArt) {
                 return;
             }
 
@@ -423,7 +421,7 @@ namespace {
 
             const auto shiftedButtonArt = BuildVanillaInventoryShiftedButtonArt(
                 *a_params.thisPtr,
-                *preservedButtonArt_
+                *_preservedButtonArt
             );
             if (!shiftedButtonArt) {
                 return;
@@ -439,8 +437,8 @@ namespace {
             ));
         }
 
-        RE::GFxValue originalFunction_;
-        std::optional<std::vector<VanillaItemMenuControls::ButtonArt>> preservedButtonArt_;
+        RE::GFxValue _originalFunction;
+        std::optional<std::vector<VanillaItemMenuControls::ButtonArt>> _preservedButtonArt;
     };
 
     template <class Handler>
