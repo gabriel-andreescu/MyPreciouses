@@ -1,4 +1,4 @@
-# In-game tests
+# Game tests
 
 Pytest tests for ring selection, models, enchantments, scripts, special rings,
 transformations, inventory confiscation and save persistence through

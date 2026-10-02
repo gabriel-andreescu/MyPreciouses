@@ -3,5 +3,4 @@ build/
 dist/
 scratch/
 src/interface/fingerselect/swf/
-**/*.jinja
 .copier-answers.yml
